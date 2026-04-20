@@ -1,0 +1,45 @@
+# Truestock Universe · Caddy reverse proxy
+#
+# Caddy handles:
+#   - Let's Encrypt TLS (automatic; just needs DNS pointing at this box)
+#   - gzip compression
+#   - HTTP → HTTPS redirect (automatic)
+#   - HTTP/3 (automatic)
+#
+# Hostname: set this to whatever domain you point at the droplet.
+# Caddy will provision a cert on first request after DNS propagates.
+
+universe.truestock.in {
+    # Reverse proxy to the Next.js process on localhost
+    reverse_proxy localhost:3000 {
+        # Preserve the raw body for Razorpay signature verification
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+
+    encode gzip zstd
+
+    # Cache Next.js static assets aggressively
+    @static {
+        path /_next/static/*
+        path /static/*
+        path /fonts/*
+    }
+    header @static Cache-Control "public, max-age=31536000, immutable"
+
+    # Don't expose server details
+    header -Server
+    header X-Content-Type-Options "nosniff"
+    header X-Frame-Options "SAMEORIGIN"
+    header Referrer-Policy "strict-origin-when-cross-origin"
+
+    log {
+        output file /var/log/caddy/truestock-universe.log {
+            roll_size 20mb
+            roll_keep 10
+        }
+        format json
+    }
+}

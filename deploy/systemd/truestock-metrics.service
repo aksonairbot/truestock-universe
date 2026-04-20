@@ -1,0 +1,16 @@
+[Unit]
+Description=Truestock Universe — nightly metrics_daily rollup
+After=truestock-universe-web.service
+Wants=truestock-universe-web.service
+
+[Service]
+Type=oneshot
+User=truestock
+EnvironmentFile=/etc/truestock/env
+ExecStart=/usr/bin/curl -fsS --max-time 120 \
+  -X POST \
+  -H "Authorization: Bearer ${INTERNAL_API_SECRET}" \
+  "http://localhost:3000/api/cron/metrics"
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=truestock-metrics

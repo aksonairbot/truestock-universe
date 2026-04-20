@@ -1,0 +1,28 @@
+# deps
+node_modules
+.pnpm-store
+
+# env
+.env
+.env.local
+.env.*.local
+
+# next
+.next/
+out/
+
+# turbo
+.turbo
+
+# builds
+dist/
+build/
+
+# misc
+*.log
+.DS_Store
+.vscode/
+.idea/
+
+# drizzle
+drizzle/meta/_journal.json.bak

@@ -1,0 +1,13 @@
+[Unit]
+Description=Run Razorpay sync every hour
+Requires=truestock-universe-web.service
+
+[Timer]
+# Every hour on the hour, starting 5 minutes after boot
+OnBootSec=5min
+OnCalendar=hourly
+Persistent=true
+RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target

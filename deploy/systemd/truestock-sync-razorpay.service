@@ -1,0 +1,17 @@
+[Unit]
+Description=Truestock Universe — hourly Razorpay reconciliation
+After=truestock-universe-web.service
+Wants=truestock-universe-web.service
+
+[Service]
+Type=oneshot
+User=truestock
+EnvironmentFile=/etc/truestock/env
+# Call the sync endpoint on the local web service. INTERNAL_API_SECRET is in env.
+ExecStart=/usr/bin/curl -fsS --max-time 300 \
+  -X POST \
+  -H "Authorization: Bearer ${INTERNAL_API_SECRET}" \
+  "http://localhost:3000/api/sync/razorpay"
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=truestock-sync-razorpay

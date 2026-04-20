@@ -1,0 +1,39 @@
+# Temporary HTTP-only config for pre-DNS testing.
+#
+# Use this when you don't have a domain pointing at the droplet yet —
+# Universe will be reachable at http://<droplet_ip>/ with no TLS.
+#
+# Swap back to the full Caddyfile (with hostname + auto Let's Encrypt)
+# the moment DNS propagates:
+#   sudo cp /opt/truestock-universe/deploy/caddy/Caddyfile /etc/caddy/Caddyfile
+#   sudoedit /etc/caddy/Caddyfile          # set your hostname
+#   sudo systemctl reload caddy
+
+:80 {
+    reverse_proxy localhost:3000 {
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+
+    encode gzip zstd
+
+    @static {
+        path /_next/static/*
+        path /static/*
+        path /fonts/*
+    }
+    header @static Cache-Control "public, max-age=31536000, immutable"
+
+    header -Server
+    header X-Content-Type-Options "nosniff"
+
+    log {
+        output file /var/log/caddy/truestock-universe.log {
+            roll_size 20mb
+            roll_keep 10
+        }
+        format json
+    }
+}

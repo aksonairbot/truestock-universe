@@ -1,0 +1,43 @@
+[Unit]
+Description=Truestock Universe — Next.js web
+Documentation=https://github.com/truestock/truestock-universe
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=truestock
+Group=truestock
+WorkingDirectory=/opt/truestock-universe/apps/web
+EnvironmentFile=/etc/truestock/env
+# corepack prepares pnpm at install time; this resolves to the right binary
+ExecStart=/usr/bin/pnpm start
+# Graceful restart on env change or failure
+Restart=on-failure
+RestartSec=10
+KillSignal=SIGTERM
+TimeoutStopSec=20
+# Logs go to journald (view with: journalctl -u truestock-universe-web -f)
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=truestock-universe-web
+
+# --- Hardening ---
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+LockPersonality=yes
+RestrictSUIDSGID=yes
+ReadWritePaths=/opt/truestock-universe /var/log
+# Limit resource use (2 GB droplet — leave 512 MB for Postgres client + OS)
+MemoryHigh=1200M
+MemoryMax=1500M
+CPUQuota=180%
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,138 @@
+# Truestock Universe — MINIMAL deploy spec.
+#
+# All-DigitalOcean. $19/mo total for a 20-user internal workload running the
+# full module stack. Single vendor, one bill, one status page.
+#
+# Difference from .do/app.yaml:
+#   - Web stays on basic-xs (same as full spec)
+#   - Managed Postgres is Dev tier (db-s-dev-database: 512 MB / 10 GB / $7)
+#     instead of Basic tier ($15). Dev tier has daily snapshots, managed
+#     upgrades, and monitoring — but no HA and snapshot-only recovery
+#     (not point-in-time). Fine for <1 GB data and internal use.
+#   - When DB size crosses ~400 MB OR you want PITR, switch to .do/app.yaml
+#     which provisions the Basic tier ($15). Zero-downtime resize in dashboard.
+#
+# See docs/sizing.md for the tier comparison and upgrade thresholds.
+#
+# Apply with:
+#   doctl apps create --spec .do/app.minimal.yaml   # first deploy
+#   doctl apps update <APP_ID> --spec .do/app.minimal.yaml
+
+name: truestock-universe
+region: blr1
+
+services:
+  - name: web
+    source_dir: /
+    github:
+      repo: truestock/truestock-universe
+      branch: main
+      deploy_on_push: true
+    build_command: |
+      corepack enable
+      pnpm install --frozen-lockfile
+      pnpm build --filter=web
+    run_command: pnpm --filter web start
+    http_port: 3000
+    instance_count: 1
+    instance_size_slug: basic-xs
+    health_check:
+      http_path: /mis/revenue
+      initial_delay_seconds: 20
+      period_seconds: 30
+      timeout_seconds: 5
+    envs:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        scope: RUN_AND_BUILD_TIME
+        type: SECRET
+      - key: RAZORPAY_KEY_ID
+        scope: RUN_TIME
+        type: SECRET
+      - key: RAZORPAY_KEY_SECRET
+        scope: RUN_TIME
+        type: SECRET
+      - key: RAZORPAY_WEBHOOK_SECRET
+        scope: RUN_TIME
+        type: SECRET
+      - key: INTERNAL_API_SECRET
+        scope: RUN_TIME
+        type: SECRET
+      - key: SENTRY_DSN
+        scope: RUN_TIME
+        type: SECRET
+      - key: NEXT_PUBLIC_APP_URL
+        scope: RUN_AND_BUILD_TIME
+        value: ${APP_URL}
+
+jobs:
+  - name: cron-sync-razorpay
+    kind: CRON
+    schedule: "0 * * * *"
+    source_dir: /
+    github:
+      repo: truestock/truestock-universe
+      branch: main
+    build_command: |
+      corepack enable
+      pnpm install --frozen-lockfile --prod=false
+    run_command: |
+      curl -fsS -X POST \
+        -H "Authorization: Bearer $INTERNAL_API_SECRET" \
+        "$APP_URL/api/sync/razorpay"
+    instance_size_slug: basic-xxs
+    envs:
+      - key: INTERNAL_API_SECRET
+        scope: RUN_TIME
+        type: SECRET
+      - key: APP_URL
+        scope: RUN_TIME
+        value: ${_self.APP_URL}
+
+  - name: cron-metrics
+    kind: CRON
+    schedule: "0 21 * * *"
+    source_dir: /
+    github:
+      repo: truestock/truestock-universe
+      branch: main
+    build_command: |
+      corepack enable
+      pnpm install --frozen-lockfile --prod=false
+    run_command: |
+      curl -fsS -X POST \
+        -H "Authorization: Bearer $INTERNAL_API_SECRET" \
+        "$APP_URL/api/cron/metrics"
+    instance_size_slug: basic-xxs
+    envs:
+      - key: INTERNAL_API_SECRET
+        scope: RUN_TIME
+        type: SECRET
+      - key: APP_URL
+        scope: RUN_TIME
+        value: ${_self.APP_URL}
+
+  - name: db-migrate
+    kind: PRE_DEPLOY
+    source_dir: /
+    github:
+      repo: truestock/truestock-universe
+      branch: main
+    build_command: |
+      corepack enable
+      pnpm install --frozen-lockfile
+    run_command: pnpm db:migrate
+    instance_size_slug: basic-xxs
+    envs:
+      - key: DATABASE_URL
+        scope: RUN_AND_BUILD_TIME
+        type: SECRET
+
+databases:
+  - name: truestock-db
+    engine: PG
+    version: "16"
+    size: db-s-dev-database        # $7/mo — 512 MB / 10 GB, managed, daily snapshots
+    num_nodes: 1
+    production: false              # "dev" tier marker; still a real managed DB

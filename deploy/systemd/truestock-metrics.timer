@@ -1,0 +1,12 @@
+[Unit]
+Description=Run metrics_daily rollup nightly at 02:30 IST
+Requires=truestock-universe-web.service
+
+[Timer]
+# 02:30 IST = 21:00 UTC
+OnCalendar=*-*-* 21:00:00 UTC
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target
