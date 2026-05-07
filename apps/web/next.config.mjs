@@ -1,14 +1,20 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  // Allow imports from workspace packages in dev + build
   transpilePackages: ["@tu/db", "@tu/razorpay"],
   experimental: {
-    // Razorpay webhooks need the raw body — ensure it's preserved
     serverActions: { bodySizeLimit: "1mb" },
   },
   logging: {
     fetches: { fullUrl: false },
+  },
+  webpack(config) {
+    config.resolve.extensionAlias = {
+      ".js": [".ts", ".tsx", ".js", ".jsx"],
+      ".mjs": [".mts", ".mjs"],
+      ".cjs": [".cts", ".cjs"],
+    };
+    return config;
   },
 };
 export default nextConfig;

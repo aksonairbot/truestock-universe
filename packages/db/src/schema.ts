@@ -210,7 +210,7 @@ export const payments = pgTable(
     method: text("method"), // card, upi, netbanking, wallet, emi, etc.
     capturedAt: timestamp("captured_at", { withTimezone: true }),
     refundedAt: timestamp("refunded_at", { withTimezone: true }),
-    amountRefundedPaise: bigint("amount_refunded_paise", { mode: "bigint" }).default(0n),
+    amountRefundedPaise: bigint("amount_refunded_paise", { mode: "bigint" }).default(sql`0`),
     mappingConfidence: numeric("mapping_confidence", { precision: 4, scale: 2 }),
     // 1.0 = exact amount match, 0.5 = within tolerance, 0.0 = unmapped
     /**
@@ -258,6 +258,330 @@ export const metricsDaily = pgTable(
     pk: primaryKey({ columns: [t.date, t.productId, t.metric] }),
     byMetricDate: index("metrics_metric_date_idx").on(t.metric, t.date),
     byProductDate: index("metrics_product_date_idx").on(t.productId, t.date),
+  }),
+);
+
+// ============================================================================
+// Tasks module (Asana-side) + Activity tracking (DeskTime-side)
+//
+// Lives in same Postgres as MIS so cross-module queries (revenue → task,
+// campaign → task) are joinable without a service hop. Per project policy:
+// every project carries product_id (nullable for "internal cross-cutting").
+// ============================================================================
+
+// ---------- enums (tasks + activity) ----------
+
+export const userRoleEnum = pgEnum("user_role", [
+  "admin",
+  "manager",
+  "member",
+  "viewer",
+  "agent", // first-class non-human user (AI agents, future)
+]);
+
+export const taskStatusEnum = pgEnum("task_status", [
+  "backlog",
+  "todo",
+  "in_progress",
+  "review",
+  "done",
+  "cancelled",
+]);
+
+export const taskPriorityEnum = pgEnum("task_priority", [
+  "low",
+  "med",
+  "high",
+  "urgent",
+]);
+
+export const taskDependencyKindEnum = pgEnum("task_dependency_kind", [
+  "blocks",
+  "relates_to",
+]);
+
+export const timeEntrySourceEnum = pgEnum("time_entry_source", [
+  "manual",
+  "agent",
+]);
+
+export const productivityEnum = pgEnum("productivity_class", [
+  "productive",
+  "neutral",
+  "unproductive",
+  "unclassified",
+]);
+
+export const agentOsEnum = pgEnum("agent_os", ["macos", "windows", "linux"]);
+
+// ---------- users ----------
+//
+// First-class users for Skynet. Authenticated via Google SSO (truestock.in
+// domain). Auto-provisioned on first sign-in; role defaults to "member" until
+// an admin upgrades them. `agent` role is for non-human actors (future AI
+// agents that participate in chat / write tasks / approve work).
+export const users = pgTable(
+  "users",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    email: text("email").notNull().unique(),
+    googleSubject: text("google_subject").unique(), // Google `sub` claim
+    name: text("name").notNull(),
+    avatarUrl: text("avatar_url"),
+    role: userRoleEnum("role").notNull().default("member"),
+    managerId: uuid("manager_id"),
+    /** Product access list — array of product slugs OR ["*"] for all. JSONB
+     *  rather than a separate join table because list is short and access is
+     *  set per-user, not per-product. */
+    productAccess: jsonb("product_access").notNull().default(sql`'["*"]'::jsonb`),
+    timezone: text("timezone").notNull().default("Asia/Kolkata"),
+    hireDate: date("hire_date"),
+    isActive: boolean("is_active").notNull().default(true),
+    lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    byEmail: index("users_email_idx").on(t.email),
+    byManager: index("users_manager_idx").on(t.managerId),
+    byActive: index("users_active_idx").on(t.isActive),
+  }),
+);
+
+// ---------- projects ----------
+
+export const projects = pgTable(
+  "projects",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    slug: text("slug").notNull().unique(),
+    name: text("name").notNull(),
+    description: text("description"),
+    productId: uuid("product_id").references(() => products.id),
+    ownerId: uuid("owner_id")
+      .notNull()
+      .references(() => users.id),
+    color: text("color"), // hex
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    bySlug: uniqueIndex("projects_slug_uq").on(t.slug),
+    byProduct: index("projects_product_idx").on(t.productId),
+    byOwner: index("projects_owner_idx").on(t.ownerId),
+    byArchived: index("projects_archived_idx").on(t.archivedAt),
+  }),
+);
+
+// ---------- tasks ----------
+//
+// Subtasks are modelled via parent_task_id self-ref (one level recommended,
+// arbitrary nesting allowed). order_index is a sparse integer used by the
+// kanban board and list view for manual ordering — gap-100 strategy
+// (initial values 1000, 2000, 3000) so inserts between rarely renumber.
+export const tasks = pgTable(
+  "tasks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    description: text("description"),
+    assigneeId: uuid("assignee_id").references(() => users.id),
+    status: taskStatusEnum("status").notNull().default("todo"),
+    priority: taskPriorityEnum("priority").notNull().default("med"),
+    dueDate: date("due_date"),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    estimatedMinutes: integer("estimated_minutes"),
+    parentTaskId: uuid("parent_task_id"),
+    orderIndex: integer("order_index").notNull().default(1000),
+    createdById: uuid("created_by_id")
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    byProject: index("tasks_project_idx").on(t.projectId, t.status),
+    byAssignee: index("tasks_assignee_idx").on(t.assigneeId, t.status),
+    byParent: index("tasks_parent_idx").on(t.parentTaskId),
+    byDue: index("tasks_due_idx").on(t.dueDate),
+    byOrder: index("tasks_order_idx").on(t.projectId, t.status, t.orderIndex),
+  }),
+);
+
+// ---------- task comments ----------
+
+export const taskComments = pgTable(
+  "task_comments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    taskId: uuid("task_id")
+      .notNull()
+      .references(() => tasks.id, { onDelete: "cascade" }),
+    authorId: uuid("author_id")
+      .notNull()
+      .references(() => users.id),
+    body: text("body").notNull(), // markdown
+    editedAt: timestamp("edited_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    byTask: index("task_comments_task_idx").on(t.taskId, t.createdAt),
+    byAuthor: index("task_comments_author_idx").on(t.authorId),
+  }),
+);
+
+// ---------- task attachments ----------
+// Stored in DO Spaces (S3-compatible). For v1 we may use Postgres bytea fallback
+// while attachment volume is low; spaces_key is the source of truth either way.
+export const taskAttachments = pgTable(
+  "task_attachments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    taskId: uuid("task_id")
+      .notNull()
+      .references(() => tasks.id, { onDelete: "cascade" }),
+    uploaderId: uuid("uploader_id")
+      .notNull()
+      .references(() => users.id),
+    filename: text("filename").notNull(),
+    mime: text("mime"),
+    sizeBytes: bigint("size_bytes", { mode: "bigint" }).notNull(),
+    spacesKey: text("spaces_key").notNull().unique(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    byTask: index("task_attachments_task_idx").on(t.taskId),
+  }),
+);
+
+// ---------- task dependencies ----------
+
+export const taskDependencies = pgTable(
+  "task_dependencies",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    taskId: uuid("task_id")
+      .notNull()
+      .references(() => tasks.id, { onDelete: "cascade" }),
+    dependsOnTaskId: uuid("depends_on_task_id")
+      .notNull()
+      .references(() => tasks.id, { onDelete: "cascade" }),
+    kind: taskDependencyKindEnum("kind").notNull().default("blocks"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    pairUq: uniqueIndex("task_deps_pair_uq").on(t.taskId, t.dependsOnTaskId),
+    byTask: index("task_deps_task_idx").on(t.taskId),
+    byDep: index("task_deps_dep_idx").on(t.dependsOnTaskId),
+  }),
+);
+
+// ---------- time entries (manual + agent-derived) ----------
+//
+// Single fact table for "user X spent Y minutes on task Z between A and B".
+// `source = manual` for typed entries on a task page; `source = agent`
+// for entries created by activity_sessions roll-up. Task is nullable —
+// time without a task is "unattributed" / general work.
+export const timeEntries = pgTable(
+  "time_entries",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    taskId: uuid("task_id").references(() => tasks.id, { onDelete: "set null" }),
+    source: timeEntrySourceEnum("source").notNull(),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
+    endedAt: timestamp("ended_at", { withTimezone: true }).notNull(),
+    minutes: integer("minutes").notNull(),
+    note: text("note"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    byUserStart: index("time_entries_user_start_idx").on(t.userId, t.startedAt),
+    byTask: index("time_entries_task_idx").on(t.taskId),
+    bySource: index("time_entries_source_idx").on(t.source),
+  }),
+);
+
+// ---------- activity sessions (raw agent reports) ----------
+//
+// Raw 60-second buckets reported by the Mac agent. Roll-up into time_entries
+// happens via a scheduled job (cron). Window titles are nullable + privacy-
+// gated; the agent can be configured to send "names only" mode that omits
+// titles entirely.
+export const activitySessions = pgTable(
+  "activity_sessions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    deviceId: uuid("device_id").references(() => agentDevices.id),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
+    endedAt: timestamp("ended_at", { withTimezone: true }).notNull(),
+    appName: text("app_name").notNull(),
+    windowTitle: text("window_title"),
+    idleMinutes: integer("idle_minutes").notNull().default(0),
+    productivity: productivityEnum("productivity").notNull().default("unclassified"),
+    taskId: uuid("task_id").references(() => tasks.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    byUserStart: index("activity_sessions_user_start_idx").on(t.userId, t.startedAt),
+    byApp: index("activity_sessions_app_idx").on(t.appName),
+    byTask: index("activity_sessions_task_idx").on(t.taskId),
+  }),
+);
+
+// ---------- app classifications (productivity tagging rules) ----------
+//
+// Optional productivity labels for app names. Per-user rows override the
+// org-default rows (where user_id is null). Lets a manager mark
+// "VS Code = productive" once for the whole org, while a designer can
+// override "Figma = productive" for themselves.
+export const appClassifications = pgTable(
+  "app_classifications",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
+    appNamePattern: text("app_name_pattern").notNull(), // exact match for v1, glob later
+    productivity: productivityEnum("productivity").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    byUserApp: uniqueIndex("app_class_user_app_uq").on(t.userId, t.appNamePattern),
+    byApp: index("app_class_app_idx").on(t.appNamePattern),
+  }),
+);
+
+// ---------- agent devices ----------
+
+export const agentDevices = pgTable(
+  "agent_devices",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    deviceName: text("device_name").notNull(),
+    os: agentOsEnum("os").notNull(),
+    agentVersion: text("agent_version"),
+    /** SHA-256 of the install token. Token shown to user once at install,
+     *  hashed at rest. Used by the agent's bearer auth. */
+    installTokenHash: text("install_token_hash").notNull().unique(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    byUser: index("agent_devices_user_idx").on(t.userId),
+    byTokenHash: index("agent_devices_token_idx").on(t.installTokenHash),
   }),
 );
 
@@ -312,6 +636,143 @@ export const paymentsRelations = relations(payments, ({ one }) => ({
   }),
 }));
 
+// ---------- relations for tasks module ----------
+
+export const usersRelations = relations(users, ({ one, many }) => ({
+  manager: one(users, {
+    fields: [users.managerId],
+    references: [users.id],
+    relationName: "manager",
+  }),
+  reports: many(users, { relationName: "manager" }),
+  ownedProjects: many(projects),
+  assignedTasks: many(tasks, { relationName: "assignee" }),
+  createdTasks: many(tasks, { relationName: "creator" }),
+  comments: many(taskComments),
+  attachments: many(taskAttachments),
+  timeEntries: many(timeEntries),
+  activitySessions: many(activitySessions),
+  appClassifications: many(appClassifications),
+  agentDevices: many(agentDevices),
+}));
+
+export const projectsRelations = relations(projects, ({ one, many }) => ({
+  product: one(products, {
+    fields: [projects.productId],
+    references: [products.id],
+  }),
+  owner: one(users, {
+    fields: [projects.ownerId],
+    references: [users.id],
+  }),
+  tasks: many(tasks),
+}));
+
+export const tasksRelations = relations(tasks, ({ one, many }) => ({
+  project: one(projects, {
+    fields: [tasks.projectId],
+    references: [projects.id],
+  }),
+  assignee: one(users, {
+    fields: [tasks.assigneeId],
+    references: [users.id],
+    relationName: "assignee",
+  }),
+  createdBy: one(users, {
+    fields: [tasks.createdById],
+    references: [users.id],
+    relationName: "creator",
+  }),
+  parentTask: one(tasks, {
+    fields: [tasks.parentTaskId],
+    references: [tasks.id],
+    relationName: "parent",
+  }),
+  subtasks: many(tasks, { relationName: "parent" }),
+  comments: many(taskComments),
+  attachments: many(taskAttachments),
+  dependencies: many(taskDependencies, { relationName: "task" }),
+  dependents: many(taskDependencies, { relationName: "dependsOn" }),
+  timeEntries: many(timeEntries),
+  activitySessions: many(activitySessions),
+}));
+
+export const taskCommentsRelations = relations(taskComments, ({ one }) => ({
+  task: one(tasks, {
+    fields: [taskComments.taskId],
+    references: [tasks.id],
+  }),
+  author: one(users, {
+    fields: [taskComments.authorId],
+    references: [users.id],
+  }),
+}));
+
+export const taskAttachmentsRelations = relations(taskAttachments, ({ one }) => ({
+  task: one(tasks, {
+    fields: [taskAttachments.taskId],
+    references: [tasks.id],
+  }),
+  uploader: one(users, {
+    fields: [taskAttachments.uploaderId],
+    references: [users.id],
+  }),
+}));
+
+export const taskDependenciesRelations = relations(taskDependencies, ({ one }) => ({
+  task: one(tasks, {
+    fields: [taskDependencies.taskId],
+    references: [tasks.id],
+    relationName: "task",
+  }),
+  dependsOn: one(tasks, {
+    fields: [taskDependencies.dependsOnTaskId],
+    references: [tasks.id],
+    relationName: "dependsOn",
+  }),
+}));
+
+export const timeEntriesRelations = relations(timeEntries, ({ one }) => ({
+  user: one(users, {
+    fields: [timeEntries.userId],
+    references: [users.id],
+  }),
+  task: one(tasks, {
+    fields: [timeEntries.taskId],
+    references: [tasks.id],
+  }),
+}));
+
+export const activitySessionsRelations = relations(activitySessions, ({ one }) => ({
+  user: one(users, {
+    fields: [activitySessions.userId],
+    references: [users.id],
+  }),
+  device: one(agentDevices, {
+    fields: [activitySessions.deviceId],
+    references: [agentDevices.id],
+  }),
+  task: one(tasks, {
+    fields: [activitySessions.taskId],
+    references: [tasks.id],
+  }),
+}));
+
+export const appClassificationsRelations = relations(appClassifications, ({ one }) => ({
+  user: one(users, {
+    fields: [appClassifications.userId],
+    references: [users.id],
+  }),
+}));
+
+export const agentDevicesRelations = relations(agentDevices, ({ one, many }) => ({
+  user: one(users, {
+    fields: [agentDevices.userId],
+    references: [users.id],
+  }),
+  sessions: many(activitySessions),
+}));
+
 // ---------- types ----------
 
 export type Product = typeof products.$inferSelect;
@@ -328,3 +789,25 @@ export type MetricDaily = typeof metricsDaily.$inferSelect;
 export type NewMetricDaily = typeof metricsDaily.$inferInsert;
 export type RazorpayEvent = typeof razorpayEvents.$inferSelect;
 export type NewRazorpayEvent = typeof razorpayEvents.$inferInsert;
+
+// Tasks module types
+export type User = typeof users.$inferSelect;
+export type NewUser = typeof users.$inferInsert;
+export type Project = typeof projects.$inferSelect;
+export type NewProject = typeof projects.$inferInsert;
+export type Task = typeof tasks.$inferSelect;
+export type NewTask = typeof tasks.$inferInsert;
+export type TaskComment = typeof taskComments.$inferSelect;
+export type NewTaskComment = typeof taskComments.$inferInsert;
+export type TaskAttachment = typeof taskAttachments.$inferSelect;
+export type NewTaskAttachment = typeof taskAttachments.$inferInsert;
+export type TaskDependency = typeof taskDependencies.$inferSelect;
+export type NewTaskDependency = typeof taskDependencies.$inferInsert;
+export type TimeEntry = typeof timeEntries.$inferSelect;
+export type NewTimeEntry = typeof timeEntries.$inferInsert;
+export type ActivitySession = typeof activitySessions.$inferSelect;
+export type NewActivitySession = typeof activitySessions.$inferInsert;
+export type AppClassification = typeof appClassifications.$inferSelect;
+export type NewAppClassification = typeof appClassifications.$inferInsert;
+export type AgentDevice = typeof agentDevices.$inferSelect;
+export type NewAgentDevice = typeof agentDevices.$inferInsert;
