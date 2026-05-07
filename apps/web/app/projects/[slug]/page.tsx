@@ -170,7 +170,7 @@ export default async function ProjectDetailPage({ params }: PageProps) {
                   <tbody>
                     {items.map((t) => (
                       <tr key={t.id} className="border-b border-border last:border-b-0 hover:bg-panel-2">
-                        <td className="px-4 py-2 font-medium">{t.title}</td>
+                        <td className="px-4 py-2 font-medium"><Link href={`/tasks/${t.id}`} className="hover:text-accent-2">{t.title}</Link></td>
                         <td className="px-4 py-2 w-40">
                           <AssigneeSelect taskId={t.id} assigneeId={t.assignee?.id ?? null} users={allUsers} />
                         </td>

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { getDb, tasks, projects, eq } from "@tu/db";
+import { getDb, tasks, projects, taskComments, eq } from "@tu/db";
 import { getCurrentUserId } from "@/lib/auth";
 import { log } from "@/lib/log";
 
@@ -101,4 +101,45 @@ export async function assignTask(formData: FormData): Promise<void> {
   await db.update(tasks).set({ assigneeId, updatedAt: new Date() }).where(eq(tasks.id, taskId));
   log.info("task.assigned", { taskId, assigneeId });
   revalidatePath("/tasks");
+}
+
+// ---------------------------------------------------------------------------
+// addComment — bound to the comment-form on /tasks/[id]
+// ---------------------------------------------------------------------------
+
+export async function addComment(formData: FormData): Promise<void> {
+  const taskId = ((formData.get("taskId") as string) ?? "").trim();
+  const body = ((formData.get("body") as string) ?? "").trim();
+  if (!taskId) throw new Error("taskId is required");
+  if (!body) throw new Error("comment body is required");
+
+  const db = getDb();
+  const userId = await getCurrentUserId();
+  await db.insert(taskComments).values({ taskId, authorId: userId, body });
+  log.info("task.comment_added", { taskId });
+  revalidatePath(`/tasks/${taskId}`);
+}
+
+// ---------------------------------------------------------------------------
+// updateTaskMeta — bound to the metadata edit form on /tasks/[id]
+// Updates title, description, priority, dueDate in one shot.
+// ---------------------------------------------------------------------------
+export async function updateTaskMeta(formData: FormData): Promise<void> {
+  const taskId = ((formData.get("taskId") as string) ?? "").trim();
+  if (!taskId) throw new Error("taskId is required");
+  const title = ((formData.get("title") as string) ?? "").trim();
+  const description = ((formData.get("description") as string) ?? "").trim() || null;
+  const priorityRaw = ((formData.get("priority") as string) ?? "").trim();
+  const dueDateRaw = ((formData.get("dueDate") as string) ?? "").trim() || null;
+
+  if (!title) throw new Error("title cannot be empty");
+  const priority = isTaskPriority(priorityRaw) ? priorityRaw : "med";
+
+  const db = getDb();
+  await db
+    .update(tasks)
+    .set({ title, description, priority, dueDate: dueDateRaw, updatedAt: new Date() })
+    .where(eq(tasks.id, taskId));
+  log.info("task.meta_updated", { taskId });
+  revalidatePath(`/tasks/${taskId}`);
 }
