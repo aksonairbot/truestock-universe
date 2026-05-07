@@ -1,18 +1,29 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getDb, projects, products, tasks, users, eq, desc, asc } from "@tu/db";
+import { getDb, projects, products, tasks, users, eq, asc, desc } from "@tu/db";
 import { getCurrentUser } from "@/lib/auth";
 import { StatusSelect, AssigneeSelect } from "../../tasks/inline-controls";
 import { createTask } from "../../tasks/actions";
 
 export const dynamic = "force-dynamic";
 
-const PRIORITY_BADGE: Record<string, string> = {
-  low: "bg-panel-2 text-text-2",
-  med: "bg-panel-2 text-text",
-  high: "bg-amber-500/15 text-amber-400",
-  urgent: "bg-red-500/15 text-red-400",
+const STATUS_LABEL: Record<string, string> = {
+  backlog: "Backlog",
+  todo: "To do",
+  in_progress: "In progress",
+  review: "Review",
+  done: "Done",
+  cancelled: "Cancelled",
 };
+const STATUS_DOT: Record<string, string> = {
+  backlog: "var(--text-3)",
+  todo: "#60A5FA",
+  in_progress: "var(--accent)",
+  review: "var(--warning)",
+  done: "var(--success)",
+  cancelled: "var(--text-4)",
+};
+const STATUS_ORDER = ["in_progress", "review", "todo", "backlog", "done", "cancelled"] as const;
 
 function fmtDate(d: string | Date | null): string {
   if (!d) return "—";
@@ -26,7 +37,7 @@ interface PageProps {
 
 export default async function ProjectDetailPage({ params }: PageProps) {
   const { slug } = await params;
-  const me = await getCurrentUser();
+  await getCurrentUser();
   const db = getDb();
 
   const [project] = await db
@@ -37,7 +48,6 @@ export default async function ProjectDetailPage({ params }: PageProps) {
       description: projects.description,
       color: projects.color,
       productSlug: products.slug,
-      productName: products.name,
       ownerName: users.name,
     })
     .from(projects)
@@ -55,7 +65,6 @@ export default async function ProjectDetailPage({ params }: PageProps) {
       status: tasks.status,
       priority: tasks.priority,
       dueDate: tasks.dueDate,
-      createdAt: tasks.createdAt,
       assignee: { id: users.id, name: users.name },
     })
     .from(tasks)
@@ -66,92 +75,65 @@ export default async function ProjectDetailPage({ params }: PageProps) {
   const allUsers = await db.select({ id: users.id, name: users.name }).from(users);
 
   const grouped: Record<string, typeof taskRows> = {
-    backlog: [],
-    todo: [],
-    in_progress: [],
-    review: [],
-    done: [],
-    cancelled: [],
+    backlog: [], todo: [], in_progress: [], review: [], done: [], cancelled: [],
   };
   for (const t of taskRows) {
-    const bucket = grouped[t.status] ?? grouped.todo; if (bucket) bucket.push(t);
+    const bucket = grouped[t.status] ?? grouped.todo;
+    if (bucket) bucket.push(t);
   }
-  const STATUS_ORDER = ["in_progress", "review", "todo", "backlog", "done", "cancelled"] as const;
-  const STATUS_LABEL: Record<string, string> = {
-    backlog: "Backlog",
-    todo: "To do",
-    in_progress: "In progress",
-    review: "Review",
-    done: "Done",
-    cancelled: "Cancelled",
-  };
 
   return (
-    <div className="min-h-screen px-6 md:px-8 py-6 max-w-[1400px] mx-auto">
-      <div className="flex flex-wrap items-end justify-between gap-4 mb-6">
+    <div className="page-content">
+      <div className="page-head">
         <div className="min-w-0">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 mb-1">
             <span
-              className="inline-block w-3 h-3 rounded-full flex-shrink-0"
-              style={{ backgroundColor: project.color ?? "#888" }}
+              className="inline-block w-3 h-3 rounded-full shrink-0"
+              style={{ backgroundColor: project.color ?? "var(--text-3)" }}
             />
-            <h1 className="text-2xl font-semibold tracking-tight truncate">{project.name}</h1>
+            <div className="page-title truncate">{project.name}</div>
             {project.productSlug ? (
-              <span className="text-[10px] uppercase tracking-wider text-text-3 bg-panel-2 px-1.5 py-0.5 rounded">
-                {project.productSlug}
-              </span>
+              <span className={`pchip ${project.productSlug}`}>{project.productSlug}</span>
             ) : null}
           </div>
-          <div className="text-text-2 text-sm mt-1 flex items-center gap-2">
-            <Link href="/projects" className="hover:text-text">
-              Projects
-            </Link>
-            <span>·</span>
+          <div className="page-sub flex items-center gap-2 flex-wrap">
+            <Link href="/projects" className="hover:text-text">Projects</Link>
+            <span className="text-text-4">·</span>
             <span className="mono">{project.slug}</span>
             {project.ownerName ? (
               <>
-                <span>·</span>
+                <span className="text-text-4">·</span>
                 <span>owned by {project.ownerName}</span>
               </>
             ) : null}
-            <span>·</span>
+            <span className="text-text-4">·</span>
             <span>{taskRows.length} task{taskRows.length === 1 ? "" : "s"}</span>
           </div>
           {project.description ? (
-            <div className="text-text-2 text-sm mt-3 max-w-2xl">{project.description}</div>
+            <div className="text-text-2 text-[13px] mt-3 max-w-2xl">{project.description}</div>
           ) : null}
         </div>
-        <div className="flex gap-3 text-sm">
-          <Link href="/tasks" className="text-text-2 hover:text-text px-3 py-2">
-            All tasks →
-          </Link>
-        </div>
+        <Link href="/tasks" className="btn btn-ghost">All tasks →</Link>
       </div>
 
-      {/* quick add task form */}
-      <form action={createTask} className="card mb-6 flex flex-wrap items-end gap-3">
+      {/* quick add */}
+      <form action={createTask} className="card mb-5 flex flex-wrap items-end gap-3">
         <input type="hidden" name="projectSlug" value={project.slug} />
         <input type="hidden" name="status" value="todo" />
         <input type="hidden" name="priority" value="med" />
-        <label className="flex-1 min-w-[200px] flex flex-col gap-1">
-          <span className="text-xs text-text-3 uppercase tracking-wider">Quick add task</span>
+        <label className="flex-1 min-w-[200px] flex flex-col gap-1.5">
+          <span className="text-[11px] text-text-3 uppercase tracking-wider font-medium">Quick add task</span>
           <input
             name="title"
             type="text"
             required
             placeholder="Task title — Enter to create"
-            className="bg-panel-2 border border-border-2 rounded-md px-3 py-2 text-sm w-full"
+            className="bg-panel-2 border border-border-2 rounded-md px-3 py-2 text-[13px] w-full"
           />
         </label>
-        <button
-          type="submit"
-          className="bg-accent hover:bg-accent-2 text-white font-semibold text-sm rounded-md px-4 py-2 transition"
-        >
-          Add
-        </button>
+        <button type="submit" className="btn btn-primary">Add</button>
       </form>
 
-      {/* tasks grouped by status */}
       {taskRows.length === 0 ? (
         <div className="card text-center py-16 text-text-2">
           No tasks in this project yet — use the quick-add above.
@@ -163,28 +145,32 @@ export default async function ProjectDetailPage({ params }: PageProps) {
             if (items.length === 0) return null;
             return (
               <div key={s} className="card p-0 overflow-hidden">
-                <div className="px-4 py-2 bg-panel-2 border-b border-border text-xs uppercase tracking-wider text-text-3 font-medium">
-                  {STATUS_LABEL[s]} · {items.length}
+                <div className="px-4 py-2.5 bg-panel-2 border-b border-border text-[11px] uppercase tracking-wider text-text-3 font-semibold flex items-center gap-2">
+                  <span
+                    className="inline-block rounded-full"
+                    style={{ width: 8, height: 8, background: STATUS_DOT[s] }}
+                  />
+                  {STATUS_LABEL[s]} <span className="text-text-4 font-normal">· {items.length}</span>
                 </div>
-                <table className="w-full text-sm">
+                <table className="tbl">
                   <tbody>
                     {items.map((t) => (
-                      <tr key={t.id} className="border-b border-border last:border-b-0 hover:bg-panel-2">
-                        <td className="px-4 py-2 font-medium"><Link href={`/tasks/${t.id}`} className="hover:text-accent-2">{t.title}</Link></td>
-                        <td className="px-4 py-2 w-40">
+                      <tr key={t.id}>
+                        <td>
+                          <Link href={`/tasks/${t.id}`} className="font-medium hover:text-accent-2">
+                            {t.title}
+                          </Link>
+                        </td>
+                        <td className="w-44">
                           <AssigneeSelect taskId={t.id} assigneeId={t.assignee?.id ?? null} users={allUsers} />
                         </td>
-                        <td className="px-4 py-2 w-36">
+                        <td className="w-40">
                           <StatusSelect taskId={t.id} status={t.status} />
                         </td>
-                        <td className="px-4 py-2 w-20">
-                          <span
-                            className={`inline-block px-2 py-0.5 rounded text-xs ${PRIORITY_BADGE[t.priority]}`}
-                          >
-                            {t.priority}
-                          </span>
+                        <td className="w-20">
+                          <span className={`prio ${t.priority}`}>{t.priority}</span>
                         </td>
-                        <td className="px-4 py-2 w-20 text-text-2 mono text-xs">{fmtDate(t.dueDate)}</td>
+                        <td className="w-20 mono text-[11.5px] text-text-2">{fmtDate(t.dueDate)}</td>
                       </tr>
                     ))}
                   </tbody>
