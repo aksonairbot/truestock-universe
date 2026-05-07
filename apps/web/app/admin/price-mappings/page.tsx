@@ -136,7 +136,13 @@ export default async function PriceMappingsPage() {
           sends in <code className="mono">subscription.plan.item.name</code>. Amount is the
           fallback for one-off payments.
         </p>
-        <form action={createMapping} className="grid grid-cols-1 md:grid-cols-7 gap-3 items-end">
+        <form
+          action={async (formData) => {
+            "use server";
+            await createMapping(formData);
+          }}
+          className="grid grid-cols-1 md:grid-cols-7 gap-3 items-end"
+        >
           <Field label="Product">
             <select
               name="productId"

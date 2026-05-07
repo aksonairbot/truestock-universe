@@ -44,7 +44,13 @@ export default async function NewPaymentPage() {
         </div>
       </div>
 
-      <form action={createManualPayment} className="card">
+      <form
+        action={async (formData) => {
+          "use server";
+          await createManualPayment(formData);
+        }}
+        className="card"
+      >
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Field label="Product *">
             <select
