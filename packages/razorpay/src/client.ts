@@ -1,4 +1,3 @@
-// @ts-expect-error — razorpay's types are minimal; we narrow with our own.
 import Razorpay from "razorpay";
 import type { RazorpayPayment } from "./types.js";
 
