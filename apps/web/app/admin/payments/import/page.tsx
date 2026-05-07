@@ -67,7 +67,13 @@ export default function ImportCsvPage() {
         </details>
       </div>
 
-      <form action={importCsvPayments} className="card">
+      <form
+        action={async (formData) => {
+          "use server";
+          await importCsvPayments(formData);
+        }}
+        className="card"
+      >
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
           <label className="flex flex-col gap-1 md:col-span-1">
             <span className="text-xs text-text-3 uppercase tracking-wider">
