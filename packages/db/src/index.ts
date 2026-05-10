@@ -3,7 +3,7 @@ import postgres from "postgres";
 import * as schema from "./schema.js";
 
 export * from "./schema.js";
-export { sql, eq, and, or, gte, lte, lt, gt, desc, asc, isNull, inArray } from "drizzle-orm";
+export { sql, eq, and, or, gte, lte, lt, gt, desc, asc, isNull, inArray, ilike, like } from "drizzle-orm";
 
 /**
  * Singleton Postgres client and Drizzle instance.
