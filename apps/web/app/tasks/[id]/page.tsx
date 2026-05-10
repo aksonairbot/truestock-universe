@@ -15,7 +15,7 @@ import {
   AssigneeSelect,
   PrioritySelect,
 } from "../inline-controls";
-import { addComment, updateTaskMeta } from "../actions";
+import { addComment, updateTaskMeta, cancelTask, deleteTask } from "../actions";
 
 export const dynamic = "force-dynamic";
 
@@ -272,6 +272,46 @@ export default async function TaskDetailPage({ params }: PageProps) {
               <div>Completed {fmtTime(task.completedAt)}</div>
             ) : null}
           </div>
+
+          {/* Retire actions — Cancel always; Delete only when unassigned. */}
+          {task.status !== "cancelled" && task.status !== "done" ? (
+            <div className="card">
+              <div className="text-xs text-text-3 uppercase tracking-wider mb-2">Retire</div>
+              <div className="flex flex-col gap-2">
+                <form action={cancelTask}>
+                  <input type="hidden" name="taskId" value={task.id} />
+                  <button
+                    type="submit"
+                    className="btn btn-ghost btn-sm w-full justify-center"
+                    title="Mark this task as cancelled — keeps it in the history"
+                  >
+                    Cancel task
+                  </button>
+                </form>
+                {task.assigneeId === null ? (
+                  <form action={deleteTask}>
+                    <input type="hidden" name="taskId" value={task.id} />
+                    <button
+                      type="submit"
+                      className="btn btn-ghost btn-sm w-full justify-center"
+                      style={{ color: "var(--danger)" }}
+                      title="Permanently delete this task"
+                    >
+                      Delete
+                    </button>
+                  </form>
+                ) : (
+                  <div
+                    className="text-[11px] text-text-3 leading-relaxed text-center px-2 py-1.5 rounded-md border border-border-2"
+                    title="Assigned tasks can't be deleted — Cancel keeps the activity in the daily summary."
+                  >
+                    Assigned tasks can't be deleted.<br />
+                    Use Cancel instead.
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : null}
         </aside>
       </div>
     </div>

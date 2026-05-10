@@ -121,6 +121,52 @@ export async function addComment(formData: FormData): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// cancelTask — soft retire. Sets status=cancelled. Always allowed.
+// ---------------------------------------------------------------------------
+export async function cancelTask(formData: FormData): Promise<void> {
+  const taskId = ((formData.get("taskId") as string) ?? "").trim();
+  if (!taskId) throw new Error("taskId is required");
+
+  const db = getDb();
+  await db
+    .update(tasks)
+    .set({ status: "cancelled", updatedAt: new Date() })
+    .where(eq(tasks.id, taskId));
+  log.info("task.cancelled", { taskId });
+  revalidatePath("/tasks");
+  revalidatePath(`/tasks/${taskId}`);
+  redirect("/tasks");
+}
+
+// ---------------------------------------------------------------------------
+// deleteTask — hard delete. BLOCKED if the task has an assignee — those have
+// to be cancelled instead so the audit trail survives.
+// ---------------------------------------------------------------------------
+export async function deleteTask(formData: FormData): Promise<void> {
+  const taskId = ((formData.get("taskId") as string) ?? "").trim();
+  if (!taskId) throw new Error("taskId is required");
+
+  const db = getDb();
+  // Re-check assignee server-side; never trust the client to enforce this.
+  const [row] = await db
+    .select({ assigneeId: tasks.assigneeId, title: tasks.title })
+    .from(tasks)
+    .where(eq(tasks.id, taskId))
+    .limit(1);
+  if (!row) throw new Error("task not found");
+  if (row.assigneeId) {
+    throw new Error(
+      "this task has an assignee and cannot be deleted — use Cancel instead so the activity stays in the history",
+    );
+  }
+
+  await db.delete(tasks).where(eq(tasks.id, taskId));
+  log.info("task.deleted", { taskId, title: row.title });
+  revalidatePath("/tasks");
+  redirect("/tasks");
+}
+
+// ---------------------------------------------------------------------------
 // updateTaskMeta — bound to the metadata edit form on /tasks/[id]
 // Updates title, description, priority, dueDate in one shot.
 // ---------------------------------------------------------------------------

@@ -35,9 +35,10 @@ export default async function Nav() {
         <Link href="/" className="font-semibold tracking-tight mr-3 text-text hover:text-accent-2">
           Skynet
         </Link>
+        <NavLink href="/">Today</NavLink>
         <NavLink href="/tasks">Tasks</NavLink>
         <NavLink href="/projects">Projects</NavLink>
-        <NavLink href="/mis/revenue">Revenue</NavLink>
+        <NavLink href="/members">Members</NavLink>
         <div className="flex-1" />
         {me?.avatarUrl ? (
           <img src={me.avatarUrl} alt={me.name} className="w-7 h-7 rounded-full" />
