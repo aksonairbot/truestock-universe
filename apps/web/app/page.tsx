@@ -192,13 +192,7 @@ export default async function HomePage({ searchParams }: PageProps) {
   for (const r of openLoad) if (r.assigneeId) openMap.set(r.assigneeId, r.n);
 
   // ---------- bucket per user ----------
-  type Bucket = {
-    user: (typeof allUsers)[number];
-    completed: typeof completed;
-    created: typeof created;
-    comments: typeof comments;
-    openLoad: number;
-  };
+  // (Bucket type is declared at module scope so PersonTile can consume it.)
   const buckets = new Map<string, Bucket>();
   for (const u of allUsers) {
     buckets.set(u.id, { user: u, completed: [], created: [], comments: [], openLoad: openMap.get(u.id) ?? 0 });
@@ -299,7 +293,45 @@ export default async function HomePage({ searchParams }: PageProps) {
 // -----------------------------------------------------------------------------
 // PersonTile
 // -----------------------------------------------------------------------------
-function PersonTile({ bucket }: { bucket: ReturnType<typeof bucketShape> }) {
+type UserBrief = {
+  id: string;
+  name: string;
+  email: string;
+  role: "admin" | "manager" | "member" | "viewer" | "agent";
+  isActive: boolean;
+};
+type CompletedRow = {
+  id: string;
+  title: string;
+  status: string;
+  assigneeId: string | null;
+  completedAt: Date | null;
+  project: { slug: string; name: string };
+};
+type CreatedRow = {
+  id: string;
+  title: string;
+  createdById: string;
+  createdAt: Date;
+  project: { slug: string; name: string };
+};
+type CommentRow = {
+  id: string;
+  body: string;
+  authorId: string;
+  createdAt: Date;
+  taskId: string;
+  taskTitle: string | null;
+};
+type Bucket = {
+  user: UserBrief;
+  completed: CompletedRow[];
+  created: CreatedRow[];
+  comments: CommentRow[];
+  openLoad: number;
+};
+
+function PersonTile({ bucket }: { bucket: Bucket }) {
   const { user, completed, created, comments, openLoad } = bucket;
   const isQuiet = completed.length === 0 && created.length === 0 && comments.length === 0;
 
@@ -445,13 +477,3 @@ function Section({
   );
 }
 
-// shape helper for type inference (see PersonTile signature)
-function bucketShape() {
-  return {
-    user: { id: "", name: "", email: "", role: "member" as const, isActive: true },
-    completed: [] as Array<{ id: string; title: string; completedAt: Date | null; project: { slug: string; name: string } }>,
-    created: [] as Array<{ id: string; title: string; createdAt: Date; project: { slug: string; name: string } }>,
-    comments: [] as Array<{ id: string; body: string; createdAt: Date; taskId: string; taskTitle: string | null }>,
-    openLoad: 0,
-  };
-}
