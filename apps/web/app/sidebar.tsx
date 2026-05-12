@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useState, useRef, useEffect } from "react";
 
 interface SidebarProps {
   user: { name: string; email: string; avatarUrl: string | null } | null;
@@ -43,6 +44,9 @@ export default function Sidebar({
         <NavLink href="/" active={pathname === "/"} icon={<IcToday />}>
           Today
         </NavLink>
+        <NavLink href="/month" active={isActive("/month")} icon={<IcCalendar />}>
+          Month
+        </NavLink>
         <NavLink href="/tasks" active={isActive("/tasks")} icon={<IcTasks />}>
           Tasks <Kbd>G T</Kbd>
         </NavLink>
@@ -74,27 +78,7 @@ export default function Sidebar({
       </div>
 
       {/* logged-in user (smaller, right at the bottom under org-card) */}
-      {user ? (
-        <div className="mt-2 px-2.5 flex items-center gap-2 text-[11px] text-text-3">
-          <div
-            className="w-5 h-5 rounded-full flex items-center justify-center font-semibold text-[10px] shrink-0"
-            style={{
-              background: "linear-gradient(135deg,#7B5CFF,#F472B6)",
-              color: "#fff",
-            }}
-            title={user.email}
-          >
-            {user.name
-              .split(/\s+/)
-              .map((p) => p[0])
-              .filter(Boolean)
-              .slice(0, 2)
-              .join("")
-              .toUpperCase()}
-          </div>
-          <span className="truncate">{user.email}</span>
-        </div>
-      ) : null}
+      {user ? <UserMenu user={user} /> : null}
     </aside>
   );
 }
@@ -122,6 +106,62 @@ function Kbd({ children }: { children: React.ReactNode }) {
   return <span className="kbd ml-auto">{children}</span>;
 }
 
+function UserMenu({ user }: { user: { name: string; email: string; avatarUrl: string | null } }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const initials = user.name
+    .split(/\s+/)
+    .map((p) => p[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+
+  return (
+    <div ref={ref} className="mt-2 px-2.5 relative">
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center gap-2 text-[11px] text-text-3 hover:text-text transition-colors rounded-md p-1.5"
+      >
+        <div
+          className="w-5 h-5 rounded-full flex items-center justify-center font-semibold text-[10px] shrink-0"
+          style={{
+            background: "linear-gradient(135deg,#7B5CFF,#F472B6)",
+            color: "#fff",
+          }}
+          title={user.email}
+        >
+          {initials}
+        </div>
+        <span className="truncate flex-1 text-left">{user.email}</span>
+      </button>
+
+      {open && (
+        <div className="absolute bottom-full left-2.5 right-2.5 mb-1 bg-panel border border-border rounded-[8px] shadow-lg overflow-hidden">
+          <Link
+            href="/settings"
+            onClick={() => setOpen(false)}
+            className="block w-full px-3 py-2 text-[11px] text-text-2 hover:bg-bg-2 hover:text-text transition-colors"
+          >
+            Settings
+          </Link>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ---------- icons ---------- */
 function IcToday() {
   return (
@@ -144,6 +184,14 @@ function IcProjects() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
       <path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+    </svg>
+  );
+}
+function IcCalendar() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M16 2v4M8 2v4M3 10h18M8 15h.01M13 15h.01M18 15h.01M8 19h.01M13 19h.01M18 19h.01" />
     </svg>
   );
 }

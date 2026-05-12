@@ -230,6 +230,14 @@ export default async function HomePage({ searchParams }: PageProps) {
 
   return (
     <div className="page-content">
+      <div className="daily-hero">
+        <div className="daily-hero-fade" />
+        <div className="daily-hero-text">
+          <div className="daily-hero-kicker">Today's view</div>
+          <div className="daily-hero-title">Skynet · Truestock Universe</div>
+        </div>
+      </div>
+
       <div className="page-head">
         <div>
           <div className="page-title">Today</div>

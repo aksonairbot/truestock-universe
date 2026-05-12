@@ -863,3 +863,59 @@ select:focus {
     display: none;
   }
 }
+
+/* ----------------------------------------------------------------------- */
+/* Daily hero (home page top banner)                                       */
+/* ----------------------------------------------------------------------- */
+.daily-hero {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 22 / 5;
+  min-height: 140px;
+  max-height: 300px;
+  border-radius: 14px;
+  overflow: hidden;
+  margin-bottom: 18px;
+  background-image: url(/hero/today.webp);
+  background-size: cover;
+  background-position: center;
+  animation: tu-fade-in 0.4s ease-out both;
+}
+.daily-hero-fade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(8,9,12,0.10) 0%, rgba(8,9,12,0.55) 70%, rgba(8,9,12,0.85) 100%);
+  pointer-events: none;
+}
+.daily-hero-text {
+  position: absolute;
+  left: 22px;
+  bottom: 16px;
+  z-index: 1;
+}
+.daily-hero-kicker {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent-2);
+  font-weight: 600;
+  margin-bottom: 3px;
+}
+.daily-hero-title {
+  font-size: 22px;
+  font-weight: 500;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+
+/* fade-in animation */
+@keyframes tu-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .daily-hero {
+    animation: none;
+  }
+}

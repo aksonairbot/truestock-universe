@@ -15,6 +15,7 @@
     "db:push": "pnpm --filter @tu/db drizzle:push",
     "db:migrate": "pnpm --filter @tu/db migrate",
     "db:seed": "pnpm --filter @tu/db seed",
+    "db:seed-demo": "pnpm --filter @tu/db seed-demo",
     "db:studio": "pnpm --filter @tu/db drizzle:studio",
     "razorpay:backfill": "pnpm --filter web exec tsx scripts/backfill-razorpay.ts"
   },
