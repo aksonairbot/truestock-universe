@@ -163,6 +163,9 @@ export default async function TasksPage({ searchParams }: PageProps) {
     : undefined;
 
   // Data wall: admin sees all, manager sees department tasks, member sees own.
+  // Always include parent tasks where a subtask is assigned to the user.
+  const hasMySubtask = sql`${tasks.id} in (select parent_task_id from tasks where assignee_id = ${me.id} and parent_task_id is not null)`;
+
   let scopeFilter;
   if (canSeeAll) {
     scopeFilter = undefined;
@@ -174,13 +177,12 @@ export default async function TasksPage({ searchParams }: PageProps) {
       .where(eq(users.departmentId, deptScope));
     const deptIds = deptMembers.map((u) => u.id);
     if (deptIds.length > 0) {
-      scopeFilter = or(inArray(tasks.assigneeId, deptIds), inArray(tasks.createdById, deptIds));
+      scopeFilter = or(inArray(tasks.assigneeId, deptIds), inArray(tasks.createdById, deptIds), hasMySubtask);
     } else {
-      // No members in department — show only own tasks
-      scopeFilter = or(eq(tasks.assigneeId, me.id), eq(tasks.createdById, me.id));
+      scopeFilter = or(eq(tasks.assigneeId, me.id), eq(tasks.createdById, me.id), hasMySubtask);
     }
   } else {
-    scopeFilter = or(eq(tasks.assigneeId, me.id), eq(tasks.createdById, me.id));
+    scopeFilter = or(eq(tasks.assigneeId, me.id), eq(tasks.createdById, me.id), hasMySubtask);
   }
 
   const where = searchFilter && scopeFilter

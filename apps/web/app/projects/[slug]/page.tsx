@@ -67,6 +67,9 @@ export default async function ProjectDetailPage({ params }: PageProps) {
   if (!project) notFound();
 
   // Data wall: admin sees all, manager sees department tasks, member sees own.
+  // Always include parent tasks where a subtask is assigned to the user.
+  const hasMySubtask = sql`${tasks.id} in (select parent_task_id from tasks where assignee_id = ${me.id} and parent_task_id is not null)`;
+
   let taskScope;
   if (canSeeAll) {
     taskScope = eq(tasks.projectId, project.id);
@@ -74,10 +77,10 @@ export default async function ProjectDetailPage({ params }: PageProps) {
     const deptMembers = await db.select({ id: users.id }).from(users).where(eq(users.departmentId, deptScope));
     const deptIds = deptMembers.map((u) => u.id);
     taskScope = deptIds.length > 0
-      ? and(eq(tasks.projectId, project.id), or(inArray(tasks.assigneeId, deptIds), inArray(tasks.createdById, deptIds)))
-      : and(eq(tasks.projectId, project.id), or(eq(tasks.assigneeId, me.id), eq(tasks.createdById, me.id)));
+      ? and(eq(tasks.projectId, project.id), or(inArray(tasks.assigneeId, deptIds), inArray(tasks.createdById, deptIds), hasMySubtask))
+      : and(eq(tasks.projectId, project.id), or(eq(tasks.assigneeId, me.id), eq(tasks.createdById, me.id), hasMySubtask));
   } else {
-    taskScope = and(eq(tasks.projectId, project.id), or(eq(tasks.assigneeId, me.id), eq(tasks.createdById, me.id)));
+    taskScope = and(eq(tasks.projectId, project.id), or(eq(tasks.assigneeId, me.id), eq(tasks.createdById, me.id), hasMySubtask));
   }
   const taskWhere = taskScope;
 
