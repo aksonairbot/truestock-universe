@@ -33,7 +33,9 @@ function todayInTZ(): string {
 }
 
 function getMonthStart(dateStr: string): Date {
-  const [year, month] = dateStr.split("-").map(Number);
+  const parts = dateStr.split("-").map(Number);
+  const year = parts[0]!;
+  const month = parts[1]!;
   return new Date(`${year}-${String(month).padStart(2, "0")}-01T00:00:00+05:30`);
 }
 
@@ -55,9 +57,9 @@ function fmtMonthYear(dateStr: string): string {
 }
 
 function shiftMonth(dateStr: string, months: number): string {
-  const [year, month] = dateStr.split("-").map(Number);
-  let y = year;
-  let m = month + months;
+  const parts = dateStr.split("-").map(Number);
+  let y = parts[0]!;
+  let m = parts[1]! + months;
   while (m > 12) {
     m -= 12;
     y += 1;
