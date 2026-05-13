@@ -57,13 +57,13 @@ const nextAuth = NextAuth({
       // Auto-provision new user from the domain.
       try {
         const name = profile?.name ?? email.split("@")[0];
-        const avatarUrl = (profile as any)?.picture ?? null;
-        const googleSub = (profile as any)?.sub ?? null;
+        const avatarUrl = (profile as any)?.picture as string | undefined;
+        const googleSub = (profile as any)?.sub as string | undefined;
         await db.insert(users).values({
           email,
           name,
-          avatarUrl,
-          googleSubject: googleSub,
+          ...(avatarUrl ? { avatarUrl } : {}),
+          ...(googleSub ? { googleSubject: googleSub } : {}),
           role: "member",
           lastLoginAt: new Date(),
         });
