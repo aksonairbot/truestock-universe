@@ -14,6 +14,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { MyDayHero } from "./my-day-hero";
 import { BriefingCard } from "./briefing-card";
+import { ReviewCard } from "./review-card";
 import { TeamVelocity } from "./team-velocity";
 import {
   getDb,
@@ -270,6 +271,10 @@ export default async function HomePage({ searchParams }: PageProps) {
           </div>
         </div>
       </div>
+
+      <Suspense fallback={null}>
+        <ReviewCard />
+      </Suspense>
 
       <Suspense fallback={null}>
         <BriefingCard />

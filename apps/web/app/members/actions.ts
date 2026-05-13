@@ -85,6 +85,24 @@ export async function toggleMemberActive(formData: FormData): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// updateMemberPhone — set WhatsApp number (admin only)
+// ---------------------------------------------------------------------------
+export async function updateMemberPhone(formData: FormData): Promise<void> {
+  const memberId = ((formData.get("memberId") as string) ?? "").trim();
+  const phone = ((formData.get("phone") as string) ?? "").trim() || null;
+  if (!memberId) throw new Error("memberId is required");
+
+  const me = await getCurrentUser();
+  if (me.role !== "admin") throw new Error("only admins can change phone numbers");
+
+  const db = getDb();
+  await db.update(users).set({ phone, updatedAt: new Date() }).where(eq(users.id, memberId));
+  log.info("member.phone_changed", { memberId, by: me.email });
+  revalidatePath("/members");
+  revalidatePath(`/members/${memberId}`);
+}
+
+// ---------------------------------------------------------------------------
 // updateMemberDepartment — assign a user to a department (admin only)
 // ---------------------------------------------------------------------------
 export async function updateMemberDepartment(formData: FormData): Promise<void> {

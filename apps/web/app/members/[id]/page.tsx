@@ -25,7 +25,7 @@ import {
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { isPrivileged, isAdmin as isAdminFn, getDepartmentScope } from "@/lib/access";
-import { toggleMemberActive } from "../actions";
+import { toggleMemberActive, updateMemberPhone } from "../actions";
 import { RoleSelect } from "../role-select";
 import { DepartmentSelect } from "../department-select";
 import { ManagerSelect } from "../manager-select";
@@ -312,6 +312,24 @@ export default async function MemberProfilePage({ params, searchParams }: PagePr
               <ManagerSelect memberId={user.id} currentManagerId={user.managerId} users={allUsers} />
             ) : (
               <span>{userManager?.name ?? "—"}</span>
+            )}
+            <span> · </span>
+            <span className="text-text-3 text-[11px]">Phone:</span>{" "}
+            {isAdmin ? (
+              <form action={updateMemberPhone} className="inline-flex items-center gap-1">
+                <input type="hidden" name="memberId" value={user.id} />
+                <input
+                  name="phone"
+                  type="tel"
+                  defaultValue={user.phone ?? ""}
+                  placeholder="+919876543210"
+                  className="inline-select"
+                  style={{ width: 130 }}
+                />
+                <button type="submit" className="text-[10px] text-accent hover:text-accent-2">Save</button>
+              </form>
+            ) : (
+              <span className="mono">{user.phone ?? "—"}</span>
             )}
           </div>
         </div>

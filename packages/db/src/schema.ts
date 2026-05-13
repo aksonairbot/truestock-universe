@@ -348,6 +348,7 @@ export const users = pgTable(
     name: text("name").notNull(),
     avatarUrl: text("avatar_url"),
     role: userRoleEnum("role").notNull().default("member"),
+    phone: text("phone"),  // E.164 format e.g. +919876543210 — for WhatsApp
     managerId: uuid("manager_id"),
     departmentId: uuid("department_id"),
     /** Product access list — array of product slugs OR ["*"] for all. JSONB
@@ -955,6 +956,35 @@ export const aiDashboards = pgTable(
   }),
 );
 
+// ---------- daily_reviews ----------
+//
+// Pre-generated AI review snippets. One personal row per user per date,
+// plus one team summary row (userId = null). Generated at 9 AM IST by cron;
+// displayed as a hero card on the Today page.
+export const dailyReviews = pgTable(
+  "daily_reviews",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
+    date: date("date").notNull(),
+    tone: text("tone").notNull(),
+    body: text("body").notNull(),
+    stats: jsonb("stats"), // raw PersonStats snapshot
+    generatedAt: timestamp("generated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    byUserDate: uniqueIndex("daily_reviews_user_date_uq").on(t.userId, t.date),
+    byDate: index("daily_reviews_date_idx").on(t.date),
+  }),
+);
+
+export const dailyReviewsRelations = relations(dailyReviews, ({ one }) => ({
+  user: one(users, {
+    fields: [dailyReviews.userId],
+    references: [users.id],
+  }),
+}));
+
 // ---------- types ----------
 
 export type Product = typeof products.$inferSelect;
@@ -1001,3 +1031,5 @@ export type ProjectSummary = typeof projectSummaries.$inferSelect;
 export type NewProjectSummary = typeof projectSummaries.$inferInsert;
 export type AiDashboard = typeof aiDashboards.$inferSelect;
 export type NewAiDashboard = typeof aiDashboards.$inferInsert;
+export type DailyReview = typeof dailyReviews.$inferSelect;
+export type NewDailyReview = typeof dailyReviews.$inferInsert;

@@ -3082,3 +3082,66 @@ select:focus {
   background: rgba(245, 184, 74, 0.05);
   border-color: rgba(245, 184, 74, 0.22);
 }
+
+/* ------------------------------------------------------------------ */
+/* Daily Review Card                                                   */
+/* ------------------------------------------------------------------ */
+.review-card {
+  background: linear-gradient(135deg, rgba(123,92,255,0.08) 0%, rgba(34,211,238,0.06) 100%);
+  border: 1px solid rgba(123,92,255,0.18);
+  border-radius: 14px;
+  padding: 20px 24px;
+  margin-bottom: 16px;
+  position: relative;
+  overflow: hidden;
+}
+.review-card::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--accent), #22D3EE, var(--accent-2));
+  opacity: 0.6;
+}
+.review-card-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.review-card-badge {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent-2);
+  background: var(--accent-wash);
+  padding: 3px 10px;
+  border-radius: 6px;
+}
+.review-card-tone {
+  font-size: 11px;
+  color: var(--text-3);
+  font-style: italic;
+}
+.review-card-section {
+  /* spacing between team + personal */
+}
+.review-card-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 14px 0;
+}
+.review-card-body {
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: var(--text-2);
+}
+.review-card-body strong {
+  color: var(--text);
+  font-weight: 600;
+}
+.review-card-body em {
+  color: var(--accent-2);
+  font-style: italic;
+}
