@@ -1,35 +1,56 @@
-/**
- * Stub auth — returns the seeded admin user (Amit) for every request.
- *
- * This exists so we can ship Tasks UI before wiring full Google SSO. Once
- * Auth.js (next-auth v5) is in place, getCurrentUser() will read the session
- * cookie and look up the matching users row by google_subject.
- *
- * Hard-codes aks@truestock.in by email so the seeded user is the only path
- * to render — if the seed is missing, this throws, which is the right
- * failure mode (forces us to seed before booting).
- */
+// apps/web/lib/auth.ts
+//
+// Two-mode auth:
+//   • When AUTH_SECRET is set: read the NextAuth session, look up the user
+//     by session.user.id (set in our jwt callback). No session → throws,
+//     which surfaces a 500 on protected pages (middleware should have
+//     redirected first).
+//   • When AUTH_SECRET is NOT set (dev / pre-OAuth): legacy stub returns
+//     the seeded admin so we don't break the existing surface.
+
 import { getDb, users, eq } from "@tu/db";
 import type { User } from "@tu/db";
 
 const STUB_EMAIL = "aks@truestock.in";
 
-let _cached: User | null = null;
+async function lookup(email: string): Promise<User | null> {
+  const db = getDb();
+  const [u] = await db.select().from(users).where(eq(users.email, email.toLowerCase())).limit(1);
+  return u ?? null;
+}
+
+async function lookupById(id: string): Promise<User | null> {
+  const db = getDb();
+  const [u] = await db.select().from(users).where(eq(users.id, id)).limit(1);
+  return u ?? null;
+}
 
 export async function getCurrentUser(): Promise<User> {
-  if (_cached) return _cached;
-  const db = getDb();
-  const [u] = await db.select().from(users).where(eq(users.email, STUB_EMAIL)).limit(1);
+  if (process.env.AUTH_SECRET) {
+    // Real auth path.
+    const { auth } = await import("@/auth");
+    const session = await auth();
+    const uid = (session?.user as any)?.id as string | undefined;
+    const email = session?.user?.email;
+    let u: User | null = null;
+    if (uid) u = await lookupById(uid);
+    if (!u && email) u = await lookup(email);
+    if (!u) {
+      throw new Error("Not signed in.");
+    }
+    return u;
+  }
+
+  // Stub path — preserve current behaviour.
+  const u = await lookup(STUB_EMAIL);
   if (!u) {
     throw new Error(
       `Stub auth: user with email ${STUB_EMAIL} not found. Seed the users table first.`,
     );
   }
-  _cached = u;
   return u;
 }
 
-/** Convenience for server components / actions that just need the id. */
 export async function getCurrentUserId(): Promise<string> {
   return (await getCurrentUser()).id;
 }

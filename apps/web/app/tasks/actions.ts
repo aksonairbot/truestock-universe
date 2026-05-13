@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { getDb, tasks, projects, taskComments, eq } from "@tu/db";
 import { getCurrentUserId } from "@/lib/auth";
 import { log } from "@/lib/log";
+import { notifyAssigned, notifyTaskCompleted, notifyCommentOnAssigned, notifyMentions } from "@/lib/notify";
 
 const TASK_STATUSES = ["backlog", "todo", "in_progress", "review", "done", "cancelled"] as const;
 const TASK_PRIORITIES = ["low", "med", "high", "urgent"] as const;
@@ -28,6 +29,7 @@ export async function createTask(formData: FormData): Promise<void> {
   const statusRaw = ((formData.get("status") as string) ?? "todo").trim();
   const priorityRaw = ((formData.get("priority") as string) ?? "med").trim();
   const dueDateRaw = ((formData.get("dueDate") as string) ?? "").trim() || null;
+  const assigneeIdRaw = ((formData.get("assigneeId") as string) ?? "").trim() || null;
 
   if (!title) throw new Error("title is required");
   if (!projectSlug) throw new Error("project is required");
@@ -53,12 +55,16 @@ export async function createTask(formData: FormData): Promise<void> {
       status,
       priority,
       dueDate: dueDateRaw,
+      assigneeId: assigneeIdRaw,
       createdById: userId,
     })
     .returning({ id: tasks.id });
 
   if (!created) throw new Error("insert returned no row");
   log.info("task.created", { taskId: created.id, projectSlug, status, priority });
+  if (assigneeIdRaw && assigneeIdRaw !== userId) {
+    await notifyAssigned({ assigneeId: assigneeIdRaw, actorId: userId, taskId: created.id, taskTitle: title });
+  }
   revalidatePath("/tasks");
   redirect("/tasks");
 }
@@ -86,6 +92,17 @@ export async function updateTaskStatus(formData: FormData): Promise<void> {
     .where(eq(tasks.id, taskId));
 
   log.info("task.status_changed", { taskId, status: statusRaw });
+  if (statusRaw === "done") {
+    const me = await getCurrentUserId();
+    const [t] = await db
+      .select({ creatorId: tasks.createdById, title: tasks.title })
+      .from(tasks)
+      .where(eq(tasks.id, taskId))
+      .limit(1);
+    if (t && t.creatorId !== me) {
+      await notifyTaskCompleted({ creatorId: t.creatorId, actorId: me, taskId, taskTitle: t.title });
+    }
+  }
   revalidatePath("/tasks");
 }
 
@@ -100,6 +117,13 @@ export async function assignTask(formData: FormData): Promise<void> {
   const db = getDb();
   await db.update(tasks).set({ assigneeId, updatedAt: new Date() }).where(eq(tasks.id, taskId));
   log.info("task.assigned", { taskId, assigneeId });
+  if (assigneeId) {
+    const me = await getCurrentUserId();
+    if (assigneeId !== me) {
+      const [t] = await db.select({ title: tasks.title }).from(tasks).where(eq(tasks.id, taskId)).limit(1);
+      if (t) await notifyAssigned({ assigneeId, actorId: me, taskId, taskTitle: t.title });
+    }
+  }
   revalidatePath("/tasks");
 }
 
@@ -117,6 +141,25 @@ export async function addComment(formData: FormData): Promise<void> {
   const userId = await getCurrentUserId();
   await db.insert(taskComments).values({ taskId, authorId: userId, body });
   log.info("task.comment_added", { taskId });
+
+  // notifications: pull task meta once, fire @mentions + assignee notice
+  const [taskRow] = await db
+    .select({ title: tasks.title, assigneeId: tasks.assigneeId })
+    .from(tasks)
+    .where(eq(tasks.id, taskId))
+    .limit(1);
+  if (taskRow) {
+    await notifyMentions({ body, actorId: userId, taskId, taskTitle: taskRow.title });
+    if (taskRow.assigneeId && taskRow.assigneeId !== userId) {
+      await notifyCommentOnAssigned({
+        assigneeId: taskRow.assigneeId,
+        actorId: userId,
+        taskId,
+        taskTitle: taskRow.title,
+        preview: body,
+      });
+    }
+  }
   revalidatePath(`/tasks/${taskId}`);
 }
 
@@ -188,4 +231,55 @@ export async function updateTaskMeta(formData: FormData): Promise<void> {
     .where(eq(tasks.id, taskId));
   log.info("task.meta_updated", { taskId });
   revalidatePath(`/tasks/${taskId}`);
+}
+
+// ---------------------------------------------------------------------------
+// addSubtask — create a child task under a parent. Inherits project + assignee
+// from the parent unless overridden. Bound to the slide-over "add subtask" form.
+// ---------------------------------------------------------------------------
+export async function addSubtask(formData: FormData): Promise<void> {
+  const parentId = ((formData.get("parentId") as string) ?? "").trim();
+  const title = ((formData.get("title") as string) ?? "").trim();
+  if (!parentId) throw new Error("parentId is required");
+  if (!title) throw new Error("title is required");
+
+  const db = getDb();
+  const [parent] = await db
+    .select({ projectId: tasks.projectId, assigneeId: tasks.assigneeId })
+    .from(tasks)
+    .where(eq(tasks.id, parentId))
+    .limit(1);
+  if (!parent) throw new Error("parent task not found");
+
+  const userId = await getCurrentUserId();
+  const [created] = await db
+    .insert(tasks)
+    .values({
+      projectId: parent.projectId,
+      title,
+      assigneeId: parent.assigneeId,
+      createdById: userId,
+      status: "todo",
+      priority: "med",
+      parentTaskId: parentId,
+    })
+    .returning({ id: tasks.id });
+  if (!created) throw new Error("insert returned no row");
+  log.info("subtask.created", { parentId, taskId: created.id });
+  revalidatePath("/tasks");
+  revalidatePath(`/tasks/${parentId}`);
+}
+
+// ---------------------------------------------------------------------------
+// updateTaskTitle — quick inline rename. Used by the editable subtask title.
+// ---------------------------------------------------------------------------
+export async function updateTaskTitle(formData: FormData): Promise<void> {
+  const taskId = ((formData.get("taskId") as string) ?? "").trim();
+  const title = ((formData.get("title") as string) ?? "").trim();
+  if (!taskId) throw new Error("taskId is required");
+  if (!title) throw new Error("title cannot be empty");
+  const db = getDb();
+  await db.update(tasks).set({ title, updatedAt: new Date() }).where(eq(tasks.id, taskId));
+  log.info("task.title_updated", { taskId });
+  revalidatePath("/tasks");
 }

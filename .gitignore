@@ -26,3 +26,4 @@ build/
 
 # drizzle
 drizzle/meta/_journal.json.bak
+apps/web/tsconfig.tsbuildinfo

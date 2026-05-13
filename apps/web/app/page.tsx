@@ -11,6 +11,9 @@
 // "Today" is interpreted in Asia/Kolkata (Skynet's default user TZ).
 
 import Link from "next/link";
+import { MyDayHero } from "./my-day-hero";
+import { BriefingCard } from "./briefing-card";
+import { TeamVelocity } from "./team-velocity";
 import {
   getDb,
   users,
@@ -238,9 +241,15 @@ export default async function HomePage({ searchParams }: PageProps) {
         </div>
       </div>
 
-      <div className="page-head">
+      <BriefingCard />
+
+      <MyDayHero />
+
+      <TeamVelocity />
+
+      <div className="page-head team-head">
         <div>
-          <div className="page-title">Today</div>
+          <div className="page-title">Team today</div>
           <div className="page-sub">
             {fmtHumanDate(date)}
             {isToday ? "" : <span className="text-text-3"> · viewing the past</span>}

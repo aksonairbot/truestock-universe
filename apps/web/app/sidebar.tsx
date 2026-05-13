@@ -6,18 +6,24 @@ import { useState, useRef, useEffect } from "react";
 
 interface SidebarProps {
   user: { name: string; email: string; avatarUrl: string | null } | null;
+  unreadCount?: number;
   orgName?: string;
   orgMembersLine?: string;
 }
 
 export default function Sidebar({
   user,
-  orgName = "Truestock",
-  orgMembersLine = "internal · daily task tracker",
+  unreadCount = 0,
+  orgName = "SeekPeek",
+  orgMembersLine = "Truestock · daily work tracker",
 }: SidebarProps) {
-  const pathname = usePathname();
+  const rawPath = usePathname() ?? "/";
+  // Welcome page is a full-bleed landing for unauthenticated visitors — no app shell.
+  if (rawPath === "/welcome" || rawPath.startsWith("/welcome/")) return null;
+  // Normalize: strip trailing slash (except root), drop any query/hash
+  const pathname = rawPath !== "/" && rawPath.endsWith("/") ? rawPath.slice(0, -1) : rawPath;
   const isActive = (href: string) =>
-    pathname === href || (href !== "/" && pathname.startsWith(href));
+    pathname === href || (href !== "/" && pathname.startsWith(href + "/")) || pathname === href;
 
   return (
     <aside
@@ -34,15 +40,18 @@ export default function Sidebar({
             {orgName}
           </span>
           <span className="text-[10px] text-text-3 uppercase tracking-[0.18em] font-medium">
-            Universe
+            Truestock
           </span>
         </div>
       </Link>
 
       {/* nav — task management focus only */}
       <nav className="flex flex-col gap-0.5">
-        <NavLink href="/" active={pathname === "/"} icon={<IcToday />}>
+        <NavLink href="/" active={pathname === "/" || pathname === ""} icon={<IcToday />}>
           Today
+        </NavLink>
+        <NavLink href="/me/week" active={isActive("/me")} icon={<IcSpark />}>
+          My week
         </NavLink>
         <NavLink href="/month" active={isActive("/month")} icon={<IcCalendar />}>
           Month
@@ -55,6 +64,14 @@ export default function Sidebar({
         </NavLink>
         <NavLink href="/members" active={isActive("/members")} icon={<IcMembers />}>
           Members <Kbd>G U</Kbd>
+        </NavLink>
+        <NavLink href="/notifications" active={isActive("/notifications")} icon={<IcBell />}>
+          <span className="flex-1">Inbox</span>
+          {unreadCount > 0 ? (
+            <span className="inbox-badge" title={`${unreadCount} unread`}>
+              {unreadCount > 99 ? "99+" : unreadCount}
+            </span>
+          ) : null}
         </NavLink>
       </nav>
 
@@ -202,6 +219,23 @@ function IcMembers() {
       <path d="M3 21c1-3 3.5-5 6-5s5 2 6 5" />
       <circle cx="17" cy="9" r="2.5" />
       <path d="M22 19c-.4-2-1.7-3.5-3.7-4" />
+    </svg>
+  );
+}
+
+function IcBell() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="18" height="18">
+      <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+      <path d="M10 21a2 2 0 0 0 4 0" />
+    </svg>
+  );
+}
+
+function IcSpark() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="18" height="18">
+      <path d="M5 3v4M3 5h4M12 4v6M9 7h6M19 14v6M16 17h6M14 11l-5 8" />
     </svg>
   );
 }

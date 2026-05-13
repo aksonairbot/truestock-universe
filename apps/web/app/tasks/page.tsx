@@ -18,6 +18,8 @@ import { getDb, tasks, projects, users, eq, desc, or, ilike } from "@tu/db";
 import { getCurrentUser } from "@/lib/auth";
 import { StatusSelect, AssigneeSelect } from "./inline-controls";
 import { updateTaskStatus } from "./actions";
+import { TaskPane } from "./task-pane";
+import { TaskPaneContent } from "./task-pane-content";
 
 export const dynamic = "force-dynamic";
 
@@ -138,11 +140,12 @@ function isOverdue(t: { dueDate: string | Date | null; status: string }): boolea
 // page
 // ---------------------------------------------------------------------------
 interface PageProps {
-  searchParams: Promise<{ view?: string; group?: string; q?: string }>;
+  searchParams: Promise<{ view?: string; group?: string; q?: string; task?: string }>;
 }
 
 export default async function TasksPage({ searchParams }: PageProps) {
-  const { view, group: groupRaw, q: qRaw } = await searchParams;
+  const { view, group: groupRaw, q: qRaw, task: taskIdRaw } = await searchParams;
+  const taskId = (taskIdRaw ?? "").trim() || null;
   const isBoard = view === "board";
   const group: GroupKey = (GROUP_OPTIONS.find((g) => g.value === groupRaw)?.value ?? "due") as GroupKey;
   const q = (qRaw ?? "").trim();
@@ -188,6 +191,16 @@ export default async function TasksPage({ searchParams }: PageProps) {
     }
     const s = params.toString();
     return s ? `/tasks?${s}` : "/tasks";
+  };
+
+  // Build /tasks?task=<id>&view=...&group=...&q=... — used as the row click target
+  const rowHrefForTask = (id: string) => {
+    const params = new URLSearchParams();
+    if (view) params.set("view", view);
+    if (group !== "due") params.set("group", group);
+    if (q) params.set("q", q);
+    params.set("task", id);
+    return `/tasks?${params.toString()}`;
   };
 
   return (
@@ -321,17 +334,27 @@ export default async function TasksPage({ searchParams }: PageProps) {
       {rows.length === 0 ? (
         <div className="card text-center py-16 mt-2">
           <div className="text-text-2 mb-2">
-            {q ? <>No tasks match <span className="mono">"{q}"</span>.</> : "No tasks yet."}
+            {q ? <>No tasks match <span className="mono">"{q}"</span>.</> : "Clean slate. What's the next thing?"}
           </div>
-          <Link href="/tasks/new" className="text-accent-2 hover:underline text-[13px]">
-            {q ? "Clear search ·" : ""} Create one →
+          <div className="text-text-3 text-[12px] mb-3">
+            {q ? "Try a different search or clear it to see everything." : "Type the first task — Skynet will pick the project, assignee, and priority."}
+          </div>
+          <Link href="/tasks/new" className="btn btn-primary btn-sm">
+            {q ? "Clear search" : "✨ Capture a task"}
           </Link>
         </div>
       ) : isBoard ? (
-        <BoardView rows={rows} users={allUsers} />
+        <BoardView rows={rows} users={allUsers} rowHref={rowHrefForTask} />
       ) : (
-        <ListView rows={rows} users={allUsers} group={group} />
+        <ListView rows={rows} users={allUsers} group={group} rowHref={rowHrefForTask} />
       )}
+
+      {/* Asana-style slide-over — server-rendered content inside a client shell */}
+      {taskId ? (
+        <TaskPane>
+          <TaskPaneContent taskId={taskId} />
+        </TaskPane>
+      ) : null}
     </div>
   );
 }
@@ -343,10 +366,12 @@ function ListView({
   rows,
   users,
   group,
+  rowHref,
 }: {
   rows: any[];
   users: Array<{ id: string; name: string }>;
   group: GroupKey;
+  rowHref: (id: string) => string;
 }) {
   // Group rows by the chosen dimension and produce ordered sections.
   type Section = { key: string; label: string; tone: string; items: any[] };
@@ -436,7 +461,7 @@ function ListView({
           {sec.items.length === 0 ? (
             <div className="asec-empty">Drop a task here · or click below to add one</div>
           ) : (
-            sec.items.map((t) => <TaskRow key={t.id} t={t} users={users} />)
+            sec.items.map((t) => <TaskRow key={t.id} t={t} users={users} rowHref={rowHref} />)
           )}
 
           <Link href="/tasks/new" className="asec-add">
@@ -454,9 +479,11 @@ function ListView({
 function TaskRow({
   t,
   users,
+  rowHref,
 }: {
   t: any;
   users: Array<{ id: string; name: string }>;
+  rowHref: (id: string) => string;
 }) {
   const overdue = isOverdue(t);
   const done = t.status === "done";
@@ -485,7 +512,7 @@ function TaskRow({
       </div>
 
       <div className="alist-cell-title">
-        <Link href={`/tasks/${t.id}`} className="atitle">
+        <Link href={rowHref(t.id)} className="atitle" scroll={false}>
           {t.title}
         </Link>
       </div>
@@ -531,9 +558,11 @@ function TaskRow({
 function BoardView({
   rows,
   users: _users,
+  rowHref,
 }: {
   rows: any[];
   users: Array<{ id: string; name: string }>;
+  rowHref: (id: string) => string;
 }) {
   const grouped: Record<string, any[]> = {
     backlog: [], todo: [], in_progress: [], review: [], done: [], cancelled: [],
@@ -561,7 +590,7 @@ function BoardView({
               <div className="text-text-3 italic text-xs px-2 py-3 text-center">empty</div>
             ) : (
               items.map((t) => (
-                <Link key={t.id} href={`/tasks/${t.id}`} className="tcard no-underline">
+                <Link key={t.id} href={rowHref(t.id)} className="tcard no-underline" scroll={false}>
                   <div className="flex gap-1 flex-wrap">
                     <span className={`pchip ${t.project.slug}`}>{t.project.name}</span>
                     {t.priority === "urgent" || t.priority === "high" ? (

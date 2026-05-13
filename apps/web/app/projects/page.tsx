@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getDb, projects, products, tasks, users, eq, asc, isNull, sql } from "@tu/db";
 import { getCurrentUser } from "@/lib/auth";
 import { createProject } from "./actions";
+import { ProjectBanner } from "./project-banner";
 
 export const dynamic = "force-dynamic";
 
@@ -54,34 +55,44 @@ export default async function ProjectsPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-8">
           {rows.map((p) => (
-            <Link key={p.id} href={`/projects/${p.slug}`} className="card card-interactive group">
-              <div className="flex items-start justify-between gap-2 mb-2">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span
-                    className="inline-block w-2.5 h-2.5 rounded-full shrink-0"
-                    style={{ backgroundColor: p.color ?? "var(--text-3)" }}
-                  />
-                  <div className="font-semibold text-[14px] truncate group-hover:text-accent-2">{p.name}</div>
+            <Link key={p.id} href={`/projects/${p.slug}`} className="card card-interactive group project-card-with-banner">
+              <ProjectBanner
+                slug={p.slug}
+                title={p.name}
+                productLabel={p.product?.slug ?? null}
+                color={p.color}
+                description={null}
+                height="thumb"
+              />
+              <div className="project-card-body">
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span
+                      className="inline-block w-2.5 h-2.5 rounded-full shrink-0"
+                      style={{ backgroundColor: p.color ?? "var(--text-3)" }}
+                    />
+                    <div className="font-semibold text-[14px] truncate group-hover:text-accent-2">{p.name}</div>
+                  </div>
+                  {p.product?.slug ? (
+                    <span className={`pchip ${p.product.slug}`}>{p.product.slug}</span>
+                  ) : null}
                 </div>
-                {p.product?.slug ? (
-                  <span className={`pchip ${p.product.slug}`}>{p.product.slug}</span>
-                ) : null}
-              </div>
-              {p.description ? (
-                <div className="text-[13px] text-text-2 line-clamp-2 mb-3">{p.description}</div>
-              ) : (
-                <div className="text-[12px] text-text-3 italic mb-3">No description</div>
-              )}
-              <div className="flex items-center gap-3 text-[11.5px] text-text-3 mt-auto">
-                <span><span className="text-text font-medium mono">{p.open}</span> open</span>
-                <span className="text-text-4">·</span>
-                <span><span className="text-text font-medium mono">{p.done}</span> done</span>
-                {p.owner?.name ? (
-                  <>
-                    <span className="text-text-4">·</span>
-                    <span>{p.owner.name}</span>
-                  </>
-                ) : null}
+                {p.description ? (
+                  <div className="text-[13px] text-text-2 line-clamp-2 mb-3">{p.description}</div>
+                ) : (
+                  <div className="text-[12px] text-text-3 italic mb-3">No description</div>
+                )}
+                <div className="flex items-center gap-3 text-[11.5px] text-text-3 mt-auto">
+                  <span><span className="text-text font-medium mono">{p.open}</span> open</span>
+                  <span className="text-text-4">·</span>
+                  <span><span className="text-text font-medium mono">{p.done}</span> done</span>
+                  {p.owner?.name ? (
+                    <>
+                      <span className="text-text-4">·</span>
+                      <span>{p.owner.name}</span>
+                    </>
+                  ) : null}
+                </div>
               </div>
             </Link>
           ))}

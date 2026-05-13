@@ -314,6 +314,24 @@ export const productivityEnum = pgEnum("productivity_class", [
 
 export const agentOsEnum = pgEnum("agent_os", ["macos", "windows", "linux"]);
 
+export const briefingKindEnum = pgEnum("briefing_kind", [
+  "morning",
+  "eod",
+]);
+
+export const projectSummaryKindEnum = pgEnum("project_summary_kind", [
+  "health",
+]);
+
+export const dashboardPeriodEnum = pgEnum("dashboard_period", ["week", "month"]);
+
+export const notificationKindEnum = pgEnum("notification_kind", [
+  "mention",            // @-mentioned in a comment
+  "assigned",           // someone assigned a task to you
+  "task_completed",     // someone closed a task you created
+  "comment_on_assigned",// someone else commented on a task you're assigned to
+]);
+
 // ---------- users ----------
 //
 // First-class users for Skynet. Authenticated via Google SSO (truestock.in
@@ -773,6 +791,133 @@ export const agentDevicesRelations = relations(agentDevices, ({ one, many }) => 
   sessions: many(activitySessions),
 }));
 
+// ---------- notifications ----------
+//
+// In-app inbox for each user. Created by server actions in apps/web when:
+//   • addComment sees an @firstname token       → kind = "mention"
+//   • assignTask sets a new assignee            → kind = "assigned"
+//   • updateTaskStatus flips status to "done"   → kind = "task_completed" → creator
+//   • addComment posts to a task with an
+//     assignee other than the author            → kind = "comment_on_assigned"
+//
+// `read_at` IS NULL means unread. Marking read is a simple update.
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    kind: notificationKindEnum("kind").notNull(),
+    taskId: uuid("task_id").references(() => tasks.id, { onDelete: "cascade" }),
+    actorId: uuid("actor_id").references(() => users.id, { onDelete: "set null" }),
+    body: text("body").notNull(),
+    readAt: timestamp("read_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    byUserCreated: index("notifications_user_created_idx").on(t.userId, t.createdAt),
+    byUserUnread: index("notifications_user_unread_idx")
+      .on(t.userId, t.createdAt)
+      .where(sql`read_at is null`),
+  }),
+);
+
+export const notificationsRelations = relations(notifications, ({ one }) => ({
+  user: one(users, {
+    fields: [notifications.userId],
+    references: [users.id],
+    relationName: "notification_user",
+  }),
+  task: one(tasks, {
+    fields: [notifications.taskId],
+    references: [tasks.id],
+  }),
+  actor: one(users, {
+    fields: [notifications.actorId],
+    references: [users.id],
+    relationName: "notification_actor",
+  }),
+}));
+
+// ---------- daily_briefings ----------
+//
+// Per-user AI briefings, cached per (user_id, date, kind). Generated on
+// first request that day; refreshed manually via a Refresh button. Body is
+// the rendered text from qwen3:8b. Keep one row per (user, date, kind);
+// regenerate updates body + generated_at.
+export const dailyBriefings = pgTable(
+  "daily_briefings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    date: date("date").notNull(),
+    kind: briefingKindEnum("kind").notNull(),
+    body: text("body").notNull(),
+    model: text("model"),
+    durationMs: integer("duration_ms"),
+    generatedAt: timestamp("generated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    pk: uniqueIndex("daily_briefings_uq").on(t.userId, t.date, t.kind),
+    byUser: index("daily_briefings_user_idx").on(t.userId, t.date),
+  }),
+);
+
+// ---------- project_summaries ----------
+//
+// Cached AI-written health summary per (project_id, date). Refreshable via
+// a Refresh button on /projects/[slug].
+export const projectSummaries = pgTable(
+  "project_summaries",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    date: date("date").notNull(),
+    kind: projectSummaryKindEnum("kind").notNull().default("health"),
+    body: text("body").notNull(),
+    model: text("model"),
+    durationMs: integer("duration_ms"),
+    generatedAt: timestamp("generated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    pk: uniqueIndex("project_summaries_uq").on(t.projectId, t.date, t.kind),
+  }),
+);
+
+// ---------- ai_dashboards ----------
+//
+// Cached weekly + monthly personal insight dashboards. The bento page
+// renders entirely from `body_json` (the pre-computed stat snapshot) and
+// `narrative` (the AI commentary), so the page itself is just rendering.
+// Refresh button overwrites the row for the same (user, period, period_key).
+//
+// period_key: ISO week "2026-W19" or year-month "2026-05".
+export const aiDashboards = pgTable(
+  "ai_dashboards",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    period: dashboardPeriodEnum("period").notNull(),
+    periodKey: text("period_key").notNull(),
+    bodyJson: jsonb("body_json").notNull(),
+    narrative: text("narrative"),
+    model: text("model"),
+    durationMs: integer("duration_ms"),
+    generatedAt: timestamp("generated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    pk: uniqueIndex("ai_dashboards_uq").on(t.userId, t.period, t.periodKey),
+    byUser: index("ai_dashboards_user_idx").on(t.userId, t.generatedAt),
+  }),
+);
+
 // ---------- types ----------
 
 export type Product = typeof products.$inferSelect;
@@ -811,3 +956,11 @@ export type AppClassification = typeof appClassifications.$inferSelect;
 export type NewAppClassification = typeof appClassifications.$inferInsert;
 export type AgentDevice = typeof agentDevices.$inferSelect;
 export type NewAgentDevice = typeof agentDevices.$inferInsert;
+export type Notification = typeof notifications.$inferSelect;
+export type NewNotification = typeof notifications.$inferInsert;
+export type DailyBriefing = typeof dailyBriefings.$inferSelect;
+export type NewDailyBriefing = typeof dailyBriefings.$inferInsert;
+export type ProjectSummary = typeof projectSummaries.$inferSelect;
+export type NewProjectSummary = typeof projectSummaries.$inferInsert;
+export type AiDashboard = typeof aiDashboards.$inferSelect;
+export type NewAiDashboard = typeof aiDashboards.$inferInsert;

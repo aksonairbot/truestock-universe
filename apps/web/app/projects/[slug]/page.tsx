@@ -4,6 +4,9 @@ import { getDb, projects, products, tasks, users, eq, asc, desc } from "@tu/db";
 import { getCurrentUser } from "@/lib/auth";
 import { StatusSelect, AssigneeSelect } from "../../tasks/inline-controls";
 import { createTask } from "../../tasks/actions";
+import { ProjectBanner } from "../project-banner";
+import { ProjectPulse } from "./project-pulse";
+import { ProjectSummaryCard } from "./project-summary-card";
 
 export const dynamic = "force-dynamic";
 
@@ -84,7 +87,18 @@ export default async function ProjectDetailPage({ params }: PageProps) {
 
   return (
     <div className="page-content">
-      <div className="page-head">
+      <ProjectBanner
+        slug={project.slug}
+        title={project.name}
+        productLabel={project.productSlug ?? null}
+        color={project.color}
+        description={project.description}
+        height="tall"
+      />
+
+      <ProjectSummaryCard projectId={project.id} />
+
+      <div className="page-head" style={{ marginTop: 16 }}>
         <div className="min-w-0">
           <div className="flex items-center gap-3 mb-1">
             <span
@@ -134,6 +148,8 @@ export default async function ProjectDetailPage({ params }: PageProps) {
         <button type="submit" className="btn btn-primary">Add</button>
       </form>
 
+      <div className="project-with-pulse">
+      <div className="project-with-pulse-main">
       {taskRows.length === 0 ? (
         <div className="card text-center py-16 text-text-2">
           No tasks in this project yet — use the quick-add above.
@@ -180,6 +196,9 @@ export default async function ProjectDetailPage({ params }: PageProps) {
           })}
         </div>
       )}
+      </div>
+      <ProjectPulse projectId={project.id} />
+      </div>
     </div>
   );
 }
