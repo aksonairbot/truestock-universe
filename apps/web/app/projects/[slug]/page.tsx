@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getDb, projects, products, tasks, users, eq, and, or, asc, desc, inArray } from "@tu/db";
+import { getDb, projects, products, tasks, users, eq, and, or, asc, desc, inArray, sql } from "@tu/db";
 import { getCurrentUser } from "@/lib/auth";
 import { isAdmin, getDepartmentScope } from "@/lib/access";
 import { StatusSelect, AssigneeSelect } from "../../tasks/inline-controls";
