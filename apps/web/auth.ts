@@ -1,16 +1,14 @@
 // apps/web/auth.ts
 //
-// NextAuth v5 (Auth.js) setup. Google provider only — and we restrict the
-// allowlist to emails that already exist in our users table. New people are
-// pre-provisioned via /members (the existing add-member flow); they cannot
-// self-register through Google. This matches "preconfigured accounts only".
-//
-// When AUTH_SECRET is unset (local dev / before OAuth setup) we ALSO keep
-// the legacy stub working — see lib/auth.ts.
+// NextAuth v5 (Auth.js) setup. Google provider only.
+// Domain-wide access: any @truestock.in Google account can sign in.
+// First-time users are auto-provisioned as "member" role.
 
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 import { getDb, users, eq } from "@tu/db";
+
+const ALLOWED_DOMAIN = "truestock.in";
 
 export const authEnabled = !!process.env.AUTH_SECRET;
 
@@ -32,11 +30,13 @@ const nextAuth = NextAuth({
   ],
   callbacks: {
     async signIn({ account, profile }) {
-      // Only allow Google sign-ins where the email is already in our users
-      // table. No self-registration; admins pre-provision via /members.
       if (account?.provider !== "google") return false;
       const email = (profile?.email ?? "").toLowerCase();
       if (!email) return false;
+
+      // Only allow emails from the allowed domain.
+      const domain = email.split("@")[1];
+      if (domain !== ALLOWED_DOMAIN) return false;
 
       const db = getDb();
       const [existing] = await db
@@ -44,14 +44,32 @@ const nextAuth = NextAuth({
         .from(users)
         .where(eq(users.email, email))
         .limit(1);
-      if (!existing) return false;
-      if (!existing.isActive) return false;
 
-      // Touch last_login_at on success.
+      if (existing) {
+        // Existing user — check active, touch last_login_at.
+        if (!existing.isActive) return false;
+        try {
+          await db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, existing.id));
+        } catch { /* non-fatal */ }
+        return true;
+      }
+
+      // Auto-provision new user from the domain.
       try {
-        await db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, existing.id));
-      } catch {
-        // non-fatal
+        const name = profile?.name ?? email.split("@")[0];
+        const avatarUrl = (profile as any)?.picture ?? null;
+        const googleSub = (profile as any)?.sub ?? null;
+        await db.insert(users).values({
+          email,
+          name,
+          avatarUrl,
+          googleSubject: googleSub,
+          role: "member",
+          lastLoginAt: new Date(),
+        });
+      } catch (e) {
+        console.error("auto-provision failed", e);
+        return false;
       }
       return true;
     },
