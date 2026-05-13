@@ -17,7 +17,10 @@
 // Click a row → /members/[id] for the per-person drill-down.
 
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { getDb, users, tasks, taskComments, eq, and, desc, asc, sql } from "@tu/db";
+import { getCurrentUser } from "@/lib/auth";
+import { isPrivileged } from "@/lib/access";
 import { createMember } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -47,6 +50,9 @@ interface PageProps {
 }
 
 export default async function MembersPage({ searchParams }: PageProps) {
+  const me = await getCurrentUser();
+  if (!isPrivileged(me)) redirect("/");
+
   const sp = await searchParams;
   const sort: SortKey = (SORTABLE as readonly string[]).includes(sp.sort ?? "")
     ? (sp.sort as SortKey)

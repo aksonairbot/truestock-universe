@@ -9,6 +9,7 @@ interface SidebarProps {
   unreadCount?: number;
   orgName?: string;
   orgMembersLine?: string;
+  isPrivileged?: boolean;
 }
 
 export default function Sidebar({
@@ -16,6 +17,7 @@ export default function Sidebar({
   unreadCount = 0,
   orgName = "SeekPeek",
   orgMembersLine = "Truestock · daily work tracker",
+  isPrivileged = false,
 }: SidebarProps) {
   const rawPath = usePathname() ?? "/";
   // Welcome page is a full-bleed landing for unauthenticated visitors — no app shell.
@@ -62,9 +64,11 @@ export default function Sidebar({
         <NavLink href="/projects" active={isActive("/projects")} icon={<IcProjects />}>
           Projects
         </NavLink>
-        <NavLink href="/members" active={isActive("/members")} icon={<IcMembers />}>
-          Members <Kbd>G U</Kbd>
-        </NavLink>
+        {isPrivileged && (
+          <NavLink href="/members" active={isActive("/members")} icon={<IcMembers />}>
+            Members <Kbd>G U</Kbd>
+          </NavLink>
+        )}
         <NavLink href="/notifications" active={isActive("/notifications")} icon={<IcBell />}>
           <span className="flex-1">Inbox</span>
           {unreadCount > 0 ? (

@@ -14,8 +14,9 @@
 // updateTaskStatus directly (no JS).
 
 import Link from "next/link";
-import { getDb, tasks, projects, users, eq, desc, or, ilike } from "@tu/db";
+import { getDb, tasks, projects, users, eq, desc, or, and, ilike, sql } from "@tu/db";
 import { getCurrentUser } from "@/lib/auth";
+import { isPrivileged } from "@/lib/access";
 import { StatusSelect, AssigneeSelect } from "./inline-controls";
 import { updateTaskStatus } from "./actions";
 import { TaskPane } from "./task-pane";
@@ -151,12 +152,22 @@ export default async function TasksPage({ searchParams }: PageProps) {
   const q = (qRaw ?? "").trim();
 
   const me = await getCurrentUser();
+  const canSeeAll = isPrivileged(me);
   const db = getDb();
 
   // Search filter on title/description, case-insensitive.
-  const where = q
+  const searchFilter = q
     ? or(ilike(tasks.title, `%${q}%`), ilike(tasks.description, `%${q}%`))
     : undefined;
+
+  // Data wall: members/viewers only see tasks assigned to them or created by them.
+  const scopeFilter = canSeeAll
+    ? undefined
+    : or(eq(tasks.assigneeId, me.id), eq(tasks.createdById, me.id));
+
+  const where = searchFilter && scopeFilter
+    ? and(searchFilter, scopeFilter)
+    : searchFilter ?? scopeFilter ?? undefined;
 
   const rows = await db
     .select({

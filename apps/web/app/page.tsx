@@ -28,6 +28,8 @@ import {
   lte,
   sql,
 } from "@tu/db";
+import { getCurrentUser } from "@/lib/auth";
+import { isPrivileged } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
@@ -120,17 +122,20 @@ export default async function HomePage({ searchParams }: PageProps) {
   const isToday = date === today;
   const [dayStart, dayEnd] = dayBoundsIST(date);
 
+  const me = await getCurrentUser();
+  const canSeeAll = isPrivileged(me);
+
   const db = getDb();
-  const allUsers = await db
-    .select({
-      id: users.id,
-      name: users.name,
-      email: users.email,
-      role: users.role,
-      isActive: users.isActive,
-    })
-    .from(users)
-    .orderBy(desc(users.isActive), users.name);
+  // Data wall: members/viewers see only themselves in the team grid.
+  const allUsers = canSeeAll
+    ? await db
+        .select({ id: users.id, name: users.name, email: users.email, role: users.role, isActive: users.isActive })
+        .from(users)
+        .orderBy(desc(users.isActive), users.name)
+    : await db
+        .select({ id: users.id, name: users.name, email: users.email, role: users.role, isActive: users.isActive })
+        .from(users)
+        .where(eq(users.id, me.id));
 
   // ---------- tasks completed in window, grouped by assignee ----------
   const completed = await db

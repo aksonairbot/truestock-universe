@@ -16,7 +16,7 @@ async function getSidebarData() {
     const { getUnreadCount } = await import("@/lib/notify");
     const unread = await getUnreadCount(me.id);
     return {
-      user: { name: me.name, email: me.email, avatarUrl: me.avatarUrl },
+      user: { name: me.name, email: me.email, avatarUrl: me.avatarUrl, role: me.role },
       unread,
     };
   } catch {
@@ -30,7 +30,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     <html lang="en">
       <body className="antialiased">
         <div className="relative z-10 flex min-h-screen">
-          <Sidebar user={user} unreadCount={unread} />
+          <Sidebar user={user} unreadCount={unread} isPrivileged={user?.role === "admin" || user?.role === "manager"} />
           <main className="flex-1 min-w-0 overflow-x-hidden">{children}</main>
         </div>
       </body>

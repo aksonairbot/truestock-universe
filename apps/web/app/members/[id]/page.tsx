@@ -21,7 +21,9 @@ import {
   desc,
   sql,
 } from "@tu/db";
+import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
+import { isPrivileged } from "@/lib/access";
 import { toggleMemberActive } from "../actions";
 import { RoleSelect } from "../role-select";
 
@@ -99,6 +101,9 @@ export default async function MemberProfilePage({ params, searchParams }: PagePr
   const db = getDb();
   const me = await getCurrentUser();
   const isAdmin = me.role === "admin";
+
+  // Data wall: members/viewers can only view their own profile.
+  if (!isPrivileged(me) && me.id !== id) redirect("/");
 
   const [user] = await db.select().from(users).where(eq(users.id, id)).limit(1);
   if (!user) notFound();

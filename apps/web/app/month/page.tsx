@@ -4,6 +4,7 @@
 // across the full month. Shows per-person stats and trends.
 
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import {
   getDb,
   users,
@@ -17,6 +18,8 @@ import {
   lte,
   sql,
 } from "@tu/db";
+import { getCurrentUser } from "@/lib/auth";
+import { isPrivileged } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
@@ -81,6 +84,10 @@ export const metadata = {
 };
 
 export default async function MonthPage({ searchParams }: PageProps) {
+  const me = await getCurrentUser();
+  // Data wall: only admin/manager can see the full monthly dashboard.
+  if (!isPrivileged(me)) redirect("/");
+
   const sp = await searchParams;
   const today = todayInTZ();
   const currentMonth = today.slice(0, 7); // YYYY-MM

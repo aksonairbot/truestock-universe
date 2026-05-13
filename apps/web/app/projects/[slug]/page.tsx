@@ -1,8 +1,9 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getDb, projects, products, tasks, users, eq, asc, desc } from "@tu/db";
+import { getDb, projects, products, tasks, users, eq, and, or, asc, desc } from "@tu/db";
 import { getCurrentUser } from "@/lib/auth";
+import { isPrivileged } from "@/lib/access";
 import { StatusSelect, AssigneeSelect } from "../../tasks/inline-controls";
 import { createTask } from "../../tasks/actions";
 import { ProjectBanner } from "../project-banner";
@@ -41,7 +42,8 @@ interface PageProps {
 
 export default async function ProjectDetailPage({ params }: PageProps) {
   const { slug } = await params;
-  await getCurrentUser();
+  const me = await getCurrentUser();
+  const canSeeAll = isPrivileged(me);
   const db = getDb();
 
   const [project] = await db
@@ -63,6 +65,11 @@ export default async function ProjectDetailPage({ params }: PageProps) {
 
   if (!project) notFound();
 
+  // Data wall: members/viewers only see their own tasks within a project.
+  const taskWhere = canSeeAll
+    ? eq(tasks.projectId, project.id)
+    : and(eq(tasks.projectId, project.id), or(eq(tasks.assigneeId, me.id), eq(tasks.createdById, me.id)));
+
   const taskRows = await db
     .select({
       id: tasks.id,
@@ -74,7 +81,7 @@ export default async function ProjectDetailPage({ params }: PageProps) {
     })
     .from(tasks)
     .leftJoin(users, eq(tasks.assigneeId, users.id))
-    .where(eq(tasks.projectId, project.id))
+    .where(taskWhere)
     .orderBy(asc(tasks.status), desc(tasks.priority), desc(tasks.createdAt));
 
   const allUsers = await db.select({ id: users.id, name: users.name }).from(users);

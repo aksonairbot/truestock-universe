@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth";
+import { isPrivileged } from "@/lib/access";
 import type { User } from "@tu/db";
 
 /**
@@ -38,7 +39,8 @@ export default async function Nav() {
         <NavLink href="/">Today</NavLink>
         <NavLink href="/tasks">Tasks</NavLink>
         <NavLink href="/projects">Projects</NavLink>
-        <NavLink href="/members">Members</NavLink>
+        {me && isPrivileged(me) && <NavLink href="/members">Members</NavLink>}
+        {me && isPrivileged(me) && <NavLink href="/month">Month</NavLink>}
         <div className="flex-1" />
         {me?.avatarUrl ? (
           <img src={me.avatarUrl} alt={me.name} className="w-7 h-7 rounded-full" />
