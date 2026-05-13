@@ -280,7 +280,7 @@ async function gatherDigestData(): Promise<DigestData> {
     GROUP BY status
   `) as unknown as Array<{ status: string; n: number }>;
 
-  const busiestProject = projectRows.length > 0 ? projectRows[0].slug : null;
+  const busiestProject = projectRows.length > 0 ? projectRows[0]!.slug : null;
 
   const mostActive = await db.execute(sql`
     SELECT u.name, count(*)::int AS n
