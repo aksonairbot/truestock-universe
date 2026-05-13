@@ -36,11 +36,11 @@ function dueDateFromOffset(offset: number | null): string {
   return `${offset}d`;
 }
 
-export function NewTaskForm({ projects, users }: { projects: Project[]; users: User[] }) {
+export function NewTaskForm({ projects, users, currentUserId }: { projects: Project[]; users: User[]; currentUserId: string }) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [projectSlug, setProjectSlug] = useState(projects.find((p) => p.slug === "skynet-platform")?.slug ?? projects[0]?.slug ?? "");
-  const [assigneeId, setAssigneeId] = useState("");
+  const [assigneeId, setAssigneeId] = useState(currentUserId);
   const [status, setStatus] = useState("todo");
   const [priority, setPriority] = useState("med");
   const [dueDate, setDueDate] = useState("");
@@ -273,14 +273,14 @@ export function NewTaskForm({ projects, users }: { projects: Project[]; users: U
       </label>
 
       <label className="flex flex-col gap-1.5">
-        <span className="text-[11px] text-text-3 uppercase tracking-wider font-medium">Assignee</span>
+        <span className="text-[11px] text-text-3 uppercase tracking-wider font-medium">Assignee <span className="text-danger">*</span></span>
         <select
           name="assigneeId"
+          required
           value={assigneeId}
           onChange={(e) => setAssigneeId(e.target.value)}
           className="bg-panel-2 border border-border-2 rounded-md px-2 py-1.5 text-[13px] w-full"
         >
-          <option value="">— unassigned</option>
           {users.map((u) => (
             <option key={u.id} value={u.id}>{u.name}</option>
           ))}

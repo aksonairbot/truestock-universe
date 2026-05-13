@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { getDb, projects, users, asc, isNull, eq } from "@tu/db";
+import { getCurrentUser } from "@/lib/auth";
 import { NewTaskForm } from "../new-task-form";
 
 export const dynamic = "force-dynamic";
 
 export default async function NewTaskPage() {
+  const me = await getCurrentUser();
   const db = getDb();
   const projectList = await db
     .select({ slug: projects.slug, name: projects.name })
@@ -27,7 +29,7 @@ export default async function NewTaskPage() {
         </div>
         <Link href="/tasks" className="btn btn-ghost">← Back</Link>
       </div>
-      <NewTaskForm projects={projectList} users={userList} />
+      <NewTaskForm projects={projectList} users={userList} currentUserId={me.id} />
     </div>
   );
 }
