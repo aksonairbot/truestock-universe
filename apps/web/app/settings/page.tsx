@@ -1,6 +1,8 @@
 import { getCurrentUser } from "@/lib/auth";
 import Link from "next/link";
 
+export const dynamic = "force-dynamic";
+
 export const metadata = {
   title: "Settings · Skynet",
   description: "User and workspace settings",
