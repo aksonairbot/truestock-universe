@@ -10,6 +10,7 @@
 // Date filter via ?date=YYYY-MM-DD so you can review yesterday's roll-up too.
 // "Today" is interpreted in Asia/Kolkata (Skynet's default user TZ).
 
+import { Suspense } from "react";
 import Link from "next/link";
 import { MyDayHero } from "./my-day-hero";
 import { BriefingCard } from "./briefing-card";
@@ -241,11 +242,17 @@ export default async function HomePage({ searchParams }: PageProps) {
         </div>
       </div>
 
-      <BriefingCard />
+      <Suspense fallback={null}>
+        <BriefingCard />
+      </Suspense>
 
-      <MyDayHero />
+      <Suspense fallback={<div className="myday" style={{ minHeight: 200 }} />}>
+        <MyDayHero />
+      </Suspense>
 
-      <TeamVelocity />
+      <Suspense fallback={null}>
+        <TeamVelocity />
+      </Suspense>
 
       <div className="page-head team-head">
         <div>

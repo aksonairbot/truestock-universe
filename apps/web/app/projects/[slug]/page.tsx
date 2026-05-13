@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getDb, projects, products, tasks, users, eq, asc, desc } from "@tu/db";
@@ -96,7 +97,9 @@ export default async function ProjectDetailPage({ params }: PageProps) {
         height="tall"
       />
 
-      <ProjectSummaryCard projectId={project.id} />
+      <Suspense fallback={<div className="card text-text-3 text-[12px] py-3 px-4">Loading AI summary…</div>}>
+        <ProjectSummaryCard projectId={project.id} />
+      </Suspense>
 
       <div className="page-head" style={{ marginTop: 16 }}>
         <div className="min-w-0">
@@ -197,7 +200,9 @@ export default async function ProjectDetailPage({ params }: PageProps) {
         </div>
       )}
       </div>
-      <ProjectPulse projectId={project.id} />
+      <Suspense fallback={<div className="card text-text-3 text-[12px] py-3 px-4">Loading pulse…</div>}>
+        <ProjectPulse projectId={project.id} />
+      </Suspense>
       </div>
     </div>
   );
