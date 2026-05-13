@@ -330,6 +330,7 @@ export const notificationKindEnum = pgEnum("notification_kind", [
   "assigned",           // someone assigned a task to you
   "task_completed",     // someone closed a task you created
   "comment_on_assigned",// someone else commented on a task you're assigned to
+  "review_requested",   // task moved to "review" — notify managers/admins
 ]);
 
 // ---------- users ----------

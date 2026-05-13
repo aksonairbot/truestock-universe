@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { getDb, tasks, projects, taskComments, eq } from "@tu/db";
 import { getCurrentUserId } from "@/lib/auth";
 import { log } from "@/lib/log";
-import { notifyAssigned, notifyTaskCompleted, notifyCommentOnAssigned, notifyMentions } from "@/lib/notify";
+import { notifyAssigned, notifyTaskCompleted, notifyCommentOnAssigned, notifyMentions, notifyReviewRequested } from "@/lib/notify";
 import { offsetToDeadline, deadlineToDateStr } from "@/lib/worktime";
 
 const TASK_STATUSES = ["backlog", "todo", "in_progress", "review", "done", "cancelled"] as const;
@@ -103,8 +103,8 @@ export async function updateTaskStatus(formData: FormData): Promise<void> {
     .where(eq(tasks.id, taskId));
 
   log.info("task.status_changed", { taskId, status: statusRaw });
+  const me = await getCurrentUserId();
   if (statusRaw === "done") {
-    const me = await getCurrentUserId();
     const [t] = await db
       .select({ creatorId: tasks.createdById, title: tasks.title })
       .from(tasks)
@@ -112,6 +112,16 @@ export async function updateTaskStatus(formData: FormData): Promise<void> {
       .limit(1);
     if (t && t.creatorId !== me) {
       await notifyTaskCompleted({ creatorId: t.creatorId, actorId: me, taskId, taskTitle: t.title });
+    }
+  }
+  if (statusRaw === "review") {
+    const [t] = await db
+      .select({ title: tasks.title })
+      .from(tasks)
+      .where(eq(tasks.id, taskId))
+      .limit(1);
+    if (t) {
+      await notifyReviewRequested({ actorId: me, taskId, taskTitle: t.title });
     }
   }
   revalidatePath("/tasks");

@@ -16,7 +16,7 @@ const RECENT_WINDOW_MS = 60_000;
 
 async function insertWithDedupe(opts: {
   userId: string;
-  kind: "mention" | "assigned" | "task_completed" | "comment_on_assigned";
+  kind: "mention" | "assigned" | "task_completed" | "comment_on_assigned" | "review_requested";
   taskId?: string | null;
   actorId?: string | null;
   body: string;
@@ -151,6 +151,37 @@ export async function notifyMentions(opts: {
     body: `mentioned you on "${opts.taskTitle}"`,
   }));
   await db.insert(notifications).values(rows);
+}
+
+/**
+ * Notify all admin/manager users when a task is moved to "review" status.
+ * Skips the actor who moved it.
+ */
+export async function notifyReviewRequested(opts: {
+  actorId: string;
+  taskId: string;
+  taskTitle: string;
+}) {
+  const db = getDb();
+  const managers = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(
+      and(
+        sql`${users.role} in ('admin', 'manager')`,
+        eq(users.isActive, true),
+      ),
+    );
+
+  for (const m of managers) {
+    await insertWithDedupe({
+      userId: m.id,
+      actorId: opts.actorId,
+      kind: "review_requested",
+      taskId: opts.taskId,
+      body: `requested review on "${opts.taskTitle}"`,
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------
