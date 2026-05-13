@@ -1,10 +1,7 @@
 // apps/web/app/welcome/page.tsx
 //
-// SeekPeek landing page. Unauthenticated visitors land here. The Google
-// sign-in CTA only succeeds for emails that already exist in the users
-// table (admins pre-provision via /members).
+// SeekPeek landing page — centered hero with glass sign-in card.
 
-import Link from "next/link";
 import { SignInButton } from "./sign-in-button";
 
 export const dynamic = "force-dynamic";
@@ -13,75 +10,102 @@ export default function WelcomePage() {
   const authEnabled = !!process.env.AUTH_SECRET;
 
   return (
-    <div className="welcome">
-      <div className="welcome-hero" style={{ backgroundImage: "url(/hero/today.webp)" }}>
-        <div className="welcome-hero-fade" />
-        <header className="welcome-nav">
-          <div className="welcome-brand">
-            <span className="brand-mark" />
-            <div>
-              <div className="welcome-brand-name">SeekPeek</div>
-              <div className="welcome-brand-sub">Truestock</div>
-            </div>
-          </div>
-          <a href="mailto:aks@truestock.in" className="welcome-nav-link">Contact admin</a>
-        </header>
+    <div className="wlc">
+      {/* Animated gradient background */}
+      <div className="wlc-bg" />
+      <div className="wlc-grain" />
 
-        <div className="welcome-headline">
-          <div className="welcome-kicker">Internal · Truestock team only</div>
-          <h1>The eagle-eye view for your day.</h1>
-          <p>
-            Tasks, projects, and people — one place. AI triage when you capture, AI summary when you check in, and a quiet streak chip that only you can see.
-          </p>
-          <div className="welcome-cta">
-            {authEnabled ? (
-              <SignInButton />
-            ) : (
-              <div className="welcome-stub">
-                <Link href="/" className="welcome-btn welcome-btn-primary">
-                  Continue (stub auth — admin set-up pending)
-                </Link>
-              </div>
-            )}
-            <div className="welcome-note">
-              Sign-in is restricted to <span className="mono">truestock.in</span> accounts an admin has already added.
-            </div>
+      {/* Top nav */}
+      <header className="wlc-nav">
+        <div className="wlc-logo">
+          <div className="wlc-logo-mark">
+            <svg viewBox="0 0 32 32" fill="none" width="24" height="24">
+              <path d="M8 6l8 4 8-4v14l-8 6-8-6V6z" stroke="currentColor" strokeWidth="1.8" fill="rgba(123,92,255,0.15)" />
+              <path d="M16 10v16M8 6l8 10 8-10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </div>
+          <span className="wlc-logo-text">SeekPeek</span>
+        </div>
+      </header>
+
+      {/* Center content */}
+      <div className="wlc-center">
+        <div className="wlc-badge">Task management for focused teams</div>
+
+        <h1 className="wlc-title">
+          See the work.<br />
+          <span className="wlc-title-accent">Ship the work.</span>
+        </h1>
+
+        <p className="wlc-subtitle">
+          Tasks, projects, and people in one place. AI triage on capture,
+          morning briefings that name names, and streak chips only you can see.
+        </p>
+
+        {/* Sign-in card */}
+        <div className="wlc-card">
+          {authEnabled ? (
+            <SignInButton />
+          ) : (
+            <a href="/" className="wlc-google-btn">
+              Continue (auth setup pending)
+            </a>
+          )}
+          <div className="wlc-card-note">
+            Restricted to pre-approved <span className="mono">truestock.in</span> accounts
           </div>
         </div>
       </div>
 
-      <section className="welcome-features">
-        <Feature
-          title="Capture in one keystroke"
-          body="Type a sentence, hit Cmd+Enter — AI picks project, assignee, priority, due. Skip the form."
-        />
-        <Feature
-          title="A coach, not a cheerleader"
-          body="Morning briefing names specific tasks, surfaces what's stuck, and asks one honest question."
-        />
-        <Feature
-          title="See the team without surveillance"
-          body="Workload chips, top closers, velocity trends. No public scores, no leaderboards beyond a quiet top-3."
-        />
-        <Feature
-          title="Streaks that stay private"
-          body="Your closure streak, your personal best, your milestones. Visible only to you. Confetti is rare on purpose."
-        />
-      </section>
+      {/* Feature strip */}
+      <div className="wlc-features">
+        <div className="wlc-feat">
+          <div className="wlc-feat-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" width="20" height="20">
+              <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+            </svg>
+          </div>
+          <div className="wlc-feat-title">AI triage</div>
+          <div className="wlc-feat-body">Type a sentence — AI picks project, assignee, priority, and due date</div>
+        </div>
+        <div className="wlc-feat">
+          <div className="wlc-feat-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" width="20" height="20">
+              <path d="M12 20h9M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4L16.5 3.5z" />
+            </svg>
+          </div>
+          <div className="wlc-feat-title">Morning briefing</div>
+          <div className="wlc-feat-body">Names specific tasks, surfaces blockers, asks one honest question</div>
+        </div>
+        <div className="wlc-feat">
+          <div className="wlc-feat-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" width="20" height="20">
+              <circle cx="12" cy="12" r="10" />
+              <path d="M12 6v6l4 2" />
+            </svg>
+          </div>
+          <div className="wlc-feat-title">Private streaks</div>
+          <div className="wlc-feat-body">Your closure streak, personal bests, milestones — visible only to you</div>
+        </div>
+        <div className="wlc-feat">
+          <div className="wlc-feat-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" width="20" height="20">
+              <circle cx="9" cy="8" r="3" />
+              <path d="M3 21c1-3 3.5-5 6-5s5 2 6 5" />
+              <circle cx="17" cy="9" r="2.5" />
+              <path d="M22 19c-.4-2-1.7-3.5-3.7-4" />
+            </svg>
+          </div>
+          <div className="wlc-feat-title">Team clarity</div>
+          <div className="wlc-feat-body">Workload chips, velocity trends — no surveillance, no public scores</div>
+        </div>
+      </div>
 
-      <footer className="welcome-foot">
-        <span>SeekPeek · built for Truestock</span>
-        <span className="mono">truestock.in members only</span>
+      {/* Footer */}
+      <footer className="wlc-foot">
+        <span>SeekPeek · Truestock</span>
+        <span>seekpeak.in</span>
       </footer>
-    </div>
-  );
-}
-
-function Feature({ title, body }: { title: string; body: string }) {
-  return (
-    <div className="welcome-feature">
-      <h3>{title}</h3>
-      <p>{body}</p>
     </div>
   );
 }
