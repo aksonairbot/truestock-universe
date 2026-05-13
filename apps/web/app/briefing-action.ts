@@ -159,6 +159,7 @@ Comments by them today: ${commentLines || "(none)"}
   try {
     const r = await llm.complete({
       sensitivity: "internal",
+      provider: "deepseek",
       system,
       prompt: userPrompt,
       temperature: 0.4,
