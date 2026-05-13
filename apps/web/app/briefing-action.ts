@@ -191,7 +191,6 @@ Comments by them today: ${commentLines || "(none)"}
     });
 
   log.info("briefing.generated", { kind, durationMs, model });
-  revalidatePath("/");
   return { ok: true, body, generatedAt: new Date(), model, cached: false };
 }
 
@@ -200,4 +199,5 @@ export async function refreshBriefing(formData: FormData): Promise<void> {
   const kindRaw = (formData.get("kind") as string) ?? "morning";
   const kind: BriefingKind = kindRaw === "eod" ? "eod" : "morning";
   await getOrGenerateBriefing(kind, { force: true });
+  revalidatePath("/");
 }
