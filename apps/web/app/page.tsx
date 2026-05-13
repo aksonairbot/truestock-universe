@@ -29,7 +29,7 @@ import {
   sql,
 } from "@tu/db";
 import { getCurrentUser } from "@/lib/auth";
-import { isPrivileged } from "@/lib/access";
+import { isPrivileged, isAdmin, getDepartmentScope } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
@@ -123,14 +123,21 @@ export default async function HomePage({ searchParams }: PageProps) {
   const [dayStart, dayEnd] = dayBoundsIST(date);
 
   const me = await getCurrentUser();
-  const canSeeAll = isPrivileged(me);
+  const canSeeAll = isAdmin(me);
+  const deptScope = getDepartmentScope(me);
 
   const db = getDb();
-  // Data wall: members/viewers see only themselves in the team grid.
+  // Data wall: admin sees all, manager sees department, member sees only self.
   const allUsers = canSeeAll
     ? await db
         .select({ id: users.id, name: users.name, email: users.email, role: users.role, isActive: users.isActive })
         .from(users)
+        .orderBy(desc(users.isActive), users.name)
+    : deptScope
+    ? await db
+        .select({ id: users.id, name: users.name, email: users.email, role: users.role, isActive: users.isActive })
+        .from(users)
+        .where(eq(users.departmentId, deptScope))
         .orderBy(desc(users.isActive), users.name)
     : await db
         .select({ id: users.id, name: users.name, email: users.email, role: users.role, isActive: users.isActive })

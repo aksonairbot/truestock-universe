@@ -14,9 +14,9 @@
 // updateTaskStatus directly (no JS).
 
 import Link from "next/link";
-import { getDb, tasks, projects, users, eq, desc, or, and, ilike, sql } from "@tu/db";
+import { getDb, tasks, projects, users, eq, desc, or, and, ilike, inArray, sql } from "@tu/db";
 import { getCurrentUser } from "@/lib/auth";
-import { isPrivileged } from "@/lib/access";
+import { isAdmin, getDepartmentScope } from "@/lib/access";
 import { fmtDueCountdown, dueStatus } from "@/lib/worktime";
 import { StatusSelect, AssigneeSelect } from "./inline-controls";
 import { updateTaskStatus } from "./actions";
@@ -153,7 +153,8 @@ export default async function TasksPage({ searchParams }: PageProps) {
   const q = (qRaw ?? "").trim();
 
   const me = await getCurrentUser();
-  const canSeeAll = isPrivileged(me);
+  const canSeeAll = isAdmin(me);
+  const deptScope = getDepartmentScope(me);
   const db = getDb();
 
   // Search filter on title/description, case-insensitive.
@@ -161,10 +162,26 @@ export default async function TasksPage({ searchParams }: PageProps) {
     ? or(ilike(tasks.title, `%${q}%`), ilike(tasks.description, `%${q}%`))
     : undefined;
 
-  // Data wall: members/viewers only see tasks assigned to them or created by them.
-  const scopeFilter = canSeeAll
-    ? undefined
-    : or(eq(tasks.assigneeId, me.id), eq(tasks.createdById, me.id));
+  // Data wall: admin sees all, manager sees department tasks, member sees own.
+  let scopeFilter;
+  if (canSeeAll) {
+    scopeFilter = undefined;
+  } else if (deptScope) {
+    // Manager — see tasks where assignee or creator is in their department
+    const deptMembers = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.departmentId, deptScope));
+    const deptIds = deptMembers.map((u) => u.id);
+    if (deptIds.length > 0) {
+      scopeFilter = or(inArray(tasks.assigneeId, deptIds), inArray(tasks.createdById, deptIds));
+    } else {
+      // No members in department — show only own tasks
+      scopeFilter = or(eq(tasks.assigneeId, me.id), eq(tasks.createdById, me.id));
+    }
+  } else {
+    scopeFilter = or(eq(tasks.assigneeId, me.id), eq(tasks.createdById, me.id));
+  }
 
   const where = searchFilter && scopeFilter
     ? and(searchFilter, scopeFilter)

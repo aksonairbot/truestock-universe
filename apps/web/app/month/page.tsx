@@ -19,7 +19,7 @@ import {
   sql,
 } from "@tu/db";
 import { getCurrentUser } from "@/lib/auth";
-import { isPrivileged } from "@/lib/access";
+import { isPrivileged, getDepartmentScope } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
@@ -97,16 +97,19 @@ export default async function MonthPage({ searchParams }: PageProps) {
   const monthEnd = getMonthEnd(month);
 
   const db = getDb();
+  const deptScope = getDepartmentScope(me);
 
-  const allUsers = await db
-    .select({
-      id: users.id,
-      name: users.name,
-      email: users.email,
-      isActive: users.isActive,
-    })
-    .from(users)
-    .orderBy(desc(users.isActive), users.name);
+  // Admin sees all; manager sees department only.
+  const allUsers = deptScope
+    ? await db
+        .select({ id: users.id, name: users.name, email: users.email, isActive: users.isActive })
+        .from(users)
+        .where(eq(users.departmentId, deptScope))
+        .orderBy(desc(users.isActive), users.name)
+    : await db
+        .select({ id: users.id, name: users.name, email: users.email, isActive: users.isActive })
+        .from(users)
+        .orderBy(desc(users.isActive), users.name);
 
   // Tasks completed in the month
   const completed = await db

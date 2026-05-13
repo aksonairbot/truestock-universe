@@ -20,7 +20,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getDb, users, tasks, taskComments, departments, eq, and, desc, asc, sql } from "@tu/db";
 import { getCurrentUser } from "@/lib/auth";
-import { isPrivileged } from "@/lib/access";
+import { isPrivileged, isAdmin, getDepartmentScope } from "@/lib/access";
 import { createMember, createDepartment } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -76,11 +76,18 @@ export default async function MembersPage({ searchParams }: PageProps) {
   const start30d = new Date(startToday);
   start30d.setDate(start30d.getDate() - 29);
 
+  const deptScope = getDepartmentScope(me);
+  const amAdmin = isAdmin(me);
+
   const deptRows = await db.select().from(departments).orderBy(departments.name);
   const deptMap = new Map(deptRows.map((d) => [d.id, d]));
   const managerMap = new Map<string, string>(); // userId → manager name
 
-  const memberRows = await db.select().from(users).orderBy(desc(users.isActive), users.name);
+  // Admin sees all; manager sees only their department
+  const allMemberRows = await db.select().from(users).orderBy(desc(users.isActive), users.name);
+  const memberRows = deptScope
+    ? allMemberRows.filter((u) => u.departmentId === deptScope)
+    : allMemberRows;
 
   // Build manager name map
   for (const u of memberRows) {
@@ -254,14 +261,16 @@ export default async function MembersPage({ searchParams }: PageProps) {
     <div className="page-content">
       <div className="page-head">
         <div>
-          <div className="page-title">Members</div>
+          <div className="page-title">
+            Members{deptScope && deptMap.has(deptScope) ? ` · ${deptMap.get(deptScope)!.name}` : ""}
+          </div>
           <div className="page-sub">
             {total} total · {active} active · {totalOpen} open · {totalOverdue > 0 ? <span style={{ color: "var(--danger)" }}>{totalOverdue} overdue</span> : `${totalOverdue} overdue`} · {totalDone1d} done today · {totalDone7d} 7d · {totalDone30d} 30d
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-6">
+      <div className={`grid grid-cols-1 ${amAdmin ? "lg:grid-cols-[1fr_280px]" : ""} gap-6`}>
         {/* ------------- list ------------- */}
         <div className="card p-0 overflow-hidden">
           <table className="tbl tbl-sortable">
@@ -352,7 +361,8 @@ export default async function MembersPage({ searchParams }: PageProps) {
           </table>
         </div>
 
-        {/* ------------- add member ------------- */}
+        {/* ------------- add member + departments (admin only) ------------- */}
+        {amAdmin ? (
         <aside className="card">
           <div className="text-[11px] text-text-3 uppercase tracking-wider font-medium mb-3">
             Add member
@@ -448,6 +458,7 @@ export default async function MembersPage({ searchParams }: PageProps) {
             </form>
           </div>
         </aside>
+        ) : null}
       </div>
     </div>
   );

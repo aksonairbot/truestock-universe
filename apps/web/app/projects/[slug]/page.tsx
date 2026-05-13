@@ -1,9 +1,9 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getDb, projects, products, tasks, users, eq, and, or, asc, desc } from "@tu/db";
+import { getDb, projects, products, tasks, users, eq, and, or, asc, desc, inArray } from "@tu/db";
 import { getCurrentUser } from "@/lib/auth";
-import { isPrivileged } from "@/lib/access";
+import { isAdmin, getDepartmentScope } from "@/lib/access";
 import { StatusSelect, AssigneeSelect } from "../../tasks/inline-controls";
 import { createTask } from "../../tasks/actions";
 import { ProjectBanner } from "../project-banner";
@@ -43,7 +43,8 @@ interface PageProps {
 export default async function ProjectDetailPage({ params }: PageProps) {
   const { slug } = await params;
   const me = await getCurrentUser();
-  const canSeeAll = isPrivileged(me);
+  const canSeeAll = isAdmin(me);
+  const deptScope = getDepartmentScope(me);
   const db = getDb();
 
   const [project] = await db
@@ -65,10 +66,20 @@ export default async function ProjectDetailPage({ params }: PageProps) {
 
   if (!project) notFound();
 
-  // Data wall: members/viewers only see their own tasks within a project.
-  const taskWhere = canSeeAll
-    ? eq(tasks.projectId, project.id)
-    : and(eq(tasks.projectId, project.id), or(eq(tasks.assigneeId, me.id), eq(tasks.createdById, me.id)));
+  // Data wall: admin sees all, manager sees department tasks, member sees own.
+  let taskScope;
+  if (canSeeAll) {
+    taskScope = eq(tasks.projectId, project.id);
+  } else if (deptScope) {
+    const deptMembers = await db.select({ id: users.id }).from(users).where(eq(users.departmentId, deptScope));
+    const deptIds = deptMembers.map((u) => u.id);
+    taskScope = deptIds.length > 0
+      ? and(eq(tasks.projectId, project.id), or(inArray(tasks.assigneeId, deptIds), inArray(tasks.createdById, deptIds)))
+      : and(eq(tasks.projectId, project.id), or(eq(tasks.assigneeId, me.id), eq(tasks.createdById, me.id)));
+  } else {
+    taskScope = and(eq(tasks.projectId, project.id), or(eq(tasks.assigneeId, me.id), eq(tasks.createdById, me.id)));
+  }
+  const taskWhere = taskScope;
 
   const taskRows = await db
     .select({
