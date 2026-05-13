@@ -6,7 +6,7 @@
 
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
-import { getDb, users, eq } from "@tu/db";
+import { getDb, users, eq, sql } from "@tu/db";
 
 const ALLOWED_DOMAIN = "truestock.in";
 
@@ -57,16 +57,12 @@ const nextAuth = NextAuth({
       // Auto-provision new user from the domain.
       try {
         const name = profile?.name ?? email.split("@")[0];
-        const avatarUrl = (profile as any)?.picture as string | undefined;
-        const googleSub = (profile as any)?.sub as string | undefined;
-        await db.insert(users).values({
-          email,
-          name,
-          ...(avatarUrl ? { avatarUrl } : {}),
-          ...(googleSub ? { googleSubject: googleSub } : {}),
-          role: "member",
-          lastLoginAt: new Date(),
-        });
+        const avatarUrl = (profile as any)?.picture ?? undefined;
+        const googleSub = (profile as any)?.sub ?? undefined;
+        await db.execute(sql`
+          INSERT INTO users (email, name, avatar_url, google_subject, role, last_login_at)
+          VALUES (${email}, ${name}, ${avatarUrl ?? null}, ${googleSub ?? null}, 'member', NOW())
+        `);
       } catch (e) {
         console.error("auto-provision failed", e);
         return false;
