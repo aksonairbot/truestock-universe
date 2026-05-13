@@ -22,6 +22,7 @@ import {
   PrioritySelect,
 } from "./inline-controls";
 import { addComment, updateTaskMeta, cancelTask, deleteTask } from "./actions";
+import { fmtDueCountdown } from "@/lib/worktime";
 import { SubtaskList } from "./subtask-list";
 
 const PRIORITY_BADGE: Record<string, string> = {
@@ -205,8 +206,8 @@ export async function TaskPaneContent({ taskId }: { taskId: string }) {
           </span>
         </div>
         <div className="task-pane-meta-row">
-          <span className="task-pane-meta-label">Due date</span>
-          <span className="task-pane-meta-val">{fmtDate(task.dueDate)}</span>
+          <span className="task-pane-meta-label">Due</span>
+          <span className="task-pane-meta-val" title={fmtDate(task.dueDate)}>{fmtDueCountdown(task.dueDate)}</span>
         </div>
       </div>
 
@@ -274,13 +275,15 @@ export async function TaskPaneContent({ taskId }: { taskId: string }) {
             ></textarea>
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-xs text-text-3 uppercase tracking-wider">Due date</span>
+            <span className="text-xs text-text-3 uppercase tracking-wider">Due in</span>
             <input
               name="dueDate"
-              type="date"
+              type="text"
               defaultValue={task.dueDate ?? ""}
+              placeholder="e.g. 3d, 8h, 2d 4h"
               className="bg-panel-2 border border-border-2 rounded-md px-3 py-2 text-sm w-44"
             />
+            <span className="text-[10px] text-text-4">Working hours: Mon–Fri, 9–6 PM</span>
           </label>
           <div className="flex justify-end">
             <button

@@ -17,6 +17,7 @@ import Link from "next/link";
 import { getDb, tasks, projects, users, eq, desc, or, and, ilike, sql } from "@tu/db";
 import { getCurrentUser } from "@/lib/auth";
 import { isPrivileged } from "@/lib/access";
+import { fmtDueCountdown, dueStatus } from "@/lib/worktime";
 import { StatusSelect, AssigneeSelect } from "./inline-controls";
 import { updateTaskStatus } from "./actions";
 import { TaskPane } from "./task-pane";
@@ -550,7 +551,11 @@ function TaskRow({
       </div>
 
       <div className={`alist-cell-due ${overdue ? "is-overdue" : ""}`}>
-        {t.dueDate ? fmtDate(t.dueDate) : <span className="text-text-4">—</span>}
+        {t.dueDate ? (
+          <span title={fmtDate(t.dueDate)}>{fmtDueCountdown(t.dueDate)}</span>
+        ) : (
+          <span className="text-text-4">—</span>
+        )}
       </div>
 
       <div className="alist-cell-prio">
@@ -626,8 +631,9 @@ function BoardView({
                           ? "red"
                           : ""
                       }`}
+                      title={t.dueDate ? fmtDate(t.dueDate) : ""}
                     >
-                      {t.dueDate ? fmtDate(t.dueDate) : ""}
+                      {t.dueDate ? fmtDueCountdown(t.dueDate) : ""}
                     </span>
                   </div>
                 </Link>

@@ -16,6 +16,7 @@ import {
   PrioritySelect,
 } from "../inline-controls";
 import { addComment, updateTaskMeta, cancelTask, deleteTask } from "../actions";
+import { fmtDueCountdown } from "@/lib/worktime";
 
 export const dynamic = "force-dynamic";
 
@@ -150,10 +151,12 @@ export default async function TaskDetailPage({ params }: PageProps) {
                 <span className="text-xs text-text-3 uppercase tracking-wider">Due date</span>
                 <input
                   name="dueDate"
-                  type="date"
+                  type="text"
                   defaultValue={task.dueDate ?? ""}
+                  placeholder="e.g. 3d, 8h, 2d 4h"
                   className="bg-panel-2 border border-border-2 rounded-md px-3 py-2 text-sm w-44"
                 />
+                <span className="text-[10px] text-text-4">Working hours: Mon–Fri, 9–6 PM</span>
               </label>
               <div className="flex justify-end">
                 <button
@@ -258,8 +261,8 @@ export default async function TaskDetailPage({ params }: PageProps) {
           </div>
 
           <div className="card">
-            <div className="text-xs text-text-3 uppercase tracking-wider mb-1">Due date</div>
-            <div className="font-medium">{fmtDate(task.dueDate)}</div>
+            <div className="text-xs text-text-3 uppercase tracking-wider mb-1">Due</div>
+            <div className="font-medium" title={fmtDate(task.dueDate)}>{fmtDueCountdown(task.dueDate)}</div>
           </div>
 
           <div className="card text-text-3 text-xs">

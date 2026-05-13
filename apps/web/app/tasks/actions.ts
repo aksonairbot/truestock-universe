@@ -6,6 +6,7 @@ import { getDb, tasks, projects, taskComments, eq } from "@tu/db";
 import { getCurrentUserId } from "@/lib/auth";
 import { log } from "@/lib/log";
 import { notifyAssigned, notifyTaskCompleted, notifyCommentOnAssigned, notifyMentions } from "@/lib/notify";
+import { offsetToDeadline, deadlineToDateStr } from "@/lib/worktime";
 
 const TASK_STATUSES = ["backlog", "todo", "in_progress", "review", "done", "cancelled"] as const;
 const TASK_PRIORITIES = ["low", "med", "high", "urgent"] as const;
@@ -28,7 +29,7 @@ export async function createTask(formData: FormData): Promise<void> {
   const projectSlug = ((formData.get("projectSlug") as string) ?? "").trim();
   const statusRaw = ((formData.get("status") as string) ?? "todo").trim();
   const priorityRaw = ((formData.get("priority") as string) ?? "med").trim();
-  const dueDateRaw = ((formData.get("dueDate") as string) ?? "").trim() || null;
+  const dueDateInput = ((formData.get("dueDate") as string) ?? "").trim() || null;
   const assigneeIdRaw = ((formData.get("assigneeId") as string) ?? "").trim() || null;
 
   if (!title) throw new Error("title is required");
@@ -36,13 +37,23 @@ export async function createTask(formData: FormData): Promise<void> {
   const status = isTaskStatus(statusRaw) ? statusRaw : "todo";
   const priority = isTaskPriority(priorityRaw) ? priorityRaw : "med";
 
+  // Convert due input: accept "3d", "8h", "2d 4h" or legacy YYYY-MM-DD
+  let dueDate: string | null = null;
+  if (dueDateInput) {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dueDateInput)) {
+      dueDate = dueDateInput; // legacy date format
+    } else {
+      dueDate = deadlineToDateStr(offsetToDeadline(dueDateInput));
+    }
+  }
+
   const db = getDb();
   const [project] = await db
     .select({ id: projects.id })
     .from(projects)
     .where(eq(projects.slug, projectSlug))
     .limit(1);
-  if (!project) throw new Error(`project  not found`);
+  if (!project) throw new Error(`project not found`);
 
   const userId = await getCurrentUserId();
 
@@ -54,7 +65,7 @@ export async function createTask(formData: FormData): Promise<void> {
       description,
       status,
       priority,
-      dueDate: dueDateRaw,
+      dueDate,
       assigneeId: assigneeIdRaw,
       createdById: userId,
     })
@@ -219,15 +230,25 @@ export async function updateTaskMeta(formData: FormData): Promise<void> {
   const title = ((formData.get("title") as string) ?? "").trim();
   const description = ((formData.get("description") as string) ?? "").trim() || null;
   const priorityRaw = ((formData.get("priority") as string) ?? "").trim();
-  const dueDateRaw = ((formData.get("dueDate") as string) ?? "").trim() || null;
+  const dueDateInput = ((formData.get("dueDate") as string) ?? "").trim() || null;
 
   if (!title) throw new Error("title cannot be empty");
   const priority = isTaskPriority(priorityRaw) ? priorityRaw : "med";
 
+  // Convert due input: accept "3d", "8h", "2d 4h" or legacy YYYY-MM-DD
+  let dueDate: string | null = null;
+  if (dueDateInput) {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dueDateInput)) {
+      dueDate = dueDateInput;
+    } else {
+      dueDate = deadlineToDateStr(offsetToDeadline(dueDateInput));
+    }
+  }
+
   const db = getDb();
   await db
     .update(tasks)
-    .set({ title, description, priority, dueDate: dueDateRaw, updatedAt: new Date() })
+    .set({ title, description, priority, dueDate, updatedAt: new Date() })
     .where(eq(tasks.id, taskId));
   log.info("task.meta_updated", { taskId });
   revalidatePath(`/tasks/${taskId}`);

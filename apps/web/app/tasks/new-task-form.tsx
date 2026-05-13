@@ -33,10 +33,7 @@ const PRIORITIES = [
 
 function dueDateFromOffset(offset: number | null): string {
   if (offset === null) return "";
-  const d = new Date();
-  d.setHours(12, 0, 0, 0);
-  d.setDate(d.getDate() + offset);
-  return d.toISOString().slice(0, 10);
+  return `${offset}d`;
 }
 
 export function NewTaskForm({ projects, users }: { projects: Project[]; users: User[] }) {
@@ -223,14 +220,16 @@ export function NewTaskForm({ projects, users }: { projects: Project[]; users: U
       </label>
 
       <label className="flex flex-col gap-1.5 md:col-span-2">
-        <span className="text-[11px] text-text-3 uppercase tracking-wider font-medium">Due date</span>
+        <span className="text-[11px] text-text-3 uppercase tracking-wider font-medium">Due in</span>
         <input
           name="dueDate"
-          type="date"
+          type="text"
           value={dueDate}
           onChange={(e) => setDueDate(e.target.value)}
+          placeholder="e.g. 3d, 8h, 2d 4h"
           className="bg-panel-2 border border-border-2 rounded-md px-2 py-1.5 text-[13px] w-44"
         />
+        <span className="text-[10px] text-text-4">Working hours: Mon–Fri, 9 AM – 6 PM</span>
       </label>
 
       <div className="flex items-center justify-end gap-3 md:col-span-2 pt-3 border-t border-border">
