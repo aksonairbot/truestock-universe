@@ -95,7 +95,16 @@ export default function Sidebar({
       </div>
 
       {/* logged-in user (smaller, right at the bottom under org-card) */}
-      {user ? <UserMenu user={user} /> : null}
+      {user ? <UserMenu user={user} /> : (
+        <div className="mt-2 px-2.5">
+          <a
+            href="/api/auth/signin"
+            className="w-full flex items-center justify-center gap-2 text-[11px] text-text-2 hover:text-text bg-panel-2 hover:bg-bg-2 border border-border rounded-md p-2 transition-colors"
+          >
+            Sign in with Google
+          </a>
+        </div>
+      )}
     </aside>
   );
 }
@@ -173,6 +182,12 @@ function UserMenu({ user }: { user: { name: string; email: string; avatarUrl: st
           >
             Settings
           </Link>
+          <a
+            href="/api/auth/signout"
+            className="block w-full px-3 py-2 text-[11px] text-text-2 hover:bg-bg-2 hover:text-red-400 transition-colors border-t border-border"
+          >
+            Sign out
+          </a>
         </div>
       )}
     </div>
