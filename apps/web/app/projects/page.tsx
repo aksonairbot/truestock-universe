@@ -17,6 +17,7 @@ export default async function ProjectsPage() {
       name: projects.name,
       description: projects.description,
       color: projects.color,
+      bannerUrl: projects.bannerUrl,
       product: { slug: products.slug, name: products.name },
       owner: { id: users.id, name: users.name },
       total: sql<number>`count(${tasks.id})::int`,
@@ -61,6 +62,7 @@ export default async function ProjectsPage() {
                 title={p.name}
                 productLabel={p.product?.slug ?? null}
                 color={p.color}
+                bannerUrl={p.bannerUrl}
                 description={null}
                 height="thumb"
               />

@@ -51,6 +51,7 @@ export default async function ProjectDetailPage({ params }: PageProps) {
       name: projects.name,
       description: projects.description,
       color: projects.color,
+      bannerUrl: projects.bannerUrl,
       productSlug: products.slug,
       ownerName: users.name,
     })
@@ -93,8 +94,10 @@ export default async function ProjectDetailPage({ params }: PageProps) {
         title={project.name}
         productLabel={project.productSlug ?? null}
         color={project.color}
+        bannerUrl={project.bannerUrl}
         description={project.description}
         height="tall"
+        editable
       />
 
       <Suspense fallback={<div className="card text-text-3 text-[12px] py-3 px-4">Loading AI summary…</div>}>
