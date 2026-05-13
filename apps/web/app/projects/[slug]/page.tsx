@@ -168,8 +168,18 @@ export default async function ProjectDetailPage({ params }: PageProps) {
             name="title"
             type="text"
             required
-            placeholder="Task title — Enter to create"
+            placeholder="Task title"
             className="bg-panel-2 border border-border-2 rounded-md px-3 py-2 text-[13px] w-full"
+          />
+        </label>
+        <label className="flex flex-col gap-1.5">
+          <span className="text-[11px] text-text-3 uppercase tracking-wider font-medium">Due in <span style={{color:'var(--danger)'}}>*</span></span>
+          <input
+            name="dueDate"
+            type="text"
+            required
+            placeholder="e.g. 3d"
+            className="bg-panel-2 border border-border-2 rounded-md px-2 py-2 text-[13px] w-24"
           />
         </label>
         <button type="submit" className="btn btn-primary">Add</button>

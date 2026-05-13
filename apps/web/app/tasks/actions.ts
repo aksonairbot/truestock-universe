@@ -34,6 +34,7 @@ export async function createTask(formData: FormData): Promise<void> {
 
   if (!title) throw new Error("title is required");
   if (!projectSlug) throw new Error("project is required");
+  if (!dueDateInput) throw new Error("due date is required");
   const status = isTaskStatus(statusRaw) ? statusRaw : "todo";
   const priority = isTaskPriority(priorityRaw) ? priorityRaw : "med";
 

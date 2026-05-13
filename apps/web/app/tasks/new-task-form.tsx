@@ -220,10 +220,11 @@ export function NewTaskForm({ projects, users }: { projects: Project[]; users: U
       </label>
 
       <label className="flex flex-col gap-1.5 md:col-span-2">
-        <span className="text-[11px] text-text-3 uppercase tracking-wider font-medium">Due in</span>
+        <span className="text-[11px] text-text-3 uppercase tracking-wider font-medium">Due in <span className="text-danger">*</span></span>
         <input
           name="dueDate"
           type="text"
+          required
           value={dueDate}
           onChange={(e) => setDueDate(e.target.value)}
           placeholder="e.g. 3d, 8h, 2d 4h"
