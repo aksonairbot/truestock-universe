@@ -271,6 +271,7 @@ export async function updateTaskMeta(formData: FormData): Promise<void> {
 export async function addSubtask(formData: FormData): Promise<void> {
   const parentId = ((formData.get("parentId") as string) ?? "").trim();
   const title = ((formData.get("title") as string) ?? "").trim();
+  const assigneeIdRaw = ((formData.get("assigneeId") as string) ?? "").trim() || null;
   if (!parentId) throw new Error("parentId is required");
   if (!title) throw new Error("title is required");
 
@@ -282,21 +283,28 @@ export async function addSubtask(formData: FormData): Promise<void> {
     .limit(1);
   if (!parent) throw new Error("parent task not found");
 
+  // Use explicit assignee if provided, otherwise inherit from parent
+  const assigneeId = assigneeIdRaw ?? parent.assigneeId;
+
   const userId = await getCurrentUserId();
   const [created] = await db
     .insert(tasks)
     .values({
       projectId: parent.projectId,
       title,
-      assigneeId: parent.assigneeId,
+      assigneeId,
       createdById: userId,
       status: "todo",
       priority: "med",
       parentTaskId: parentId,
     })
-    .returning({ id: tasks.id });
+    .returning({ id: tasks.id, assigneeId: tasks.assigneeId });
   if (!created) throw new Error("insert returned no row");
-  log.info("subtask.created", { parentId, taskId: created.id });
+  log.info("subtask.created", { parentId, taskId: created.id, assigneeId });
+
+  if (assigneeId && assigneeId !== userId) {
+    await notifyAssigned({ assigneeId, actorId: userId, taskId: created.id, taskTitle: title });
+  }
   revalidatePath("/tasks");
   revalidatePath(`/tasks/${parentId}`);
 }

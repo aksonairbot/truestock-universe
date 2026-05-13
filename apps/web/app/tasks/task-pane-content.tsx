@@ -116,6 +116,7 @@ export async function TaskPaneContent({ taskId }: { taskId: string }) {
       title: tasks.title,
       status: tasks.status,
       assigneeName: users.name,
+      assigneeId: tasks.assigneeId,
     })
     .from(tasks)
     .leftJoin(users, eq(tasks.assigneeId, users.id))
@@ -234,7 +235,9 @@ export async function TaskPaneContent({ taskId }: { taskId: string }) {
           title: s.title,
           status: s.status,
           assigneeName: s.assigneeName,
+          assigneeId: s.assigneeId,
         }))}
+        users={allUsers}
       />
 
       {/* description */}

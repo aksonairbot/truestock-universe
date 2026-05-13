@@ -2,12 +2,13 @@
 //
 // Client subtask checklist rendered inside the slide-over. Each row is its
 // own optimistic check; new subtasks append below the list via a small inline
-// input. Submitting either commits the action and revalidates.
+// form with assignee selection. Submitting either commits the action and
+// revalidates.
 
 "use client";
 
-import { useOptimistic, useRef, useState, useTransition } from "react";
-import { updateTaskStatus, addSubtask } from "./actions";
+import { useOptimistic, useRef, useState, useTransition, useEffect } from "react";
+import { updateTaskStatus, addSubtask, assignTask } from "./actions";
 import { breakDownTask } from "./breakdown-action";
 
 type Subtask = {
@@ -15,16 +16,20 @@ type Subtask = {
   title: string;
   status: string;
   assigneeName: string | null;
+  assigneeId: string | null;
   pending?: boolean;
 };
+
+type UserOption = { id: string; name: string };
 
 function isDone(s: string) {
   return s === "done";
 }
 
-function SubtaskRow({ s }: { s: Subtask }) {
+function SubtaskRow({ s, users }: { s: Subtask; users: UserOption[] }) {
   const [done, setDone] = useState(isDone(s.status));
   const [pending, start] = useTransition();
+  const [assignPending, assignStart] = useTransition();
 
   function toggle() {
     const next = !done;
@@ -38,6 +43,15 @@ function SubtaskRow({ s }: { s: Subtask }) {
       } catch {
         setDone(!next);
       }
+    });
+  }
+
+  function onAssigneeChange(userId: string) {
+    const fd = new FormData();
+    fd.set("taskId", s.id);
+    fd.set("assigneeId", userId);
+    assignStart(async () => {
+      await assignTask(fd);
     });
   }
 
@@ -57,7 +71,18 @@ function SubtaskRow({ s }: { s: Subtask }) {
         ) : null}
       </button>
       <span className="subtask-title">{s.title}</span>
-      {s.assigneeName ? <span className="subtask-assignee">{s.assigneeName}</span> : null}
+      <select
+        className="subtask-assignee-select"
+        value={s.assigneeId ?? ""}
+        onChange={(e) => onAssigneeChange(e.target.value)}
+        disabled={assignPending}
+        title="Assign subtask"
+      >
+        <option value="">—</option>
+        {users.map((u) => (
+          <option key={u.id} value={u.id}>{u.name}</option>
+        ))}
+      </select>
     </li>
   );
 }
@@ -65,15 +90,23 @@ function SubtaskRow({ s }: { s: Subtask }) {
 export function SubtaskList({
   parentId,
   initialSubtasks,
+  users,
 }: {
   parentId: string;
   initialSubtasks: Subtask[];
+  users: UserOption[];
 }) {
+  // Sync state with server data when initialSubtasks changes after revalidation
   const [list, setList] = useState<Subtask[]>(initialSubtasks);
+  useEffect(() => {
+    setList(initialSubtasks);
+  }, [initialSubtasks]);
+
   const [optimistic, addOptimistic] = useOptimistic<Subtask[], Subtask>(list, (state, s) => [...state, s]);
   const [pending, start] = useTransition();
   const [adding, setAdding] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const [selectedAssignee, setSelectedAssignee] = useState("");
   const [bdPending, bdStart] = useTransition();
   const [bdError, setBdError] = useState<string | null>(null);
   const [bdSuggestions, setBdSuggestions] = useState<string[] | null>(null);
@@ -107,7 +140,7 @@ export function SubtaskList({
         fd.set("title", title);
         const tmpId = `tmp-bd-${Date.now()}-${Math.random()}`;
         const optimisticItem: Subtask = {
-          id: tmpId, title, status: "todo", assigneeName: null, pending: true,
+          id: tmpId, title, status: "todo", assigneeName: null, assigneeId: null, pending: true,
         };
         addOptimistic(optimisticItem);
         setList((prev) => [...prev, { ...optimisticItem, pending: false }]);
@@ -124,22 +157,29 @@ export function SubtaskList({
     const title = inputRef.current?.value.trim() ?? "";
     if (!title) return;
 
+    const assigneeName = selectedAssignee
+      ? users.find((u) => u.id === selectedAssignee)?.name ?? null
+      : null;
+
     const tmpId = `tmp-${Date.now()}`;
     const optimisticItem: Subtask = {
       id: tmpId,
       title,
       status: "todo",
-      assigneeName: null,
+      assigneeName,
+      assigneeId: selectedAssignee || null,
       pending: true,
     };
     const fd = new FormData();
     fd.set("parentId", parentId);
     fd.set("title", title);
+    if (selectedAssignee) fd.set("assigneeId", selectedAssignee);
 
     start(async () => {
       addOptimistic(optimisticItem);
       setList((prev) => [...prev, { ...optimisticItem, pending: false }]);
       if (inputRef.current) inputRef.current.value = "";
+      setSelectedAssignee("");
       try {
         await addSubtask(fd);
       } catch {
@@ -222,7 +262,7 @@ export function SubtaskList({
       ) : (
         <>
           <ul className="subtask-list">
-            {view.map((s) => <SubtaskRow key={s.id} s={s} />)}
+            {view.map((s) => <SubtaskRow key={s.id} s={s} users={users} />)}
           </ul>
           <form onSubmit={onAdd} className="subtask-add-row">
             <button type="submit" className="acheck" aria-label="Add subtask" tabIndex={-1} disabled>
@@ -239,6 +279,18 @@ export function SubtaskList({
               maxLength={250}
               disabled={pending}
             />
+            <select
+              className="subtask-assignee-select"
+              value={selectedAssignee}
+              onChange={(e) => setSelectedAssignee(e.target.value)}
+              disabled={pending}
+              title="Assign to"
+            >
+              <option value="">Assign to…</option>
+              {users.map((u) => (
+                <option key={u.id} value={u.id}>{u.name}</option>
+              ))}
+            </select>
           </form>
         </>
       )}

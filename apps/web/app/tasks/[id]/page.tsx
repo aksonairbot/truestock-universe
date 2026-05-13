@@ -8,6 +8,7 @@ import {
   taskComments,
   eq,
   asc,
+  sql,
 } from "@tu/db";
 import { getCurrentUser } from "@/lib/auth";
 import {
@@ -17,6 +18,7 @@ import {
 } from "../inline-controls";
 import { addComment, updateTaskMeta, cancelTask, deleteTask } from "../actions";
 import { fmtDueCountdown } from "@/lib/worktime";
+import { SubtaskList } from "../subtask-list";
 
 export const dynamic = "force-dynamic";
 
@@ -94,6 +96,20 @@ export default async function TaskDetailPage({ params }: PageProps) {
     .where(eq(taskComments.taskId, task.id))
     .orderBy(asc(taskComments.createdAt));
 
+  // subtasks
+  const subtaskRows = await db
+    .select({
+      id: tasks.id,
+      title: tasks.title,
+      status: tasks.status,
+      assigneeName: users.name,
+      assigneeId: tasks.assigneeId,
+    })
+    .from(tasks)
+    .leftJoin(users, eq(tasks.assigneeId, users.id))
+    .where(sql`${tasks.parentTaskId} = ${task.id}`)
+    .orderBy(asc(tasks.createdAt));
+
   return (
     <div className="min-h-screen px-6 md:px-8 py-6 max-w-[1100px] mx-auto">
       {/* breadcrumb */}
@@ -168,6 +184,19 @@ export default async function TaskDetailPage({ params }: PageProps) {
               </div>
             </form>
           </details>
+
+          {/* subtasks */}
+          <SubtaskList
+            parentId={task.id}
+            initialSubtasks={subtaskRows.map((s) => ({
+              id: s.id,
+              title: s.title,
+              status: s.status,
+              assigneeName: s.assigneeName,
+              assigneeId: s.assigneeId,
+            }))}
+            users={allUsers}
+          />
 
           {/* comments */}
           <h2 className="text-base font-semibold mb-3">
