@@ -38,7 +38,9 @@ function getMonthStart(dateStr: string): Date {
 }
 
 function getMonthEnd(dateStr: string): Date {
-  const [year, month] = dateStr.split("-").map(Number);
+  const parts = dateStr.split("-").map(Number);
+  const year = parts[0]!;
+  const month = parts[1]!;
   const next = new Date(`${year}-${String(month + 1).padStart(2, "0")}-01T00:00:00+05:30`);
   next.setTime(next.getTime() - 1);
   return next;
