@@ -403,6 +403,7 @@ export const projects = pgTable(
       .notNull()
       .references(() => users.id),
     color: text("color"), // hex
+    iconUrl: text("icon_url"), // relative path e.g. /icons/my-project.png
     bannerUrl: text("banner_url"), // relative path e.g. /banners/my-project.webp
     archivedAt: timestamp("archived_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),

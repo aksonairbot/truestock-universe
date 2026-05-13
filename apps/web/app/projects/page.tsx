@@ -17,6 +17,7 @@ export default async function ProjectsPage() {
       name: projects.name,
       description: projects.description,
       color: projects.color,
+      iconUrl: projects.iconUrl,
       bannerUrl: projects.bannerUrl,
       product: { slug: products.slug, name: products.name },
       owner: { id: users.id, name: users.name },
@@ -69,10 +70,14 @@ export default async function ProjectsPage() {
               <div className="project-card-body">
                 <div className="flex items-start justify-between gap-2 mb-2">
                   <div className="flex items-center gap-2 min-w-0">
-                    <span
-                      className="inline-block w-2.5 h-2.5 rounded-full shrink-0"
-                      style={{ backgroundColor: p.color ?? "var(--text-3)" }}
-                    />
+                    {p.iconUrl ? (
+                      <img src={p.iconUrl} alt="" className="project-icon-sm" />
+                    ) : (
+                      <span
+                        className="inline-block w-2.5 h-2.5 rounded-full shrink-0"
+                        style={{ backgroundColor: p.color ?? "var(--text-3)" }}
+                      />
+                    )}
                     <div className="font-semibold text-[14px] truncate group-hover:text-accent-2">{p.name}</div>
                   </div>
                   {p.product?.slug ? (

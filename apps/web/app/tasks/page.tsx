@@ -197,7 +197,7 @@ export default async function TasksPage({ searchParams }: PageProps) {
       priority: tasks.priority,
       dueDate: tasks.dueDate,
       createdAt: tasks.createdAt,
-      project: { slug: projects.slug, name: projects.name, color: projects.color },
+      project: { slug: projects.slug, name: projects.name, color: projects.color, iconUrl: projects.iconUrl },
       assignee: { id: users.id, name: users.name },
     })
     .from(tasks)
@@ -550,6 +550,7 @@ function TaskRow({
 
       <div className="alist-cell-project">
         <Link href={`/projects/${t.project.slug}`} className={`pchip ${t.project.slug}`}>
+          {t.project.iconUrl ? <img src={t.project.iconUrl} alt="" className="pchip-icon" /> : null}
           {t.project.name}
         </Link>
       </div>

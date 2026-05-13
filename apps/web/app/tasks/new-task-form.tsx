@@ -1,11 +1,10 @@
 // apps/web/app/tasks/new-task-form.tsx
 //
-// Client form for /tasks/new. Adds:
-//   • Assignee select (was missing).
-//   • "✨ Suggest" button that hits the AI triage server action, then
-//     prefills project / assignee / priority / due based on the response.
-//   • A small reasoning chip after a successful suggestion.
-//   • Submits via the existing createTask server action.
+// Client form for /tasks/new. Features:
+//   • AI Suggest button — prefills project/assignee/priority/due
+//   • AI clarity check on submit — if task is vague, shows follow-up
+//     questions before creating. User can answer or force-create.
+//   • Due date mandatory
 
 "use client";
 
@@ -13,6 +12,7 @@ import Link from "next/link";
 import { useRef, useState, useTransition } from "react";
 import { createTask } from "./actions";
 import { suggestTaskMeta, type TriageSuggestion } from "./triage-action";
+import { checkTaskClarity } from "./clarity-action";
 
 type Project = { slug: string; name: string };
 type User = { id: string; email: string; name: string };
@@ -51,6 +51,12 @@ export function NewTaskForm({ projects, users }: { projects: Project[]; users: U
   const [suggestMeta, setSuggestMeta] = useState<{ provider?: string; model?: string; durationMs?: number } | null>(null);
   const [suggestError, setSuggestError] = useState<string | null>(null);
 
+  // Clarity check state
+  const [clarityQuestions, setClarityQuestions] = useState<string[]>([]);
+  const [clarityAnswers, setClarityAnswers] = useState<string[]>([]);
+  const [clarityChecked, setClarityChecked] = useState(false);
+  const [checkingClarity, startClarityCheck] = useTransition();
+
   const formRef = useRef<HTMLFormElement | null>(null);
 
   function onSuggest() {
@@ -83,13 +89,99 @@ export function NewTaskForm({ projects, users }: { projects: Project[]; users: U
     });
   }
 
-  function onSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const fd = new FormData(e.currentTarget);
+  function doCreate() {
+    if (!formRef.current) return;
+    // Append clarity answers to the description before creating
+    let finalDesc = description;
+    if (clarityQuestions.length > 0 && clarityAnswers.some((a) => a.trim())) {
+      const qa = clarityQuestions
+        .map((q, i) => `**Q:** ${q}\n**A:** ${clarityAnswers[i]?.trim() || "(not answered)"}`)
+        .filter((_, i) => clarityAnswers[i]?.trim())
+        .join("\n\n");
+      if (qa) {
+        finalDesc = finalDesc ? `${finalDesc}\n\n---\n${qa}` : qa;
+      }
+    }
+
+    const fd = new FormData(formRef.current);
+    // Override description with the enriched version
+    fd.set("description", finalDesc);
+
     startSubmit(async () => {
       await createTask(fd);
     });
   }
+
+  function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+
+    // If clarity already checked (user answered questions or bypassed), create directly
+    if (clarityChecked) {
+      doCreate();
+      return;
+    }
+
+    // Run clarity check
+    startClarityCheck(async () => {
+      const r = await checkTaskClarity({ title, description });
+      if (r.clear) {
+        // Task is clear — create directly
+        setClarityChecked(true);
+        doCreate();
+      } else if (r.questions && r.questions.length > 0) {
+        // Task is vague — show questions
+        setClarityQuestions(r.questions);
+        setClarityAnswers(new Array(r.questions.length).fill(""));
+      } else {
+        // Fallback — just create
+        setClarityChecked(true);
+        doCreate();
+      }
+    });
+  }
+
+  function onAnswerChange(idx: number, val: string) {
+    setClarityAnswers((prev) => {
+      const next = [...prev];
+      next[idx] = val;
+      return next;
+    });
+  }
+
+  function onSubmitWithAnswers() {
+    setClarityChecked(true);
+    doCreate();
+  }
+
+  function onForceCreate() {
+    setClarityChecked(true);
+    doCreate();
+  }
+
+  function onDismissClarity() {
+    setClarityQuestions([]);
+    setClarityAnswers([]);
+  }
+
+  // Reset clarity state when title/description changes
+  function onTitleChange(v: string) {
+    setTitle(v);
+    if (clarityChecked || clarityQuestions.length > 0) {
+      setClarityChecked(false);
+      setClarityQuestions([]);
+      setClarityAnswers([]);
+    }
+  }
+  function onDescChange(v: string) {
+    setDescription(v);
+    if (clarityChecked || clarityQuestions.length > 0) {
+      setClarityChecked(false);
+      setClarityQuestions([]);
+      setClarityAnswers([]);
+    }
+  }
+
+  const showClarityPanel = clarityQuestions.length > 0 && !clarityChecked;
 
   return (
     <form ref={formRef} onSubmit={onSubmit} className="card grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -101,7 +193,7 @@ export function NewTaskForm({ projects, users }: { projects: Project[]; users: U
           required
           autoFocus
           value={title}
-          onChange={(e) => setTitle(e.target.value)}
+          onChange={(e) => onTitleChange(e.target.value)}
           placeholder="What needs to happen?"
           className="bg-panel-2 border border-border-2 rounded-md px-3 py-2 text-[13px] w-full"
         />
@@ -113,7 +205,7 @@ export function NewTaskForm({ projects, users }: { projects: Project[]; users: U
           name="description"
           rows={4}
           value={description}
-          onChange={(e) => setDescription(e.target.value)}
+          onChange={(e) => onDescChange(e.target.value)}
           placeholder="Context, acceptance criteria, links."
           className="bg-panel-2 border border-border-2 rounded-md px-3 py-2 text-[13px] w-full"
         ></textarea>
@@ -233,10 +325,60 @@ export function NewTaskForm({ projects, users }: { projects: Project[]; users: U
         <span className="text-[10px] text-text-4">Working hours: Mon–Fri, 9 AM – 6 PM</span>
       </label>
 
+      {/* AI Clarity Questions Panel */}
+      {showClarityPanel ? (
+        <div className="md:col-span-2 clarity-panel">
+          <div className="clarity-panel-header">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="16" height="16">
+              <circle cx="12" cy="12" r="10" />
+              <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+              <line x1="12" y1="17" x2="12.01" y2="17" />
+            </svg>
+            <span>This task could use more detail. Can you clarify?</span>
+            <button type="button" onClick={onDismissClarity} className="clarity-dismiss">&times;</button>
+          </div>
+          <div className="clarity-questions">
+            {clarityQuestions.map((q, i) => (
+              <div key={i} className="clarity-q">
+                <div className="clarity-q-label">{q}</div>
+                <input
+                  type="text"
+                  value={clarityAnswers[i] ?? ""}
+                  onChange={(e) => onAnswerChange(i, e.target.value)}
+                  placeholder="Your answer..."
+                  className="bg-panel-2 border border-border-2 rounded-md px-3 py-2 text-[13px] w-full"
+                />
+              </div>
+            ))}
+          </div>
+          <div className="clarity-actions">
+            <button type="button" onClick={onSubmitWithAnswers} disabled={submitPending} className="btn btn-primary btn-sm">
+              {submitPending ? "Creating…" : "Create with answers"}
+            </button>
+            <button type="button" onClick={onForceCreate} disabled={submitPending} className="btn btn-ghost btn-sm">
+              Skip — create anyway
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       <div className="flex items-center justify-end gap-3 md:col-span-2 pt-3 border-t border-border">
         <Link href="/tasks" className="btn btn-ghost">Cancel</Link>
-        <button type="submit" disabled={submitPending} className="btn btn-primary disabled:opacity-60">
-          {submitPending ? "Creating…" : "Create task"}
+        <button
+          type="submit"
+          disabled={submitPending || checkingClarity}
+          className="btn btn-primary disabled:opacity-60"
+        >
+          {checkingClarity ? (
+            <>
+              <span className="suggest-spinner" aria-hidden="true" />
+              Reviewing…
+            </>
+          ) : submitPending ? (
+            "Creating…"
+          ) : (
+            "Create task"
+          )}
         </button>
       </div>
     </form>

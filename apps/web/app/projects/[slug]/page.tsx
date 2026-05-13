@@ -7,6 +7,7 @@ import { isAdmin, getDepartmentScope } from "@/lib/access";
 import { StatusSelect, AssigneeSelect } from "../../tasks/inline-controls";
 import { createTask } from "../../tasks/actions";
 import { ProjectBanner } from "../project-banner";
+import { ProjectIconUpload } from "../project-icon-upload";
 import { ProjectPulse } from "./project-pulse";
 import { ProjectSummaryCard } from "./project-summary-card";
 
@@ -54,6 +55,7 @@ export default async function ProjectDetailPage({ params }: PageProps) {
       name: projects.name,
       description: projects.description,
       color: projects.color,
+      iconUrl: projects.iconUrl,
       bannerUrl: projects.bannerUrl,
       productSlug: products.slug,
       ownerName: users.name,
@@ -128,11 +130,16 @@ export default async function ProjectDetailPage({ params }: PageProps) {
       <div className="page-head" style={{ marginTop: 16 }}>
         <div className="min-w-0">
           <div className="flex items-center gap-3 mb-1">
-            <span
-              className="inline-block w-3 h-3 rounded-full shrink-0"
-              style={{ backgroundColor: project.color ?? "var(--text-3)" }}
-            />
+            {project.iconUrl ? (
+              <img src={project.iconUrl} alt="" className="project-icon-lg" />
+            ) : (
+              <span
+                className="inline-block w-3 h-3 rounded-full shrink-0"
+                style={{ backgroundColor: project.color ?? "var(--text-3)" }}
+              />
+            )}
             <div className="page-title truncate">{project.name}</div>
+            {canSeeAll ? <ProjectIconUpload slug={project.slug} currentIcon={project.iconUrl} /> : null}
             {project.productSlug ? (
               <span className={`pchip ${project.productSlug}`}>{project.productSlug}</span>
             ) : null}
