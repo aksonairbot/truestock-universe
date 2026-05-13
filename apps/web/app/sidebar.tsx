@@ -53,7 +53,7 @@ export default function Sidebar({
         <NavLink href="/me/week" active={isActive("/me")} icon={<IcSpark />}>
           My week
         </NavLink>
-        <NavLink href="/month" active={isActive("/month")} icon={<IcCalendar />}>
+        <NavLink href="/me/month" active={isActive("/me/month")} icon={<IcCalendar />}>
           Month
         </NavLink>
         <NavLink href="/tasks" active={isActive("/tasks")} icon={<IcTasks />}>
