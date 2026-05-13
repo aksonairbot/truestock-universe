@@ -21,6 +21,9 @@ import {
   desc,
   sql,
 } from "@tu/db";
+import { getCurrentUser } from "@/lib/auth";
+import { toggleMemberActive } from "../actions";
+import { RoleSelect } from "../role-select";
 
 export const dynamic = "force-dynamic";
 
@@ -94,6 +97,8 @@ export default async function MemberProfilePage({ params, searchParams }: PagePr
   const win: 7 | 30 = windowRaw === "30" ? 30 : 7;
 
   const db = getDb();
+  const me = await getCurrentUser();
+  const isAdmin = me.role === "admin";
 
   const [user] = await db.select().from(users).where(eq(users.id, id)).limit(1);
   if (!user) notFound();
@@ -260,11 +265,28 @@ export default async function MemberProfilePage({ params, searchParams }: PagePr
           <div className="profile-meta">
             <span className="mono">{user.email}</span>
             <span> · </span>
-            <span style={{ color: ROLE_TONE[user.role] }}>{ROLE_LABEL[user.role] ?? user.role}</span>
+            {isAdmin ? (
+              <RoleSelect memberId={user.id} currentRole={user.role} />
+            ) : (
+              <span style={{ color: ROLE_TONE[user.role] }}>{ROLE_LABEL[user.role] ?? user.role}</span>
+            )}
             <span> · {user.timezone}</span>
+            {!user.isActive && <span style={{ color: "var(--danger)" }}> · Deactivated</span>}
           </div>
         </div>
         <div className="flex items-center gap-1">
+          {isAdmin && me.id !== user.id && (
+            <form action={toggleMemberActive}>
+              <input type="hidden" name="memberId" value={user.id} />
+              <button
+                type="submit"
+                className="btn btn-ghost btn-sm"
+                style={{ color: user.isActive ? "var(--danger)" : "var(--success)" }}
+              >
+                {user.isActive ? "Deactivate" : "Reactivate"}
+              </button>
+            </form>
+          )}
           <Link
             href={`/members/${id}?window=7`}
             className={`btn btn-ghost btn-sm ${win === 7 ? "is-active" : ""}`}

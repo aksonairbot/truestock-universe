@@ -32,6 +32,15 @@ export async function getCurrentUser(): Promise<User> {
   return u;
 }
 
+/** Same as getCurrentUser but returns null instead of throwing. */
+export async function tryGetCurrentUser(): Promise<User | null> {
+  try {
+    return await getCurrentUser();
+  } catch {
+    return null;
+  }
+}
+
 export async function getCurrentUserId(): Promise<string> {
   return (await getCurrentUser()).id;
 }
