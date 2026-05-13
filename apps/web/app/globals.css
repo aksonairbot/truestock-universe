@@ -1134,6 +1134,236 @@ select:focus {
 }
 
 /* ----------------------------------------------------------------------- */
+/* My Day hero (home page personal section)                                */
+/* ----------------------------------------------------------------------- */
+
+.myday {
+  margin-bottom: 28px;
+}
+
+.myday-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 14px;
+  animation: tu-fade-in 0.35s ease-out both;
+}
+.myday-greeting {
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+.myday-date {
+  font-size: 12px;
+  color: var(--text-3);
+  margin-top: 2px;
+}
+
+.streak-chip {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px 6px 10px;
+  background: rgba(245, 184, 74, 0.10);
+  border: 1px solid rgba(245, 184, 74, 0.30);
+  border-radius: 999px;
+  font-size: 13px;
+  color: var(--text);
+}
+.streak-chip.streak-hot {
+  background: rgba(248, 113, 113, 0.12);
+  border-color: rgba(248, 113, 113, 0.38);
+}
+.streak-flame {
+  font-size: 16px;
+  filter: drop-shadow(0 0 4px rgba(245, 184, 74, 0.6));
+}
+.streak-chip.streak-hot .streak-flame {
+  animation: streak-pulse 1.6s ease-in-out infinite;
+}
+@keyframes streak-pulse {
+  0%, 100% { transform: scale(1); filter: drop-shadow(0 0 4px rgba(248, 113, 113, 0.5)); }
+  50%      { transform: scale(1.18); filter: drop-shadow(0 0 8px rgba(248, 113, 113, 0.8)); }
+}
+.streak-n { font-weight: 600; font-variant-numeric: tabular-nums; }
+.streak-label { color: var(--text-3); }
+
+/* ------ stats row ------ */
+.myday-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 16px;
+}
+@media (max-width: 720px) {
+  .myday-stats { grid-template-columns: repeat(2, 1fr); }
+}
+.myday-stat {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  animation: tu-fade-in 0.35s ease-out both;
+}
+.myday-stat:nth-child(1) { animation-delay: 30ms; }
+.myday-stat:nth-child(2) { animation-delay: 80ms; }
+.myday-stat:nth-child(3) { animation-delay: 130ms; }
+.myday-stat:nth-child(4) { animation-delay: 180ms; }
+.myday-stat-label {
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  margin-bottom: 4px;
+}
+.myday-stat-val {
+  font-size: 24px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+/* ------ four-up cards ------ */
+.myday-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+@media (max-width: 900px) {
+  .myday-grid { grid-template-columns: 1fr; }
+}
+.myday-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  animation: tu-fade-in 0.35s ease-out both;
+}
+.myday-card.stagger-1 { animation-delay: 80ms; }
+.myday-card.stagger-2 { animation-delay: 140ms; }
+.myday-card.stagger-3 { animation-delay: 200ms; }
+.myday-card.stagger-4 { animation-delay: 260ms; }
+
+.myday-card-h {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-3);
+  margin: 0 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.myday-task-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.myday-task {
+  padding: 7px 8px;
+  border-radius: 8px;
+  background: transparent;
+  transition: background 0.15s ease;
+}
+.myday-task:hover { background: var(--hover); }
+.myday-task-title {
+  display: block;
+  color: var(--text);
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.myday-task-title:hover { color: var(--accent-2); }
+.myday-task-title.done { color: var(--text-3); }
+.myday-task-title.done .myday-check { color: var(--success); margin-right: 6px; }
+.myday-task-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--text-3);
+}
+.myday-due { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 11px; }
+.myday-due.overdue { color: var(--danger); font-weight: 600; }
+.myday-due.today   { color: var(--accent-2); font-weight: 500; }
+
+/* compact priority chip used in the My Day cards */
+.prio-chip {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 4px;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: lowercase;
+  border: 1px solid transparent;
+}
+.prio-chip.prio-low    { color: var(--text-3); background: rgba(255,255,255,0.04); }
+.prio-chip.prio-med    { color: var(--text-2); background: rgba(255,255,255,0.06); }
+.prio-chip.prio-high   { color: #F5B84A; background: rgba(245, 184, 74, 0.14); }
+.prio-chip.prio-urgent { color: #FCA5A5; background: rgba(248, 113, 113, 0.16); }
+
+/* ------ quick capture result chip ------ */
+.capture-result {
+  background:
+    linear-gradient(90deg, rgba(74,222,128,0.10), rgba(34,211,238,0.06));
+  border: 1px solid rgba(74, 222, 128, 0.30);
+  border-radius: 10px;
+  padding: 10px 12px;
+  animation: tu-fade-in 0.22s ease-out;
+}
+.capture-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--success);
+  color: #0B0D12;
+  font-weight: 700;
+  font-size: 11px;
+}
+
+/* ------ Suggest sparkle ------ */
+.suggest-sparkle {
+  display: inline-block;
+  font-size: 13px;
+}
+.myday-card-h .suggest-sparkle {
+  animation: sparkle-tilt 3.6s ease-in-out infinite;
+}
+@keyframes sparkle-tilt {
+  0%, 92%, 100% { transform: rotate(0) scale(1); opacity: 1; }
+  94% { transform: rotate(-8deg) scale(1.12); opacity: 0.9; }
+  96% { transform: rotate(6deg) scale(1.08); opacity: 1; }
+}
+
+/* Spacer/title for the demoted Team rollup so it reads as secondary */
+.team-head { margin-top: 24px; border-top: 1px dashed var(--border); padding-top: 16px; }
+.team-head .page-title { font-size: 18px; color: var(--text-2); }
+
+/* Respect reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+  .myday-head, .myday-stat, .myday-card, .capture-result {
+    animation: none;
+  }
+  .streak-chip.streak-hot .streak-flame, .myday-card-h .suggest-sparkle {
+    animation: none;
+  }
+}
+
+/* ----------------------------------------------------------------------- */
 /* Members workload table — sortable headers + busy chips                  */
 /* ----------------------------------------------------------------------- */
 
