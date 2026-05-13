@@ -23,6 +23,8 @@
 //   DEEPSEEK_API_KEY         sk-...
 //   DEEPSEEK_DEFAULT_MODEL   e.g. deepseek-chat
 
+import { log } from "@/lib/log";
+
 export type DataSensitivity = "internal" | "sensitive";
 export type ProviderName = "ollama" | "anthropic" | "deepseek";
 
@@ -74,38 +76,39 @@ class LLMError extends Error {
 
 export const llm = {
   async complete(req: CompletionRequest): Promise<CompletionResponse> {
-    const provider = req.provider ?? pickProvider(req.sensitivity ?? "internal");
-    if (!provider) {
+    const sensitivity = req.sensitivity ?? "internal";
+
+    // If a specific provider is forced, use only that one (no fallback).
+    if (req.provider) {
+      return callWithProvider(req, req.provider);
+    }
+
+    // Build ordered fallback chain based on sensitivity.
+    const chain = providerChain(sensitivity);
+    if (chain.length === 0) {
       throw new LLMError(
-        `no LLM provider available for sensitivity=${req.sensitivity ?? "internal"}. ` +
+        `no LLM provider available for sensitivity=${sensitivity}. ` +
           `set OLLAMA_BASE_URL, ANTHROPIC_API_KEY, or DEEPSEEK_API_KEY in .env`,
       );
     }
-    const started = Date.now();
-    let raw: { text: string; model: string; promptTokens?: number; completionTokens?: number };
-    try {
-      if (provider === "ollama") raw = await callOllama(req);
-      else if (provider === "anthropic") raw = await callAnthropic(req);
-      else raw = await callDeepseek(req);
-    } catch (e) {
-      throw new LLMError(`${provider} call failed: ${(e as Error).message}`, provider);
+
+    let lastError: Error | null = null;
+    for (const provider of chain) {
+      try {
+        return await callWithProvider(req, provider);
+      } catch (e) {
+        lastError = e as Error;
+        log.warn("llm.fallback", {
+          failedProvider: provider,
+          error: (e as Error).message,
+          nextProvider: chain[chain.indexOf(provider) + 1] ?? "none",
+        });
+      }
     }
-    const out: CompletionResponse = {
-      text: raw.text,
-      provider,
-      model: raw.model,
-      usage: {
-        promptTokens: raw.promptTokens,
-        completionTokens: raw.completionTokens,
-        durationMs: Date.now() - started,
-      },
-    };
-    if (req.jsonSchema) {
-      const json = extractJson(raw.text);
-      if (json !== undefined) out.parsed = json;
-      else out.parseError = "model output did not contain valid JSON";
-    }
-    return out;
+    throw new LLMError(
+      `all providers failed (tried ${chain.join(" → ")}): ${lastError?.message}`,
+      chain[chain.length - 1],
+    );
   },
 
   /** Quick capability check — returns the list of provider names available right now. */
@@ -122,21 +125,52 @@ export const llm = {
 // Routing
 // ---------------------------------------------------------------------------
 
-function pickProvider(sensitivity: DataSensitivity): ProviderName | null {
+/** Returns an ordered list of providers to try, based on sensitivity + what's configured. */
+function providerChain(sensitivity: DataSensitivity): ProviderName[] {
   const haveOllama = !!process.env.OLLAMA_BASE_URL;
   const haveAnthropic = !!process.env.ANTHROPIC_API_KEY;
   const haveDeepseek = !!process.env.DEEPSEEK_API_KEY;
 
+  const chain: ProviderName[] = [];
   if (sensitivity === "sensitive") {
-    if (haveAnthropic) return "anthropic";
-    if (haveDeepseek) return "deepseek";
-    return null;
+    if (haveAnthropic) chain.push("anthropic");
+    if (haveDeepseek) chain.push("deepseek");
+  } else {
+    // internal — ollama first, then deepseek, then anthropic
+    if (haveOllama) chain.push("ollama");
+    if (haveDeepseek) chain.push("deepseek");
+    if (haveAnthropic) chain.push("anthropic");
   }
-  // internal
-  if (haveOllama) return "ollama";
-  if (haveDeepseek) return "deepseek";
-  if (haveAnthropic) return "anthropic";
-  return null;
+  return chain;
+}
+
+/** Execute a single provider call and wrap the result. */
+async function callWithProvider(req: CompletionRequest, provider: ProviderName): Promise<CompletionResponse> {
+  const started = Date.now();
+  let raw: { text: string; model: string; promptTokens?: number; completionTokens?: number };
+  try {
+    if (provider === "ollama") raw = await callOllama(req);
+    else if (provider === "anthropic") raw = await callAnthropic(req);
+    else raw = await callDeepseek(req);
+  } catch (e) {
+    throw new LLMError(`${provider} call failed: ${(e as Error).message}`, provider);
+  }
+  const out: CompletionResponse = {
+    text: raw.text,
+    provider,
+    model: raw.model,
+    usage: {
+      promptTokens: raw.promptTokens,
+      completionTokens: raw.completionTokens,
+      durationMs: Date.now() - started,
+    },
+  };
+  if (req.jsonSchema) {
+    const json = extractJson(raw.text);
+    if (json !== undefined) out.parsed = json;
+    else out.parseError = "model output did not contain valid JSON";
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------

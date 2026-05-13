@@ -986,6 +986,30 @@ export const dailyReviewsRelations = relations(dailyReviews, ({ one }) => ({
   }),
 }));
 
+// ---------- ai_knowledge_digests ----------
+//
+// Nightly snapshots of project/team context so every AI call
+// (triage, clarity, reviews) has institutional memory.
+export const aiKnowledgeDigests = pgTable(
+  "ai_knowledge_digests",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    date: date("date").notNull(),
+    scope: text("scope").notNull().default("global"), // 'global' or project slug
+    digest: jsonb("digest").notNull(),
+    summary: text("summary"),
+    generatedAt: timestamp("generated_at", { withTimezone: true }).defaultNow().notNull(),
+    durationMs: integer("duration_ms"),
+    provider: text("provider"),
+    model: text("model"),
+  },
+  (t) => ({
+    uqDateScope: uniqueIndex("uq_digest_date_scope").on(t.date, t.scope),
+    byDate: index("idx_digest_date").on(t.date),
+    byScope: index("idx_digest_scope").on(t.scope, t.date),
+  }),
+);
+
 // ---------- types ----------
 
 export type Product = typeof products.$inferSelect;
@@ -1034,3 +1058,5 @@ export type AiDashboard = typeof aiDashboards.$inferSelect;
 export type NewAiDashboard = typeof aiDashboards.$inferInsert;
 export type DailyReview = typeof dailyReviews.$inferSelect;
 export type NewDailyReview = typeof dailyReviews.$inferInsert;
+export type AiKnowledgeDigest = typeof aiKnowledgeDigests.$inferSelect;
+export type NewAiKnowledgeDigest = typeof aiKnowledgeDigests.$inferInsert;

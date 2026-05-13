@@ -1,10 +1,10 @@
-// apps/web/app/api/cron/daily-review/route.ts
+// apps/web/app/api/cron/knowledge-digest/route.ts
 //
-// Cron endpoint — hit daily at 9 AM IST (03:30 UTC).
-// Protected by a shared secret in the CRON_SECRET env var.
+// Cron endpoint — generates the nightly AI knowledge digest.
+// Run after daily-review, e.g. 9:30 AM IST (04:00 UTC).
+// Protected by the same CRON_SECRET env var.
 
 import { NextRequest, NextResponse } from "next/server";
-import { runDailyReview } from "@/lib/daily-review";
 import { generateKnowledgeDigest } from "@/lib/knowledge-digest";
 import { log } from "@/lib/log";
 
@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
   const secret = req.headers.get("x-cron-secret") ?? req.nextUrl.searchParams.get("secret");
 
   if (!process.env.CRON_SECRET) {
-    log.warn("cron.daily_review.no_secret", { reason: "CRON_SECRET env var not set" });
+    log.warn("cron.knowledge_digest.no_secret", { reason: "CRON_SECRET env var not set" });
     return NextResponse.json({ error: "CRON_SECRET not configured" }, { status: 500 });
   }
 
@@ -24,16 +24,11 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const result = await runDailyReview();
-    // Also refresh the knowledge digest so AI prompts have fresh context
-    const digest = await generateKnowledgeDigest().catch((e) => {
-      log.warn("cron.daily_review.digest_piggyback_failed", { error: (e as Error).message });
-      return { ok: false, error: (e as Error).message };
-    });
-    return NextResponse.json({ ok: true, ...result, digest });
+    const result = await generateKnowledgeDigest();
+    return NextResponse.json(result);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    log.error("cron.daily_review.error", { error: msg });
+    log.error("cron.knowledge_digest.error", { error: msg });
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }
 }

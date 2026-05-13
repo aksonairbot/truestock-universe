@@ -2,6 +2,7 @@
 
 import { llm } from "@/lib/llm";
 import { log } from "@/lib/log";
+import { getDigestContext } from "@/lib/knowledge-digest";
 
 export interface ClarityResult {
   ok: boolean;
@@ -33,11 +34,15 @@ export async function checkTaskClarity(input: {
     return { ok: true, clear: true };
   }
 
+  // Pull institutional knowledge so the model understands team context
+  const digestContext = await getDigestContext();
+
   const system =
     "You are a task clarity reviewer for a small team. " +
     "Your job is to check if a task is clear enough for someone to start working on it. " +
     "A clear task has: a specific outcome, enough context to act without guessing, and scope that's not too wide. " +
-    "Return ONLY valid JSON, no markdown fences.";
+    "Return ONLY valid JSON, no markdown fences." +
+    (digestContext ? `\n\n${digestContext}` : "");
 
   const prompt = `Review this task for clarity:
 
@@ -70,7 +75,6 @@ Rules:
   try {
     const r = await llm.complete({
       sensitivity: "internal",
-      provider: "deepseek",
       system,
       prompt,
       jsonSchema: schema,

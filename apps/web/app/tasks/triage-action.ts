@@ -11,6 +11,7 @@
 import { getDb, projects, users, eq, isNull, sql } from "@tu/db";
 import { llm } from "@/lib/llm";
 import { log } from "@/lib/log";
+import { getDigestContext } from "@/lib/knowledge-digest";
 
 export interface TriageSuggestion {
   projectSlug: string | null;
@@ -89,11 +90,15 @@ export async function suggestTaskMeta(input: {
   const recentAssignees = (recentByAssignee as unknown as Array<{ email: string; n: number }>)
     .map((r) => `${r.email}:${r.n}`).join(", ");
 
+  // Pull institutional knowledge for richer context
+  const digestContext = await getDigestContext();
+
   const system =
     "You are a task-triage assistant for a small fintech startup called Truestock. " +
     "Given a draft task title + optional description, you pick the best project, assignee, " +
     "priority, and due-date offset based on the company's project catalogue and the team's recent work patterns. " +
-    "You return ONLY valid JSON matching the schema, no prose, no markdown fences.";
+    "You return ONLY valid JSON matching the schema, no prose, no markdown fences." +
+    (digestContext ? `\n\n${digestContext}` : "");
 
   const prompt = `New task draft:
 TITLE: ${title}
