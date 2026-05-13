@@ -349,6 +349,7 @@ export const users = pgTable(
     avatarUrl: text("avatar_url"),
     role: userRoleEnum("role").notNull().default("member"),
     managerId: uuid("manager_id"),
+    departmentId: uuid("department_id"),
     /** Product access list — array of product slugs OR ["*"] for all. JSONB
      *  rather than a separate join table because list is short and access is
      *  set per-user, not per-product. */
@@ -364,6 +365,26 @@ export const users = pgTable(
     byEmail: index("users_email_idx").on(t.email),
     byManager: index("users_manager_idx").on(t.managerId),
     byActive: index("users_active_idx").on(t.isActive),
+    byDepartment: index("users_department_idx").on(t.departmentId),
+  }),
+);
+
+// ---------- departments ----------
+//
+// Admin-managed organizational units. Each user belongs to at most one
+// department. A department can have a designated head (manager).
+export const departments = pgTable(
+  "departments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull().unique(),
+    color: text("color"), // hex for badges
+    headId: uuid("head_id"), // FK to users — the department manager
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    byName: uniqueIndex("departments_name_uq").on(t.name),
   }),
 );
 
@@ -658,11 +679,25 @@ export const paymentsRelations = relations(payments, ({ one }) => ({
 
 // ---------- relations for tasks module ----------
 
+export const departmentsRelations = relations(departments, ({ one, many }) => ({
+  head: one(users, {
+    fields: [departments.headId],
+    references: [users.id],
+    relationName: "departmentHead",
+  }),
+  members: many(users, { relationName: "department" }),
+}));
+
 export const usersRelations = relations(users, ({ one, many }) => ({
   manager: one(users, {
     fields: [users.managerId],
     references: [users.id],
     relationName: "manager",
+  }),
+  department: one(departments, {
+    fields: [users.departmentId],
+    references: [departments.id],
+    relationName: "department",
   }),
   reports: many(users, { relationName: "manager" }),
   ownedProjects: many(projects),

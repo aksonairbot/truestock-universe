@@ -16,6 +16,7 @@ import {
   tasks,
   taskComments,
   projects,
+  departments,
   eq,
   and,
   desc,
@@ -26,6 +27,8 @@ import { getCurrentUser } from "@/lib/auth";
 import { isPrivileged } from "@/lib/access";
 import { toggleMemberActive } from "../actions";
 import { RoleSelect } from "../role-select";
+import { DepartmentSelect } from "../department-select";
+import { ManagerSelect } from "../manager-select";
 
 export const dynamic = "force-dynamic";
 
@@ -107,6 +110,18 @@ export default async function MemberProfilePage({ params, searchParams }: PagePr
 
   const [user] = await db.select().from(users).where(eq(users.id, id)).limit(1);
   if (!user) notFound();
+
+  // Department + manager lookups
+  const allDepts = await db.select({ id: departments.id, name: departments.name }).from(departments).orderBy(departments.name);
+  const allUsers = await db.select({ id: users.id, name: users.name }).from(users).where(eq(users.isActive, true));
+
+  const [userDept] = user.departmentId
+    ? await db.select({ name: departments.name, color: departments.color }).from(departments).where(eq(departments.id, user.departmentId)).limit(1)
+    : [undefined];
+
+  const [userManager] = user.managerId
+    ? await db.select({ name: users.name }).from(users).where(eq(users.id, user.managerId)).limit(1)
+    : [undefined];
 
   const today = startOfTodayIST();
   const startWindow = shiftDays(today, -(win - 1));
@@ -277,6 +292,21 @@ export default async function MemberProfilePage({ params, searchParams }: PagePr
             )}
             <span> · {user.timezone}</span>
             {!user.isActive && <span style={{ color: "var(--danger)" }}> · Deactivated</span>}
+          </div>
+          <div className="profile-meta" style={{ marginTop: 4 }}>
+            <span className="text-text-3 text-[11px]">Dept:</span>{" "}
+            {isAdmin ? (
+              <DepartmentSelect memberId={user.id} currentDepartmentId={user.departmentId} departments={allDepts} />
+            ) : (
+              <span style={{ color: userDept?.color ?? "var(--text-2)" }}>{userDept?.name ?? "—"}</span>
+            )}
+            <span> · </span>
+            <span className="text-text-3 text-[11px]">Reports to:</span>{" "}
+            {isAdmin ? (
+              <ManagerSelect memberId={user.id} currentManagerId={user.managerId} users={allUsers} />
+            ) : (
+              <span>{userManager?.name ?? "—"}</span>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-1">

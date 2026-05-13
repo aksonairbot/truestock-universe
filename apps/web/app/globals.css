@@ -1509,6 +1509,18 @@ select:focus {
   font-size: 12px;
   color: var(--text-3);
 }
+.inline-select {
+  background: var(--panel-2);
+  border: 1px solid var(--border-2);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 12px;
+  color: var(--text);
+  cursor: pointer;
+  outline: none;
+}
+.inline-select:hover { border-color: var(--accent); }
+.inline-select:focus { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 
 .profile-stats {
   display: grid;
@@ -2083,10 +2095,7 @@ select:focus {
   align-items: center;
   gap: 10px;
   padding: 6px 8px;
-  border-top: 1px dashed var(--border);
-  margin-top: 4px;
 }
-.subtask-add-row .acheck { opacity: 0.4; cursor: default; }
 .subtask-add-input {
   flex: 1;
   border: 0;
@@ -2112,6 +2121,24 @@ select:focus {
 .subtask-assignee-select:hover { border-color: var(--accent); }
 .subtask-assignee-select:focus { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 .subtask-add-row .subtask-assignee-select { max-width: 140px; }
+.subtask-add-form {
+  border-top: 1px dashed var(--border);
+  margin-top: 4px;
+}
+.subtask-save-btn {
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--accent);
+  border: none;
+  border-radius: 4px;
+  padding: 3px 12px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  flex-shrink: 0;
+}
+.subtask-save-btn:hover { background: var(--accent-2); }
+.subtask-save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* ----------------------------------------------------------------------- */
 /* Duration insight chip                                                   */

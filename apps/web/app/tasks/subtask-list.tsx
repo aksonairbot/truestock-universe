@@ -264,33 +264,39 @@ export function SubtaskList({
           <ul className="subtask-list">
             {view.map((s) => <SubtaskRow key={s.id} s={s} users={users} />)}
           </ul>
-          <form onSubmit={onAdd} className="subtask-add-row">
-            <button type="submit" className="acheck" aria-label="Add subtask" tabIndex={-1} disabled>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="11" height="11">
-                <path d="M12 5v14M5 12h14" />
-              </svg>
-            </button>
-            <input
-              ref={inputRef}
-              type="text"
-              placeholder={pending ? "Adding…" : "Add a subtask…"}
-              className="subtask-add-input"
-              autoComplete="off"
-              maxLength={250}
-              disabled={pending}
-            />
-            <select
-              className="subtask-assignee-select"
-              value={selectedAssignee}
-              onChange={(e) => setSelectedAssignee(e.target.value)}
-              disabled={pending}
-              title="Assign to"
-            >
-              <option value="">Assign to…</option>
-              {users.map((u) => (
-                <option key={u.id} value={u.id}>{u.name}</option>
-              ))}
-            </select>
+          <form onSubmit={onAdd} className="subtask-add-form">
+            <div className="subtask-add-row">
+              <input
+                ref={inputRef}
+                type="text"
+                placeholder={pending ? "Adding…" : "Add a subtask…"}
+                className="subtask-add-input"
+                autoComplete="off"
+                maxLength={250}
+                disabled={pending}
+              />
+            </div>
+            <div className="subtask-add-row" style={{ paddingTop: 0 }}>
+              <select
+                className="subtask-assignee-select"
+                value={selectedAssignee}
+                onChange={(e) => setSelectedAssignee(e.target.value)}
+                disabled={pending}
+                title="Assign to"
+              >
+                <option value="">Assign to…</option>
+                {users.map((u) => (
+                  <option key={u.id} value={u.id}>{u.name}</option>
+                ))}
+              </select>
+              <button
+                type="submit"
+                className="subtask-save-btn"
+                disabled={pending}
+              >
+                {pending ? "Saving…" : "Save"}
+              </button>
+            </div>
           </form>
         </>
       )}

@@ -18,10 +18,10 @@
 
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getDb, users, tasks, taskComments, eq, and, desc, asc, sql } from "@tu/db";
+import { getDb, users, tasks, taskComments, departments, eq, and, desc, asc, sql } from "@tu/db";
 import { getCurrentUser } from "@/lib/auth";
 import { isPrivileged } from "@/lib/access";
-import { createMember } from "./actions";
+import { createMember, createDepartment } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -76,7 +76,19 @@ export default async function MembersPage({ searchParams }: PageProps) {
   const start30d = new Date(startToday);
   start30d.setDate(start30d.getDate() - 29);
 
+  const deptRows = await db.select().from(departments).orderBy(departments.name);
+  const deptMap = new Map(deptRows.map((d) => [d.id, d]));
+  const managerMap = new Map<string, string>(); // userId → manager name
+
   const memberRows = await db.select().from(users).orderBy(desc(users.isActive), users.name);
+
+  // Build manager name map
+  for (const u of memberRows) {
+    if (u.managerId) {
+      const mgr = memberRows.find((m) => m.id === u.managerId);
+      if (mgr) managerMap.set(u.id, mgr.name);
+    }
+  }
 
   // ---------------- open + overdue + busy per assignee ----------------
   // Busy formula in SQL keeps it server-side & cheap.
@@ -257,6 +269,8 @@ export default async function MembersPage({ searchParams }: PageProps) {
               <tr>
                 <th><Link href={sortHref("name")} className="th-link">Name{sortArrow("name")}</Link></th>
                 <th><Link href={sortHref("role")} className="th-link">Role{sortArrow("role")}</Link></th>
+                <th>Dept</th>
+                <th>Reports to</th>
                 <th className="text-right"><Link href={sortHref("open")} className="th-link">Open{sortArrow("open")}</Link></th>
                 <th className="text-right"><Link href={sortHref("overdue")} className="th-link">Overdue{sortArrow("overdue")}</Link></th>
                 <th className="text-right"><Link href={sortHref("done1d")} className="th-link">Done today{sortArrow("done1d")}</Link></th>
@@ -269,7 +283,7 @@ export default async function MembersPage({ searchParams }: PageProps) {
             <tbody>
               {augmented.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="text-center py-10 text-text-3">
+                  <td colSpan={11} className="text-center py-10 text-text-3">
                     No members yet. Use the form on the right to add the first one.
                   </td>
                 </tr>
@@ -295,6 +309,22 @@ export default async function MembersPage({ searchParams }: PageProps) {
                         <span className="inline-block rounded-full" style={{ width: 6, height: 6, background: ROLE_TONE[u.role] }} />
                         {ROLE_LABEL[u.role] ?? u.role}
                       </span>
+                    </td>
+                    <td>
+                      {u.departmentId && deptMap.has(u.departmentId) ? (
+                        <span className="text-[11px] font-medium" style={{ color: deptMap.get(u.departmentId)!.color ?? "var(--text-2)" }}>
+                          {deptMap.get(u.departmentId)!.name}
+                        </span>
+                      ) : (
+                        <span className="text-text-4 text-[11px]">—</span>
+                      )}
+                    </td>
+                    <td>
+                      {managerMap.has(u.id) ? (
+                        <span className="text-[11px] text-text-2">{managerMap.get(u.id)}</span>
+                      ) : (
+                        <span className="text-text-4 text-[11px]">—</span>
+                      )}
                     </td>
                     <td className="text-right mono text-[12px]">{u.open || <span className="text-text-4">0</span>}</td>
                     <td className="text-right mono text-[12px]">
@@ -349,6 +379,26 @@ export default async function MembersPage({ searchParams }: PageProps) {
                 <option value="agent">Agent</option>
               </select>
             </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[11px] text-text-3 uppercase tracking-wider">Department</span>
+              <select name="departmentId" defaultValue=""
+                className="bg-panel-2 border border-border-2 rounded-md px-2 py-1.5 text-[13px]">
+                <option value="">None</option>
+                {deptRows.map((d) => (
+                  <option key={d.id} value={d.id}>{d.name}</option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[11px] text-text-3 uppercase tracking-wider">Reports to</span>
+              <select name="managerId" defaultValue=""
+                className="bg-panel-2 border border-border-2 rounded-md px-2 py-1.5 text-[13px]">
+                <option value="">None</option>
+                {memberRows.filter((u) => u.isActive).map((u) => (
+                  <option key={u.id} value={u.id}>{u.name}</option>
+                ))}
+              </select>
+            </label>
             <div className="flex items-center justify-end pt-1">
               <button type="submit" className="btn btn-primary btn-sm">Add member</button>
             </div>
@@ -356,6 +406,47 @@ export default async function MembersPage({ searchParams }: PageProps) {
               Busy = sum over open tasks of priority weight (urgent=4, high=3, med=2, low=1), doubled when overdue. Click any row for the per-person drill-down.
             </div>
           </form>
+
+          {/* departments */}
+          <div className="border-t border-border mt-4 pt-4">
+            <div className="text-[11px] text-text-3 uppercase tracking-wider font-medium mb-3">
+              Departments
+            </div>
+            {deptRows.length === 0 ? (
+              <div className="text-text-3 italic text-[12px] mb-3">No departments yet.</div>
+            ) : (
+              <div className="flex flex-col gap-1.5 mb-3">
+                {deptRows.map((d) => {
+                  const headUser = d.headId ? memberRows.find((u) => u.id === d.headId) : null;
+                  const memberCount = memberRows.filter((u) => u.departmentId === d.id).length;
+                  return (
+                    <div key={d.id} className="flex items-center gap-2 text-[12px]">
+                      <span className="inline-block rounded-full" style={{ width: 8, height: 8, background: d.color ?? "var(--text-3)", flexShrink: 0 }} />
+                      <span className="font-medium" style={{ color: d.color ?? "var(--text)" }}>{d.name}</span>
+                      <span className="text-text-4 ml-auto">{memberCount}</span>
+                      {headUser ? <span className="text-text-3 text-[10px]">→ {headUser.name}</span> : null}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            <form action={createDepartment} className="flex flex-col gap-2">
+              <input name="name" type="text" required placeholder="Department name"
+                className="bg-panel-2 border border-border-2 rounded-md px-3 py-1.5 text-[12px]" />
+              <div className="flex gap-2">
+                <input name="color" type="color" defaultValue="#3B82F6"
+                  className="w-8 h-8 rounded border border-border-2 bg-panel-2 cursor-pointer p-0.5" />
+                <select name="headId" defaultValue=""
+                  className="flex-1 bg-panel-2 border border-border-2 rounded-md px-2 py-1.5 text-[12px]">
+                  <option value="">Head (optional)</option>
+                  {memberRows.filter((u) => u.isActive).map((u) => (
+                    <option key={u.id} value={u.id}>{u.name}</option>
+                  ))}
+                </select>
+              </div>
+              <button type="submit" className="btn btn-primary btn-sm self-end">Add dept</button>
+            </form>
+          </div>
         </aside>
       </div>
     </div>
