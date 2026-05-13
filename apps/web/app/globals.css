@@ -870,42 +870,107 @@ select:focus {
 .daily-hero {
   position: relative;
   width: 100%;
-  aspect-ratio: 22 / 5;
-  min-height: 140px;
-  max-height: 300px;
-  border-radius: 14px;
+  aspect-ratio: 21 / 6;
+  min-height: 160px;
+  max-height: 320px;
+  border-radius: 16px;
   overflow: hidden;
-  margin-bottom: 18px;
+  margin-bottom: 20px;
   background-image: url(/hero/today.webp);
   background-size: cover;
-  background-position: center;
-  animation: tu-fade-in 0.4s ease-out both;
+  background-position: center 40%;
+  animation: tu-fade-in 0.5s ease-out both;
 }
 .daily-hero-fade {
   position: absolute;
   inset: 0;
-  background: linear-gradient(180deg, rgba(8,9,12,0.10) 0%, rgba(8,9,12,0.55) 70%, rgba(8,9,12,0.85) 100%);
+  background:
+    linear-gradient(135deg, rgba(8,9,12,0.75) 0%, rgba(8,9,12,0.35) 50%, rgba(8,9,12,0.15) 100%),
+    linear-gradient(180deg, transparent 40%, rgba(8,9,12,0.6) 100%);
   pointer-events: none;
 }
-.daily-hero-text {
+.daily-hero-content {
   position: absolute;
-  left: 22px;
-  bottom: 16px;
+  inset: 0;
   z-index: 1;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  padding: 24px 28px;
+}
+.daily-hero-left {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 .daily-hero-kicker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-size: 11px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--accent-2);
   font-weight: 600;
-  margin-bottom: 3px;
+  margin-bottom: 4px;
+}
+.daily-hero-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #22D3EE;
+  box-shadow: 0 0 8px rgba(34,211,238,0.6);
+  animation: hero-pulse 2s ease-in-out infinite;
+}
+@keyframes hero-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
 }
 .daily-hero-title {
-  font-size: 22px;
-  font-weight: 500;
-  color: var(--text);
-  letter-spacing: -0.01em;
+  font-size: 32px;
+  font-weight: 600;
+  color: #fff;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  text-shadow: 0 2px 12px rgba(0,0,0,0.4);
+}
+.daily-hero-sub {
+  font-size: 13px;
+  color: var(--text-2);
+  margin-top: 2px;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.4);
+}
+.daily-hero-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 18px;
+  background: rgba(0,0,0,0.4);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px;
+}
+.daily-hero-metric {
+  text-align: center;
+}
+.daily-hero-metric-val {
+  font-size: 24px;
+  font-weight: 600;
+  color: #fff;
+  line-height: 1;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+}
+.daily-hero-metric-label {
+  font-size: 10px;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-top: 3px;
+}
+.daily-hero-metric-sep {
+  width: 1px;
+  height: 28px;
+  background: rgba(255,255,255,0.12);
 }
 
 /* fade-in animation */
@@ -1674,46 +1739,7 @@ select:focus {
 /* ----------------------------------------------------------------------- */
 /* Daily hero (home page top banner)                                       */
 /* ----------------------------------------------------------------------- */
-.daily-hero {
-  position: relative;
-  width: 100%;
-  aspect-ratio: 21 / 6;
-  min-height: 120px;
-  max-height: 220px;
-  border-radius: 14px;
-  overflow: hidden;
-  margin-bottom: 18px;
-  background-image: url(/hero/today.webp);
-  background-size: cover;
-  background-position: center;
-  animation: tu-fade-in 0.4s ease-out both;
-}
-.daily-hero-fade {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(180deg, rgba(8,9,12,0.10) 0%, rgba(8,9,12,0.55) 70%, rgba(8,9,12,0.85) 100%);
-  pointer-events: none;
-}
-.daily-hero-text {
-  position: absolute;
-  left: 22px;
-  bottom: 16px;
-  z-index: 1;
-}
-.daily-hero-kicker {
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--accent-2);
-  font-weight: 600;
-  margin-bottom: 3px;
-}
-.daily-hero-title {
-  font-size: 22px;
-  font-weight: 500;
-  color: var(--text);
-  letter-spacing: -0.01em;
-}
+/* duplicate daily-hero removed — primary block is earlier in file */
 
 /* ----------------------------------------------------------------------- */
 /* Project banner — used on /projects (thumb) and /projects/[slug] (tall)  */

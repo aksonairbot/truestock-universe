@@ -236,9 +236,26 @@ export default async function HomePage({ searchParams }: PageProps) {
     <div className="page-content">
       <div className="daily-hero">
         <div className="daily-hero-fade" />
-        <div className="daily-hero-text">
-          <div className="daily-hero-kicker">Today's view</div>
-          <div className="daily-hero-title">Skynet · Truestock Universe</div>
+        <div className="daily-hero-content">
+          <div className="daily-hero-left">
+            <div className="daily-hero-kicker">
+              <span className="daily-hero-dot" />
+              Today's view
+            </div>
+            <div className="daily-hero-title">SeekPeek</div>
+            <div className="daily-hero-sub">Truestock · {fmtHumanDate(date)}</div>
+          </div>
+          <div className="daily-hero-right">
+            <div className="daily-hero-metric">
+              <div className="daily-hero-metric-val">{totals.completed}</div>
+              <div className="daily-hero-metric-label">closed today</div>
+            </div>
+            <div className="daily-hero-metric-sep" />
+            <div className="daily-hero-metric">
+              <div className="daily-hero-metric-val">{totals.activePeople}</div>
+              <div className="daily-hero-metric-label">active</div>
+            </div>
+          </div>
         </div>
       </div>
 
