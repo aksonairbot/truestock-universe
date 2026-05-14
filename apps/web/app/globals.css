@@ -2178,6 +2178,71 @@ select:focus {
   .project-with-pulse { grid-template-columns: 1fr; }
 }
 
+/* Project snapshot (week/month filter) */
+.snapshot-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.snapshot-count {
+  font-size: 12px;
+  color: var(--text-3);
+}
+.snapshot-summary {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 18px;
+  margin-bottom: 14px;
+}
+.snapshot-stats {
+  display: flex;
+  gap: 24px;
+  margin-bottom: 10px;
+}
+.snapshot-stat-n {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+}
+.snapshot-stat-l {
+  font-size: 11px;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.snapshot-section {
+  margin-top: 8px;
+}
+.snapshot-section-label {
+  font-size: 11px;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+}
+.snapshot-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.snapshot-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  font-size: 12px;
+  background: var(--surface-2);
+  border-radius: 5px;
+  color: var(--text-2);
+}
+.snapshot-chip .mono {
+  color: var(--text-3);
+  font-size: 11px;
+}
+
 .project-pulse {
   background: var(--panel);
   border: 1px solid var(--border);

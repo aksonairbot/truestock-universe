@@ -1,41 +1,18 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getDb, projects, products, tasks, users, eq, and, or, asc, desc, inArray, sql } from "@tu/db";
+import { getDb, projects, products, tasks, users, eq, and, or, asc, desc, inArray, sql, } from "@tu/db";
 import { getCurrentUser } from "@/lib/auth";
 import { isAdmin, getDepartmentScope } from "@/lib/access";
-import { StatusSelect, AssigneeSelect } from "../../tasks/inline-controls";
 import { createTask } from "../../tasks/actions";
 import { ProjectBanner } from "../project-banner";
 import { ProjectIconUpload } from "../project-icon-upload";
 import { ProjectPulse } from "./project-pulse";
 import { ProjectSummaryCard } from "./project-summary-card";
+import { ProjectSnapshot } from "./project-snapshot";
 
 export const dynamic = "force-dynamic";
 
-const STATUS_LABEL: Record<string, string> = {
-  backlog: "Backlog",
-  todo: "To do",
-  in_progress: "In progress",
-  review: "Review",
-  done: "Done",
-  cancelled: "Cancelled",
-};
-const STATUS_DOT: Record<string, string> = {
-  backlog: "var(--text-3)",
-  todo: "#60A5FA",
-  in_progress: "var(--accent)",
-  review: "var(--warning)",
-  done: "var(--success)",
-  cancelled: "var(--text-4)",
-};
-const STATUS_ORDER = ["in_progress", "review", "todo", "backlog", "done", "cancelled"] as const;
-
-function fmtDate(d: string | Date | null): string {
-  if (!d) return "—";
-  const date = typeof d === "string" ? new Date(d) : d;
-  return date.toLocaleDateString("en-IN", { day: "2-digit", month: "short", timeZone: "Asia/Kolkata" });
-}
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -93,6 +70,8 @@ export default async function ProjectDetailPage({ params }: PageProps) {
       status: tasks.status,
       priority: tasks.priority,
       dueDate: tasks.dueDate,
+      completedAt: tasks.completedAt,
+      createdAt: tasks.createdAt,
       assignee: { id: users.id, name: users.name },
     })
     .from(tasks)
@@ -102,13 +81,17 @@ export default async function ProjectDetailPage({ params }: PageProps) {
 
   const allUsers = await db.select({ id: users.id, name: users.name }).from(users);
 
-  const grouped: Record<string, typeof taskRows> = {
-    backlog: [], todo: [], in_progress: [], review: [], done: [], cancelled: [],
-  };
-  for (const t of taskRows) {
-    const bucket = grouped[t.status] ?? grouped.todo;
-    if (bucket) bucket.push(t);
-  }
+  // Serialize for the client snapshot component
+  const snapshotTasks = taskRows.map((t) => ({
+    id: t.id,
+    title: t.title,
+    status: t.status,
+    priority: t.priority,
+    dueDate: t.dueDate ? new Date(t.dueDate).toISOString() : null,
+    completedAt: t.completedAt ? new Date(t.completedAt).toISOString() : null,
+    createdAt: new Date(t.createdAt).toISOString(),
+    assigneeName: t.assignee?.name ?? null,
+  }));
 
   return (
     <div className="page-content">
@@ -194,52 +177,7 @@ export default async function ProjectDetailPage({ params }: PageProps) {
 
       <div className="project-with-pulse">
       <div className="project-with-pulse-main">
-      {taskRows.length === 0 ? (
-        <div className="card text-center py-16 text-text-2">
-          No tasks in this project yet — use the quick-add above.
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {STATUS_ORDER.map((s) => {
-            const items = grouped[s] ?? [];
-            if (items.length === 0) return null;
-            return (
-              <div key={s} className="card p-0 overflow-hidden">
-                <div className="px-4 py-2.5 bg-panel-2 border-b border-border text-[11px] uppercase tracking-wider text-text-3 font-semibold flex items-center gap-2">
-                  <span
-                    className="inline-block rounded-full"
-                    style={{ width: 8, height: 8, background: STATUS_DOT[s] }}
-                  />
-                  {STATUS_LABEL[s]} <span className="text-text-4 font-normal">· {items.length}</span>
-                </div>
-                <table className="tbl">
-                  <tbody>
-                    {items.map((t) => (
-                      <tr key={t.id}>
-                        <td>
-                          <Link href={`/tasks/${t.id}`} className="font-medium hover:text-accent-2">
-                            {t.title}
-                          </Link>
-                        </td>
-                        <td className="w-44">
-                          <AssigneeSelect taskId={t.id} assigneeId={t.assignee?.id ?? null} users={allUsers} />
-                        </td>
-                        <td className="w-40">
-                          <StatusSelect taskId={t.id} status={t.status} />
-                        </td>
-                        <td className="w-20">
-                          <span className={`prio ${t.priority}`}>{t.priority}</span>
-                        </td>
-                        <td className="w-20 mono text-[11.5px] text-text-2">{fmtDate(t.dueDate)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            );
-          })}
-        </div>
-      )}
+        <ProjectSnapshot allTasks={snapshotTasks} />
       </div>
       <Suspense fallback={<div className="card text-text-3 text-[12px] py-3 px-4">Loading pulse…</div>}>
         <ProjectPulse projectId={project.id} />
