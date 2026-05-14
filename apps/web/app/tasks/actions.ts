@@ -116,7 +116,9 @@ export async function updateTaskStatus(formData: FormData): Promise<void> {
       await notifyTaskCompleted({ creatorId: t.creatorId, actorId: me, taskId, taskTitle: t.title });
     }
     // Award badges (fire-and-forget — don't block the UI)
-    checkAndAwardBadges(me, "task_completed", { taskId, projectId: t?.projectId }).catch(() => {});
+    checkAndAwardBadges(me, "task_completed", { taskId, projectId: t?.projectId }).catch((e) => {
+      log.error("badge.check_failed", { userId: me, taskId, error: (e as Error).message, stack: (e as Error).stack });
+    });
   }
   if (statusRaw === "review") {
     const [t] = await db
@@ -186,7 +188,9 @@ export async function addComment(formData: FormData): Promise<void> {
     }
   }
   // Award badges for commenting (fire-and-forget)
-  checkAndAwardBadges(userId, "comment_posted", { taskId }).catch(() => {});
+  checkAndAwardBadges(userId, "comment_posted", { taskId }).catch((e) => {
+    log.error("badge.check_failed", { userId, taskId, error: (e as Error).message, stack: (e as Error).stack });
+  });
 
   revalidatePath(`/tasks/${taskId}`);
 }
