@@ -7,6 +7,7 @@ import { getCurrentUserId } from "@/lib/auth";
 import { log } from "@/lib/log";
 import { notifyAssigned, notifyTaskCompleted, notifyCommentOnAssigned, notifyMentions, notifyReviewRequested } from "@/lib/notify";
 import { offsetToDeadline, deadlineToDateStr } from "@/lib/worktime";
+import { checkAndAwardBadges } from "@/lib/badges";
 
 const TASK_STATUSES = ["backlog", "todo", "in_progress", "review", "done", "cancelled"] as const;
 const TASK_PRIORITIES = ["low", "med", "high", "urgent"] as const;
@@ -107,13 +108,15 @@ export async function updateTaskStatus(formData: FormData): Promise<void> {
   const me = await getCurrentUserId();
   if (statusRaw === "done") {
     const [t] = await db
-      .select({ creatorId: tasks.createdById, title: tasks.title })
+      .select({ creatorId: tasks.createdById, title: tasks.title, projectId: tasks.projectId })
       .from(tasks)
       .where(eq(tasks.id, taskId))
       .limit(1);
     if (t && t.creatorId !== me) {
       await notifyTaskCompleted({ creatorId: t.creatorId, actorId: me, taskId, taskTitle: t.title });
     }
+    // Award badges (fire-and-forget — don't block the UI)
+    checkAndAwardBadges(me, "task_completed", { taskId, projectId: t?.projectId }).catch(() => {});
   }
   if (statusRaw === "review") {
     const [t] = await db
@@ -182,6 +185,9 @@ export async function addComment(formData: FormData): Promise<void> {
       });
     }
   }
+  // Award badges for commenting (fire-and-forget)
+  checkAndAwardBadges(userId, "comment_posted", { taskId }).catch(() => {});
+
   revalidatePath(`/tasks/${taskId}`);
 }
 

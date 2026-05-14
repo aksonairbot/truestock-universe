@@ -29,6 +29,7 @@ import { toggleMemberActive, updateMemberPhone } from "../actions";
 import { RoleSelect } from "../role-select";
 import { DepartmentSelect } from "../department-select";
 import { ManagerSelect } from "../manager-select";
+import { BadgeShelf } from "../../badge-shelf";
 
 export const dynamic = "force-dynamic";
 
@@ -391,6 +392,11 @@ export default async function MemberProfilePage({ params, searchParams }: PagePr
             </span>
           </div>
         </div>
+      </div>
+
+      {/* badges */}
+      <div className="card" style={{ padding: 14, marginBottom: 12 }}>
+        <BadgeShelf userId={id} showLocked={me.id === id} />
       </div>
 
       <div className="profile-cols">

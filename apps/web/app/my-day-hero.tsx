@@ -12,6 +12,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { getDb, tasks, taskComments, projects, eq, and, sql, desc } from "@tu/db";
 import { CountUp } from "./count-up";
 import { QuickCapture } from "./quick-capture";
+import { BadgeShelf } from "./badge-shelf";
 
 const TZ = "Asia/Kolkata";
 const PRIORITY_WEIGHT: Record<string, number> = { urgent: 4, high: 3, med: 2, low: 1 };
@@ -277,6 +278,8 @@ export async function MyDayHero() {
           <div className="myday-stat-val"><CountUp value={lifetimeClosed} /></div>
         </div>
       </div>
+
+      <BadgeShelf userId={me.id} compact />
 
       <div className="myday-grid">
         {/* ----- top priorities ----- */}

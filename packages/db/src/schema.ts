@@ -1010,6 +1010,33 @@ export const aiKnowledgeDigests = pgTable(
   }),
 );
 
+// ---------- user_badges ----------
+//
+// Achievement badges earned by users. One row per user per badge.
+// Badge definitions live in app code (lib/badges.ts), not in the DB.
+export const userBadges = pgTable(
+  "user_badges",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    badgeKey: text("badge_key").notNull(),
+    awardedAt: timestamp("awarded_at", { withTimezone: true }).defaultNow().notNull(),
+    meta: jsonb("meta"), // context like { taskId, projectSlug, count }
+  },
+  (t) => ({
+    uqUserBadge: uniqueIndex("uq_user_badge").on(t.userId, t.badgeKey),
+    byUser: index("idx_badges_user").on(t.userId, t.awardedAt),
+    byKey: index("idx_badges_key").on(t.badgeKey),
+  }),
+);
+
+export const userBadgesRelations = relations(userBadges, ({ one }) => ({
+  user: one(users, {
+    fields: [userBadges.userId],
+    references: [users.id],
+  }),
+}));
+
 // ---------- types ----------
 
 export type Product = typeof products.$inferSelect;
@@ -1058,5 +1085,7 @@ export type AiDashboard = typeof aiDashboards.$inferSelect;
 export type NewAiDashboard = typeof aiDashboards.$inferInsert;
 export type DailyReview = typeof dailyReviews.$inferSelect;
 export type NewDailyReview = typeof dailyReviews.$inferInsert;
+export type UserBadge = typeof userBadges.$inferSelect;
+export type NewUserBadge = typeof userBadges.$inferInsert;
 export type AiKnowledgeDigest = typeof aiKnowledgeDigests.$inferSelect;
 export type NewAiKnowledgeDigest = typeof aiKnowledgeDigests.$inferInsert;
