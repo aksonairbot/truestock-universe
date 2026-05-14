@@ -159,10 +159,11 @@ export async function createGroupChannel(name: string, memberIds: string[]): Pro
   const userId = await getCurrentUserId();
   const db = getDb();
 
-  const [channel] = await db
+  const chRows = await db
     .insert(chatChannels)
     .values({ name, type: "group", createdById: userId })
     .returning();
+  const channel = chRows[0]!;
 
   // Add creator + members
   const allMembers = new Set([userId, ...memberIds]);
@@ -193,10 +194,11 @@ export async function getOrCreateDM(otherUserId: string): Promise<{ id: string }
   if (existingRow) return { id: existingRow.id };
 
   // Create new DM
-  const [channel] = await db
+  const dmRows = await db
     .insert(chatChannels)
     .values({ type: "dm", createdById: userId })
     .returning();
+  const channel = dmRows[0]!;
 
   await db.insert(chatChannelMembers).values([
     { channelId: channel.id, userId },
