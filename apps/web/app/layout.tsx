@@ -6,6 +6,11 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "SeekPeek · Truestock",
   description: "SeekPeek — internal task management for Truestock",
+  icons: {
+    icon: "/favicon.ico",
+    apple: "/apple-icon.png",
+  },
+  manifest: "/manifest.json",
 };
 
 async function getSidebarData() {
