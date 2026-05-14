@@ -209,6 +209,40 @@ export default async function HomePage({ searchParams }: PageProps) {
   const openMap = new Map<string, number>();
   for (const r of openLoad) if (r.assigneeId) openMap.set(r.assigneeId, r.n);
 
+  // ---------- hero stat cards data ----------
+  const [dueTodayRow] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(tasks)
+    .where(and(eq(tasks.dueDate, date), sql`${tasks.status} not in ('done','cancelled')`));
+  const dueToday = dueTodayRow?.n ?? 0;
+
+  const [inProgressRow] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(tasks)
+    .where(and(sql`${tasks.status} = 'in_progress'`));
+  const inProgress = inProgressRow?.n ?? 0;
+
+  // Week completed (Mon-Sun window)
+  const nowIST = new Date();
+  const dayOfWeek = parseInt(new Intl.DateTimeFormat("en-US", { timeZone: TZ, weekday: "short" }).format(nowIST) === "Sun" ? "7" : new Intl.DateTimeFormat("en-US", { timeZone: TZ, weekday: "narrow" }).format(nowIST), 10);
+  const mondayStr = shiftDate(today, -(new Date(`${today}T12:00:00+05:30`).getDay() || 7) + 1);
+  const weekStart = new Date(`${mondayStr}T00:00:00+05:30`);
+  const [weekCompRow] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(tasks)
+    .where(and(eq(tasks.status, "done"), sql`${tasks.completedAt} >= ${weekStart.toISOString()}`));
+  const weekCompleted = weekCompRow?.n ?? 0;
+
+  // Focus score: completed / (completed + overdue open) as percentage
+  const [overdueRow] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(tasks)
+    .where(and(sql`${tasks.status} not in ('done','cancelled')`, sql`${tasks.dueDate} < ${date}`));
+  const overdueTasks = overdueRow?.n ?? 0;
+  const focusScore = weekCompleted + overdueTasks > 0
+    ? Math.round((weekCompleted / (weekCompleted + overdueTasks)) * 100)
+    : 100;
+
   // ---------- bucket per user ----------
   // (Bucket type is declared at module scope so PersonTile can consume it.)
   const buckets = new Map<string, Bucket>();
@@ -251,23 +285,85 @@ export default async function HomePage({ searchParams }: PageProps) {
       <div className="daily-hero">
         <div className="daily-hero-fade" />
         <div className="daily-hero-content">
-          <div className="daily-hero-left">
-            <div className="daily-hero-kicker">
-              <span className="daily-hero-dot" />
-              Today's view
+          {/* top row */}
+          <div className="daily-hero-top">
+            <div className="daily-hero-left">
+              <div className="daily-hero-kicker">
+                <span className="daily-hero-dot" />
+                Today's view
+              </div>
+              <div className="daily-hero-title">SeekPeek</div>
+              <div className="daily-hero-tagline">Plan better. Prioritize smarter. Deliver more.</div>
+              <div className="daily-hero-date">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" /></svg>
+                {fmtHumanDate(date)}
+              </div>
+              <div className="daily-hero-inline-stats">
+                <div className="daily-hero-istat">
+                  <div className="daily-hero-istat-icon closed">
+                    <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"/></svg>
+                  </div>
+                  <div>
+                    <div className="daily-hero-istat-val">{totals.completed}</div>
+                    <div className="daily-hero-istat-label">Closed today</div>
+                  </div>
+                </div>
+                <div className="daily-hero-istat">
+                  <div className="daily-hero-istat-icon active">
+                    <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16"><path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v1h8v-1zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-1a5.97 5.97 0 00-.75-2.91A3.97 3.97 0 0119 17v1h-3zM4.75 14.09A5.97 5.97 0 004 17v1H1v-1a3.97 3.97 0 013.75-3.91z"/></svg>
+                  </div>
+                  <div>
+                    <div className="daily-hero-istat-val">{totals.activePeople}</div>
+                    <div className="daily-hero-istat-label">Active</div>
+                  </div>
+                </div>
+              </div>
             </div>
-            <div className="daily-hero-title">SeekPeek</div>
-            <div className="daily-hero-sub">Truestock · {fmtHumanDate(date)}</div>
-          </div>
-          <div className="daily-hero-right">
-            <div className="daily-hero-metric">
-              <div className="daily-hero-metric-val">{totals.completed}</div>
-              <div className="daily-hero-metric-label">closed today</div>
-            </div>
-            <div className="daily-hero-metric-sep" />
-            <div className="daily-hero-metric">
-              <div className="daily-hero-metric-val">{totals.activePeople}</div>
-              <div className="daily-hero-metric-label">active</div>
+            <div className="daily-hero-right">
+              <div className="daily-hero-stat-card">
+                <div className="daily-hero-stat-icon due">
+                  <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16"><rect x="3" y="4" width="14" height="14" rx="2" fill="none" stroke="currentColor" strokeWidth="1.5"/><path d="M7 2v3M13 2v3M3 8h14" fill="none" stroke="currentColor" strokeWidth="1.5"/><circle cx="10" cy="13" r="1.2" fill="currentColor"/></svg>
+                </div>
+                <div className="daily-hero-stat-info">
+                  <span className="daily-hero-stat-label">Tasks due today</span>
+                  <span className="daily-hero-stat-val">{dueToday}</span>
+                  <span className={`daily-hero-stat-sub ${dueToday > 3 ? "warn" : ""}`}>
+                    {dueToday > 3 ? "High priority" : "On track"}
+                  </span>
+                </div>
+              </div>
+              <div className="daily-hero-stat-card">
+                <div className="daily-hero-stat-icon progress">
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" width="16" height="16"><path d="M5 3v4M3 5h4M12 4v6M9 7h6M19 14v6M16 17h6M14 11l-5 8"/></svg>
+                </div>
+                <div className="daily-hero-stat-info">
+                  <span className="daily-hero-stat-label">In progress</span>
+                  <span className="daily-hero-stat-val">{inProgress}</span>
+                  <span className="daily-hero-stat-sub info">Across projects</span>
+                </div>
+              </div>
+              <div className="daily-hero-stat-card">
+                <div className="daily-hero-stat-icon completed">
+                  <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"/></svg>
+                </div>
+                <div className="daily-hero-stat-info">
+                  <span className="daily-hero-stat-label">Completed this week</span>
+                  <span className="daily-hero-stat-val">{weekCompleted}</span>
+                  <span className="daily-hero-stat-sub">Keep it up!</span>
+                </div>
+              </div>
+              <div className="daily-hero-stat-card">
+                <div className="daily-hero-stat-icon focus">
+                  <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd"/></svg>
+                </div>
+                <div className="daily-hero-stat-info">
+                  <span className="daily-hero-stat-label">Focus score</span>
+                  <span className="daily-hero-stat-val">{focusScore}%</span>
+                  <span className={`daily-hero-stat-sub ${focusScore < 70 ? "warn" : ""}`}>
+                    {focusScore >= 85 ? "On track" : focusScore >= 70 ? "Good" : "Needs attention"}
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
