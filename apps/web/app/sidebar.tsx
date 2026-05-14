@@ -7,6 +7,7 @@ import { useState, useRef, useEffect } from "react";
 interface SidebarProps {
   user: { name: string; email: string; avatarUrl: string | null } | null;
   unreadCount?: number;
+  chatUnreadCount?: number;
   orgName?: string;
   orgMembersLine?: string;
   isPrivileged?: boolean;
@@ -15,6 +16,7 @@ interface SidebarProps {
 export default function Sidebar({
   user,
   unreadCount = 0,
+  chatUnreadCount = 0,
   orgName = "SeekPeek",
   orgMembersLine = "Truestock · daily work tracker",
   isPrivileged = false,
@@ -70,7 +72,12 @@ export default function Sidebar({
           </NavLink>
         )}
         <NavLink href="/chat" active={isActive("/chat")} icon={<IcChat />}>
-          Chat
+          <span className="flex-1">Chat</span>
+          {chatUnreadCount > 0 ? (
+            <span className="inbox-badge" title={`${chatUnreadCount} unread`}>
+              {chatUnreadCount > 99 ? "99+" : chatUnreadCount}
+            </span>
+          ) : null}
         </NavLink>
         <NavLink href="/notifications" active={isActive("/notifications")} icon={<IcBell />}>
           <span className="flex-1">Inbox</span>

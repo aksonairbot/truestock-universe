@@ -14,23 +14,25 @@ async function getSidebarData() {
   try {
     const me = await getCurrentUser();
     const { getUnreadCount } = await import("@/lib/notify");
-    const unread = await getUnreadCount(me.id);
+    const { getUnreadChatCount } = await import("@/app/chat/actions");
+    const [unread, chatUnread] = await Promise.all([getUnreadCount(me.id), getUnreadChatCount()]);
     return {
       user: { name: me.name, email: me.email, avatarUrl: me.avatarUrl, role: me.role },
       unread,
+      chatUnread,
     };
   } catch {
-    return { user: null, unread: 0 };
+    return { user: null, unread: 0, chatUnread: 0 };
   }
 }
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const { user, unread } = await getSidebarData();
+  const { user, unread, chatUnread } = await getSidebarData();
   return (
     <html lang="en">
       <body className="antialiased">
         <div className="relative z-10 flex min-h-screen">
-          <Sidebar user={user} unreadCount={unread} isPrivileged={user?.role === "admin" || user?.role === "manager"} />
+          <Sidebar user={user} unreadCount={unread} chatUnreadCount={chatUnread} isPrivileged={user?.role === "admin" || user?.role === "manager"} />
           <main className="flex-1 min-w-0 overflow-x-hidden">{children}</main>
         </div>
       </body>

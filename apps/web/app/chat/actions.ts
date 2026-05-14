@@ -208,6 +208,24 @@ export async function getOrCreateDM(otherUserId: string): Promise<{ id: string }
   return { id: channel.id };
 }
 
+// ---------- unread chat count (for nav badge) ----------
+
+export async function getUnreadChatCount(): Promise<number> {
+  const userId = await getCurrentUserId();
+  const db = getDb();
+  const rows = await db.execute(sql`
+    select coalesce(sum(
+      (select count(*)::int from chat_messages cm
+       where cm.channel_id = mem.channel_id
+         and cm.created_at > coalesce(mem.last_read_at, '1970-01-01')
+         and cm.sender_id <> ${userId})
+    ), 0)::int as total
+    from chat_channel_members mem
+    where mem.user_id = ${userId}
+  `);
+  return Number((rows as unknown as Array<any>)[0]?.total) || 0;
+}
+
 // ---------- list users for new DM/group ----------
 
 export interface ChatUser {

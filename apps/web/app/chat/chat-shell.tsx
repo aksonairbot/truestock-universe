@@ -62,7 +62,14 @@ function ChatInner({
   const [showNewDM, setShowNewDM] = useState(false);
   const [showNewGroup, setShowNewGroup] = useState(false);
   const [typingUsers, setTypingUsers] = useState<Map<string, string>>(new Map());
-  const [sidebarTab, setSidebarTab] = useState<SidebarTab>("members");
+  const [sidebarTab, setSidebarTab] = useState<SidebarTab>("chats");
+
+  // ---------- request browser notification permission ----------
+  useEffect(() => {
+    if (typeof Notification !== "undefined" && Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+  }, []);
 
   // ---------- socket listeners ----------
   useEffect(() => {
@@ -90,6 +97,20 @@ function ChatInner({
             : ch
         )
       );
+      // Browser notification for messages from others when tab not focused
+      if (
+        msg.senderId !== me.id &&
+        typeof Notification !== "undefined" &&
+        Notification.permission === "granted" &&
+        document.hidden
+      ) {
+        const n = new Notification(`${msg.senderName}`, {
+          body: msg.body.length > 80 ? msg.body.slice(0, 77) + "..." : msg.body,
+          tag: `chat-${msg.id}`,
+          icon: "/icon-192.png",
+        });
+        n.onclick = () => { window.focus(); openChannel(msg.channelId); n.close(); };
+      }
     };
 
     const onTyping = ({ channelId, userId, userName }: any) => {
@@ -202,14 +223,8 @@ function ChatInner({
           </div>
         </div>
 
-        {/* sidebar tabs: Members / Chats */}
+        {/* sidebar tabs: Chats / Team */}
         <div className="chat-sidebar-tabs">
-          <button
-            className={`chat-sidebar-tab ${sidebarTab === "members" ? "active" : ""}`}
-            onClick={() => setSidebarTab("members")}
-          >
-            Members ({allUsers.length})
-          </button>
           <button
             className={`chat-sidebar-tab ${sidebarTab === "chats" ? "active" : ""}`}
             onClick={() => setSidebarTab("chats")}
@@ -220,6 +235,12 @@ function ChatInner({
                 {channels.reduce((s, c) => s + c.unread, 0)}
               </span>
             )}
+          </button>
+          <button
+            className={`chat-sidebar-tab ${sidebarTab === "members" ? "active" : ""}`}
+            onClick={() => setSidebarTab("members")}
+          >
+            Team ({allUsers.length})
           </button>
         </div>
 
@@ -233,25 +254,11 @@ function ChatInner({
           />
         )}
 
-        {/* MEMBERS tab */}
-        {sidebarTab === "members" && (
-          <div className="chat-channel-list">
-            {allUsers.map((u) => (
-              <MemberItem
-                key={u.id}
-                user={u}
-                online={onlineUsers.includes(u.id)}
-                onClick={() => startDM(u.id)}
-              />
-            ))}
-          </div>
-        )}
-
         {/* CHATS tab */}
         {sidebarTab === "chats" && (
           <div className="chat-channel-list">
             {channels.length === 0 && (
-              <div className="chat-empty-hint">No conversations yet. Click a member to start!</div>
+              <div className="chat-empty-hint">No conversations yet. Go to Team tab to start a DM!</div>
             )}
             {channels.map((ch) => (
               <ChannelItem
@@ -260,6 +267,20 @@ function ChatInner({
                 active={ch.id === activeId}
                 onlineUsers={onlineUsers}
                 onClick={() => openChannel(ch.id)}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* TEAM tab */}
+        {sidebarTab === "members" && (
+          <div className="chat-channel-list">
+            {allUsers.map((u) => (
+              <MemberItem
+                key={u.id}
+                user={u}
+                online={onlineUsers.includes(u.id)}
+                onClick={() => startDM(u.id)}
               />
             ))}
           </div>
