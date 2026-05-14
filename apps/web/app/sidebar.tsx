@@ -69,6 +69,9 @@ export default function Sidebar({
             Members <Kbd>G U</Kbd>
           </NavLink>
         )}
+        <NavLink href="/chat" active={isActive("/chat")} icon={<IcChat />}>
+          Chat
+        </NavLink>
         <NavLink href="/notifications" active={isActive("/notifications")} icon={<IcBell />}>
           <span className="flex-1">Inbox</span>
           {unreadCount > 0 ? (
@@ -242,6 +245,14 @@ function IcMembers() {
       <path d="M3 21c1-3 3.5-5 6-5s5 2 6 5" />
       <circle cx="17" cy="9" r="2.5" />
       <path d="M22 19c-.4-2-1.7-3.5-3.7-4" />
+    </svg>
+  );
+}
+
+function IcChat() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2v10z" />
     </svg>
   );
 }

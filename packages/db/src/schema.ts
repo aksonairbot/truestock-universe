@@ -1089,3 +1089,66 @@ export type UserBadge = typeof userBadges.$inferSelect;
 export type NewUserBadge = typeof userBadges.$inferInsert;
 export type AiKnowledgeDigest = typeof aiKnowledgeDigests.$inferSelect;
 export type NewAiKnowledgeDigest = typeof aiKnowledgeDigests.$inferInsert;
+
+// ---------- chat ----------
+
+export const chatChannelTypeEnum = pgEnum("chat_channel_type", ["dm", "group"]);
+
+export const chatChannels = pgTable("chat_channels", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name"),
+  type: chatChannelTypeEnum("type").notNull().default("group"),
+  createdById: uuid("created_by_id").references(() => users.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const chatChannelMembers = pgTable(
+  "chat_channel_members",
+  {
+    channelId: uuid("channel_id").notNull().references(() => chatChannels.id, { onDelete: "cascade" }),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    joinedAt: timestamp("joined_at", { withTimezone: true }).defaultNow().notNull(),
+    lastReadAt: timestamp("last_read_at", { withTimezone: true }).defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.channelId, t.userId] }),
+    byUser: index("chat_channel_members_user_idx").on(t.userId),
+  }),
+);
+
+export const chatMessages = pgTable(
+  "chat_messages",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    channelId: uuid("channel_id").notNull().references(() => chatChannels.id, { onDelete: "cascade" }),
+    senderId: uuid("sender_id").notNull().references(() => users.id),
+    body: text("body").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    byChannel: index("chat_messages_channel_idx").on(t.channelId, t.createdAt),
+    bySender: index("chat_messages_sender_idx").on(t.senderId),
+  }),
+);
+
+export const chatChannelsRelations = relations(chatChannels, ({ one, many }) => ({
+  createdBy: one(users, { fields: [chatChannels.createdById], references: [users.id] }),
+  members: many(chatChannelMembers),
+  messages: many(chatMessages),
+}));
+
+export const chatChannelMembersRelations = relations(chatChannelMembers, ({ one }) => ({
+  channel: one(chatChannels, { fields: [chatChannelMembers.channelId], references: [chatChannels.id] }),
+  user: one(users, { fields: [chatChannelMembers.userId], references: [users.id] }),
+}));
+
+export const chatMessagesRelations = relations(chatMessages, ({ one }) => ({
+  channel: one(chatChannels, { fields: [chatMessages.channelId], references: [chatChannels.id] }),
+  sender: one(users, { fields: [chatMessages.senderId], references: [users.id] }),
+}));
+
+export type ChatChannel = typeof chatChannels.$inferSelect;
+export type NewChatChannel = typeof chatChannels.$inferInsert;
+export type ChatMessage = typeof chatMessages.$inferSelect;
+export type NewChatMessage = typeof chatMessages.$inferInsert;

@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "next dev --turbo",
     "build": "next build",
-    "start": "next start",
+    "start": "node server.js",
     "lint": "next lint",
     "typecheck": "tsc --noEmit"
   },
@@ -18,7 +18,9 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "next-auth": "5.0.0-beta.25",
-    "@auth/core": "^0.39.0"
+    "@auth/core": "^0.39.0",
+    "socket.io": "^4.8.0",
+    "socket.io-client": "^4.8.0"
   },
   "devDependencies": {
     "@types/react": "^18.3.11",
