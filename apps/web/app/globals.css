@@ -2980,6 +2980,39 @@ select:focus {
   vertical-align: middle;
 }
 
+.bento-dept-link {
+  color: var(--text-1);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+}
+.bento-dept-link:hover { color: var(--accent); }
+.dept-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+.dept-nav-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-2);
+  text-decoration: none;
+  transition: all 0.15s ease;
+}
+.dept-nav-chip:hover { border-color: var(--text-3); color: var(--text-1); }
+.dept-nav-chip.active {
+  color: var(--text-1);
+  font-weight: 600;
+}
+
 /* ----------------------------------------------------------------------- */
 /* Bento — expanded cells                                                  */
 /* ----------------------------------------------------------------------- */

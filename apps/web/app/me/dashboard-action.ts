@@ -15,6 +15,7 @@ import {
   taskComments,
   projects,
   users,
+  departments,
   eq,
   and,
   desc,
@@ -84,7 +85,7 @@ export interface BentoStats {
   projectBreakdown: Array<{ slug: string; name: string; closed: number; open: number; created: number }>;
 
   // department breakdown
-  deptBreakdown: Array<{ name: string; color: string | null; closed: number; open: number; created: number; members: number }>;
+  deptBreakdown: Array<{ id: string; name: string; color: string | null; closed: number; open: number; created: number; members: number }>;
 
   // team breakdown (all members, closures in window)
   teamBreakdown: Array<{ name: string; closed: number; comments: number; created: number }>;
@@ -338,9 +339,9 @@ async function computeStats(userId: string, period: Period): Promise<BentoStats>
 
   // ----- department breakdown -----
   const deptRows = await db.execute(sql<{
-    name: string; color: string | null; closed: number; open: number; created: number; members: number;
+    id: string; name: string; color: string | null; closed: number; open: number; created: number; members: number;
   }>`
-    select d.name, d.color,
+    select d.id, d.name, d.color,
       coalesce(sum(case when t.status = 'done' and t.completed_at >= ${startStart.toISOString()}
         and t.completed_at <= ${endEnd.toISOString()} then 1 else 0 end), 0)::int as closed,
       coalesce(sum(case when t.status not in ('done', 'cancelled') then 1 else 0 end), 0)::int as open,
@@ -354,9 +355,9 @@ async function computeStats(userId: string, period: Period): Promise<BentoStats>
     order by closed desc, open desc
   `);
   const deptBreakdown = (deptRows as unknown as Array<{
-    name: string; color: string | null; closed: number; open: number; created: number; members: number;
+    id: string; name: string; color: string | null; closed: number; open: number; created: number; members: number;
   }>).map((r) => ({
-    name: r.name, color: r.color ?? null,
+    id: r.id, name: r.name, color: r.color ?? null,
     closed: Number(r.closed) || 0, open: Number(r.open) || 0,
     created: Number(r.created) || 0, members: Number(r.members) || 0,
   }));
@@ -593,4 +594,213 @@ export async function refreshDashboard(formData: FormData): Promise<void> {
   const period = (formData.get("period") as Period) === "month" ? "month" : "week";
   await getOrGenerateDashboard(period, { force: true });
   revalidatePath(`/me/${period}`);
+}
+
+// =====================================================================
+// Department dashboard
+// =====================================================================
+
+export interface DeptDashStats {
+  period: Period;
+  rangeLabel: string;
+  deptId: string;
+  deptName: string;
+  deptColor: string | null;
+
+  // headline
+  closed: number;
+  closedPrev: number;
+  open: number;
+  created: number;
+  comments: number;
+  daysActive: number;
+
+  // per-member breakdown
+  members: Array<{
+    id: string;
+    name: string;
+    closed: number;
+    open: number;
+    created: number;
+    comments: number;
+  }>;
+
+  // per-project breakdown
+  projectMix: Array<{ slug: string; name: string; closed: number; open: number }>;
+
+  // priority mix
+  priorityMix: Array<{ priority: "urgent" | "high" | "med" | "low"; n: number }>;
+
+  // daily breakdown
+  daily: Array<{ day: string; closed: number; commented: number }>;
+}
+
+export interface DeptDashResult {
+  ok: boolean;
+  stats?: DeptDashStats;
+  error?: string;
+}
+
+export async function getDeptDashboard(deptId: string, period: Period): Promise<DeptDashResult> {
+  const db = getDb();
+  const now = new Date();
+  const todayIST = istDayString(now);
+  const windowDays = period === "week" ? 7 : 30;
+  const startDay = shiftIST(todayIST, -(windowDays - 1));
+  const endDay = todayIST;
+  const prevStartDay = shiftIST(todayIST, -(2 * windowDays - 1));
+  const prevEndDay = shiftIST(todayIST, -windowDays);
+  const startFmt = new Date(`${startDay}T12:00:00+05:30`).toLocaleDateString("en-IN", { day: "2-digit", month: "short", timeZone: TZ });
+  const endFmt = new Date(`${endDay}T12:00:00+05:30`).toLocaleDateString("en-IN", { day: "2-digit", month: "short", timeZone: TZ });
+  const rangeLabel = `${startFmt} → ${endFmt}`;
+
+  const { start: startStart } = dayBoundsIST(startDay);
+  const { end: endEnd } = dayBoundsIST(endDay);
+  const { start: prevStartStart } = dayBoundsIST(prevStartDay);
+  const { end: prevEndEnd } = dayBoundsIST(prevEndDay);
+
+  try {
+    // Fetch department info
+    const [dept] = await db.select().from(departments).where(eq(departments.id, deptId)).limit(1);
+    if (!dept) return { ok: false, error: "Department not found" };
+
+    // Get member IDs
+    const memberRows = await db
+      .select({ id: users.id, name: users.name })
+      .from(users)
+      .where(and(eq(users.departmentId, deptId), eq(users.isActive, true)));
+    const memberIds = memberRows.map((m) => m.id);
+
+    if (memberIds.length === 0) {
+      return {
+        ok: true,
+        stats: {
+          period, rangeLabel, deptId, deptName: dept.name, deptColor: dept.color,
+          closed: 0, closedPrev: 0, open: 0, created: 0, comments: 0, daysActive: 0,
+          members: [], projectMix: [], priorityMix: [], daily: [],
+        },
+      };
+    }
+
+    const memberIdList = memberIds.map((id) => `'${id}'`).join(",");
+
+    // Headline counts
+    const headlineRows = await db.execute(sql.raw(`
+      select
+        coalesce(sum(case when status = 'done' and completed_at >= '${startStart.toISOString()}'
+          and completed_at <= '${endEnd.toISOString()}' then 1 else 0 end), 0)::int as closed,
+        coalesce(sum(case when status = 'done' and completed_at >= '${prevStartStart.toISOString()}'
+          and completed_at <= '${prevEndEnd.toISOString()}' then 1 else 0 end), 0)::int as closed_prev,
+        coalesce(sum(case when status not in ('done', 'cancelled') then 1 else 0 end), 0)::int as open,
+        coalesce(sum(case when created_at >= '${startStart.toISOString()}'
+          and created_at <= '${endEnd.toISOString()}' then 1 else 0 end), 0)::int as created
+      from tasks where assignee_id in (${memberIdList})
+    `));
+    const hl = (headlineRows as unknown as Array<any>)[0] ?? {};
+
+    // Comments count
+    const [commentRow] = await db.execute(sql.raw(`
+      select count(*)::int as n from task_comments
+      where author_id in (${memberIdList})
+        and created_at >= '${startStart.toISOString()}'
+        and created_at <= '${endEnd.toISOString()}'
+    `)) as unknown as Array<{ n: number }>;
+
+    // Per-member breakdown
+    const memberStatRows = await db.execute(sql.raw(`
+      select u.id, u.name,
+        coalesce(sum(case when t.status = 'done' and t.completed_at >= '${startStart.toISOString()}'
+          and t.completed_at <= '${endEnd.toISOString()}' then 1 else 0 end), 0)::int as closed,
+        coalesce(sum(case when t.status not in ('done', 'cancelled') then 1 else 0 end), 0)::int as open,
+        coalesce(sum(case when t.created_at >= '${startStart.toISOString()}'
+          and t.created_at <= '${endEnd.toISOString()}' then 1 else 0 end), 0)::int as created,
+        coalesce((select count(*)::int from task_comments c where c.author_id = u.id
+          and c.created_at >= '${startStart.toISOString()}'
+          and c.created_at <= '${endEnd.toISOString()}'), 0)::int as comments
+      from users u left join tasks t on t.assignee_id = u.id
+      where u.id in (${memberIdList})
+      group by u.id, u.name order by closed desc
+    `));
+
+    // Per-project breakdown
+    const projRows = await db.execute(sql.raw(`
+      select p.slug, p.name,
+        coalesce(sum(case when t.status = 'done' and t.completed_at >= '${startStart.toISOString()}'
+          and t.completed_at <= '${endEnd.toISOString()}' then 1 else 0 end), 0)::int as closed,
+        coalesce(sum(case when t.status not in ('done', 'cancelled') then 1 else 0 end), 0)::int as open
+      from tasks t join projects p on t.project_id = p.id
+      where t.assignee_id in (${memberIdList})
+      group by p.slug, p.name
+      having coalesce(sum(case when t.status = 'done' and t.completed_at >= '${startStart.toISOString()}'
+        and t.completed_at <= '${endEnd.toISOString()}' then 1 else 0 end), 0) > 0
+        or coalesce(sum(case when t.status not in ('done', 'cancelled') then 1 else 0 end), 0) > 0
+      order by closed desc
+    `));
+
+    // Priority mix
+    const prioRows = await db.execute(sql.raw(`
+      select priority::text as priority, count(*)::int as n
+      from tasks where assignee_id in (${memberIdList}) and status = 'done'
+        and completed_at >= '${startStart.toISOString()}'
+        and completed_at <= '${endEnd.toISOString()}'
+      group by priority
+    `));
+    const prioMap = new Map<string, number>();
+    for (const r of (prioRows as unknown as Array<{ priority: string; n: number }>)) {
+      prioMap.set(r.priority, Number(r.n) || 0);
+    }
+
+    // Daily breakdown
+    const dailyRows = await db.execute(sql.raw(`
+      with d as (
+        select generate_series('${startStart.toISOString()}'::timestamptz, '${endEnd.toISOString()}'::timestamptz, '1 day') as ts
+      )
+      select to_char((d.ts at time zone 'Asia/Kolkata')::date, 'YYYY-MM-DD') as d,
+        coalesce((select count(*) from tasks t
+          where t.assignee_id in (${memberIdList}) and t.status = 'done'
+            and (t.completed_at at time zone 'Asia/Kolkata')::date = (d.ts at time zone 'Asia/Kolkata')::date), 0)::int as closed,
+        coalesce((select count(*) from task_comments c
+          where c.author_id in (${memberIdList})
+            and (c.created_at at time zone 'Asia/Kolkata')::date = (d.ts at time zone 'Asia/Kolkata')::date), 0)::int as commented
+      from d order by d
+    `));
+    const daily = (dailyRows as unknown as Array<{ d: string; closed: number; commented: number }>).map((r) => ({
+      day: r.d.toString().slice(0, 10), closed: Number(r.closed) || 0, commented: Number(r.commented) || 0,
+    }));
+    const daysActive = daily.filter((d) => d.closed > 0 || d.commented > 0).length;
+
+    return {
+      ok: true,
+      stats: {
+        period, rangeLabel, deptId, deptName: dept.name, deptColor: dept.color,
+        closed: Number(hl.closed) || 0,
+        closedPrev: Number(hl.closed_prev) || 0,
+        open: Number(hl.open) || 0,
+        created: Number(hl.created) || 0,
+        comments: Number(commentRow?.n) || 0,
+        daysActive,
+        members: (memberStatRows as unknown as Array<any>).map((r) => ({
+          id: r.id, name: r.name, closed: Number(r.closed) || 0,
+          open: Number(r.open) || 0, created: Number(r.created) || 0, comments: Number(r.comments) || 0,
+        })),
+        projectMix: (projRows as unknown as Array<any>).map((r) => ({
+          slug: r.slug, name: r.name, closed: Number(r.closed) || 0, open: Number(r.open) || 0,
+        })),
+        priorityMix: (["urgent", "high", "med", "low"] as const).map((p) => ({
+          priority: p, n: prioMap.get(p) ?? 0,
+        })),
+        daily,
+      },
+    };
+  } catch (e) {
+    log.error("dept_dashboard.failed", { deptId, period, error: (e as Error).message });
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
+/** Fetch all departments for navigation */
+export async function getAllDepartments(): Promise<Array<{ id: string; name: string; color: string | null }>> {
+  const db = getDb();
+  const rows = await db.select({ id: departments.id, name: departments.name, color: departments.color }).from(departments).orderBy(departments.name);
+  return rows;
 }

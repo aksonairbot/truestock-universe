@@ -293,7 +293,7 @@ export function Bento({ stats, narrative, model, generatedAt, period }: {
       </div>
 
       {/* Breakdown switcher — Dept / Project / Team */}
-      <BreakdownSwitcher stats={stats} />
+      <BreakdownSwitcher stats={stats} period={period} />
     </div>
   );
 }

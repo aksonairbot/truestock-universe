@@ -10,7 +10,7 @@ import type { BentoStats } from "./dashboard-action";
 
 type View = "department" | "project" | "team";
 
-export function BreakdownSwitcher({ stats }: { stats: BentoStats }) {
+export function BreakdownSwitcher({ stats, period = "week" }: { stats: BentoStats; period?: "week" | "month" }) {
   const [view, setView] = useState<View>("department");
 
   const hasData =
@@ -57,8 +57,10 @@ export function BreakdownSwitcher({ stats }: { stats: BentoStats }) {
             {(stats.deptBreakdown ?? []).map((d) => (
               <tr key={d.name}>
                 <td>
-                  {d.color && <span className="bento-dept-dot" style={{ background: d.color }} />}
-                  {d.name}
+                  <Link href={`/me/${period}/dept/${(d as any).id}`} className="bento-dept-link">
+                    {d.color && <span className="bento-dept-dot" style={{ background: d.color }} />}
+                    {d.name} →
+                  </Link>
                 </td>
                 <td className="num mono">{d.members}</td>
                 <td className="num mono">{d.closed}</td>
