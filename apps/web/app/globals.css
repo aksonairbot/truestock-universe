@@ -500,18 +500,36 @@ select:focus {
   height: 6px;
   border-radius: 50%;
 }
-.pchip.bee, .pchip.stock_bee { background: rgba(245, 184, 74, 0.12); color: #FBCD7D; border-color: rgba(245, 184, 74, 0.3); }
-.pchip.bee::before, .pchip.stock_bee::before { background: #F5B84A; }
-.pchip.high { background: rgba(74, 222, 128, 0.12); color: #86EFAC; border-color: rgba(74, 222, 128, 0.28); }
-.pchip.high::before { background: #4ADE80; }
-.pchip.axe, .pchip.axe_cap { background: rgba(167, 139, 250, 0.14); color: #C8BBFF; border-color: rgba(167, 139, 250, 0.32); }
-.pchip.axe::before, .pchip.axe_cap::before { background: #A78BFA; }
-.pchip.bloom { background: rgba(244, 114, 182, 0.14); color: #F9B5D7; border-color: rgba(244, 114, 182, 0.3); }
-.pchip.bloom::before { background: #F472B6; }
-.pchip.universe { background: rgba(123, 92, 255, 0.14); color: #C8BBFF; border-color: rgba(123, 92, 255, 0.3); }
-.pchip.universe::before { background: #7B5CFF; }
-.pchip.skynet { background: rgba(123, 92, 255, 0.14); color: #C8BBFF; border-color: rgba(123, 92, 255, 0.3); }
-.pchip.skynet::before { background: #7B5CFF; }
+/* StockBee — product slug (stock_bee) + any project slug containing "stockbee" */
+.pchip.bee, .pchip.stock_bee,
+.pchip[class*="stockbee"] { background: rgba(245, 184, 74, 0.12); color: #FBCD7D; border-color: rgba(245, 184, 74, 0.3); }
+.pchip.bee::before, .pchip.stock_bee::before,
+.pchip[class*="stockbee"]::before { background: #F5B84A; }
+
+/* HIGH */
+.pchip.high,
+.pchip[class*="high"] { background: rgba(74, 222, 128, 0.12); color: #86EFAC; border-color: rgba(74, 222, 128, 0.28); }
+.pchip.high::before,
+.pchip[class*="high"]::before { background: #4ADE80; }
+
+/* Axe Cap */
+.pchip.axe, .pchip.axe_cap,
+.pchip[class*="axe"] { background: rgba(167, 139, 250, 0.14); color: #C8BBFF; border-color: rgba(167, 139, 250, 0.32); }
+.pchip.axe::before, .pchip.axe_cap::before,
+.pchip[class*="axe"]::before { background: #A78BFA; }
+
+/* Bloom */
+.pchip.bloom,
+.pchip[class*="bloom"] { background: rgba(244, 114, 182, 0.14); color: #F9B5D7; border-color: rgba(244, 114, 182, 0.3); }
+.pchip.bloom::before,
+.pchip[class*="bloom"]::before { background: #F472B6; }
+
+/* Universe / SeekPeek */
+.pchip.universe, .pchip.skynet, .pchip.seekpeek,
+.pchip[class*="universe"], .pchip[class*="skynet"], .pchip[class*="seekpeek"] { background: rgba(123, 92, 255, 0.14); color: #C8BBFF; border-color: rgba(123, 92, 255, 0.3); }
+.pchip.universe::before, .pchip.skynet::before, .pchip.seekpeek::before,
+.pchip[class*="universe"]::before, .pchip[class*="skynet"]::before, .pchip[class*="seekpeek"]::before { background: #7B5CFF; }
+
 .pchip.all { background: rgba(255, 255, 255, 0.04); color: var(--text-2); }
 .pchip.all::before { background: var(--text-3); }
 .pchip.unknown { background: rgba(90, 95, 114, 0.14); color: #9AA0B4; border-color: rgba(90, 95, 114, 0.3); }
