@@ -5,6 +5,7 @@
 
 import Link from "next/link";
 import type { BentoStats } from "./dashboard-action";
+import { BreakdownSwitcher } from "./breakdown-switcher";
 
 function fmtSignedDelta(now: number, prev: number): { label: string; cls: string } {
   if (prev === 0 && now === 0) return { label: "no change", cls: "trend-neutral" };
@@ -290,6 +291,9 @@ export function Bento({ stats, narrative, model, generatedAt, period }: {
           </div>
         )}
       </div>
+
+      {/* Breakdown switcher — Dept / Project / Team */}
+      <BreakdownSwitcher stats={stats} />
     </div>
   );
 }

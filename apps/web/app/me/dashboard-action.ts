@@ -77,8 +77,17 @@ export interface BentoStats {
   // priority mix of closures in window
   priorityMix: Array<{ priority: "urgent" | "high" | "med" | "low"; n: number }>;
 
-  // projects
+  // projects — all projects with activity in window
   topProjects: Array<{ slug: string; name: string; closed: number }>;
+
+  // full project breakdown (all projects, closed + open + created)
+  projectBreakdown: Array<{ slug: string; name: string; closed: number; open: number; created: number }>;
+
+  // department breakdown
+  deptBreakdown: Array<{ name: string; color: string | null; closed: number; open: number; created: number; members: number }>;
+
+  // team breakdown (all members, closures in window)
+  teamBreakdown: Array<{ name: string; closed: number; comments: number; created: number }>;
 
   // recognition
   oldestOpen?: { id: string; title: string; project: string; ageDays: number };
@@ -272,6 +281,86 @@ async function computeStats(userId: string, period: Period): Promise<BentoStats>
     .limit(3);
   const topProjects = projectRows.map((r) => ({ slug: r.slug, name: r.name, closed: r.n }));
 
+  // ----- full project breakdown (all projects, closed + open + created in window) -----
+  const projBreakdownRows = await db.execute(sql<{
+    slug: string; name: string; closed: number; open: number; created: number;
+  }>`
+    select p.slug, p.name,
+      coalesce(sum(case when t.status = 'done' and t.completed_at >= ${startStart.toISOString()}
+        and t.completed_at <= ${endEnd.toISOString()} then 1 else 0 end), 0)::int as closed,
+      coalesce(sum(case when t.status not in ('done', 'cancelled') then 1 else 0 end), 0)::int as open,
+      coalesce(sum(case when t.created_at >= ${startStart.toISOString()}
+        and t.created_at <= ${endEnd.toISOString()} then 1 else 0 end), 0)::int as created
+    from projects p
+    left join tasks t on t.project_id = p.id
+    group by p.slug, p.name
+    having coalesce(sum(case when t.status = 'done' and t.completed_at >= ${startStart.toISOString()}
+        and t.completed_at <= ${endEnd.toISOString()} then 1 else 0 end), 0) > 0
+      or coalesce(sum(case when t.status not in ('done', 'cancelled') then 1 else 0 end), 0) > 0
+      or coalesce(sum(case when t.created_at >= ${startStart.toISOString()}
+        and t.created_at <= ${endEnd.toISOString()} then 1 else 0 end), 0) > 0
+    order by closed desc, open desc
+  `);
+  const projectBreakdown = (projBreakdownRows as unknown as Array<{
+    slug: string; name: string; closed: number; open: number; created: number;
+  }>).map((r) => ({
+    slug: r.slug, name: r.name,
+    closed: Number(r.closed) || 0, open: Number(r.open) || 0, created: Number(r.created) || 0,
+  }));
+
+  // ----- team breakdown (all members, closures + comments + created in window) -----
+  const teamRows = await db.execute(sql<{
+    name: string; closed: number; comments: number; created: number;
+  }>`
+    select u.name,
+      coalesce((select count(*) from tasks t
+        where t.assignee_id = u.id and t.status = 'done'
+          and t.completed_at >= ${startStart.toISOString()}
+          and t.completed_at <= ${endEnd.toISOString()}), 0)::int as closed,
+      coalesce((select count(*) from task_comments c
+        where c.author_id = u.id
+          and c.created_at >= ${startStart.toISOString()}
+          and c.created_at <= ${endEnd.toISOString()}), 0)::int as comments,
+      coalesce((select count(*) from tasks t2
+        where t2.created_by_id = u.id
+          and t2.created_at >= ${startStart.toISOString()}
+          and t2.created_at <= ${endEnd.toISOString()}), 0)::int as created
+    from users u
+    where u.is_active = true
+    order by closed desc, comments desc
+  `);
+  const teamBreakdown = (teamRows as unknown as Array<{
+    name: string; closed: number; comments: number; created: number;
+  }>).map((r) => ({
+    name: r.name, closed: Number(r.closed) || 0,
+    comments: Number(r.comments) || 0, created: Number(r.created) || 0,
+  }));
+
+  // ----- department breakdown -----
+  const deptRows = await db.execute(sql<{
+    name: string; color: string | null; closed: number; open: number; created: number; members: number;
+  }>`
+    select d.name, d.color,
+      coalesce(sum(case when t.status = 'done' and t.completed_at >= ${startStart.toISOString()}
+        and t.completed_at <= ${endEnd.toISOString()} then 1 else 0 end), 0)::int as closed,
+      coalesce(sum(case when t.status not in ('done', 'cancelled') then 1 else 0 end), 0)::int as open,
+      coalesce(sum(case when t.created_at >= ${startStart.toISOString()}
+        and t.created_at <= ${endEnd.toISOString()} then 1 else 0 end), 0)::int as created,
+      (select count(*)::int from users u2 where u2.department_id = d.id and u2.is_active = true) as members
+    from departments d
+    left join users u on u.department_id = d.id and u.is_active = true
+    left join tasks t on t.assignee_id = u.id
+    group by d.id, d.name, d.color
+    order by closed desc, open desc
+  `);
+  const deptBreakdown = (deptRows as unknown as Array<{
+    name: string; color: string | null; closed: number; open: number; created: number; members: number;
+  }>).map((r) => ({
+    name: r.name, color: r.color ?? null,
+    closed: Number(r.closed) || 0, open: Number(r.open) || 0,
+    created: Number(r.created) || 0, members: Number(r.members) || 0,
+  }));
+
   // ----- oldest open -----
   const oldestRows = await db
     .select({ id: tasks.id, title: tasks.title, createdAt: tasks.createdAt, project: projects.name })
@@ -354,7 +443,7 @@ async function computeStats(userId: string, period: Period): Promise<BentoStats>
   return {
     period, periodKey, rangeLabel, startIST: startDay, endIST: endDay,
     closed, closedPrev, comments, commentsReceived, newCreated, daysActive,
-    daily, weeklyTrend, dayOfWeek, priorityMix, topProjects,
+    daily, weeklyTrend, dayOfWeek, priorityMix, topProjects, projectBreakdown, deptBreakdown, teamBreakdown,
     oldestOpen, fastest, slowest, longerThanMedian,
     streak, streakBest,
   };

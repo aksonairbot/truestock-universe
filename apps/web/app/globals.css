@@ -2915,6 +2915,72 @@ select:focus {
 }
 
 /* ----------------------------------------------------------------------- */
+/* Bento — breakdown switcher                                              */
+/* ----------------------------------------------------------------------- */
+.bento-breakdown-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.bento-view-tabs {
+  display: flex;
+  gap: 2px;
+  background: var(--surface-2);
+  border-radius: 6px;
+  padding: 2px;
+}
+.bento-view-tab {
+  padding: 4px 12px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  border: none;
+  background: transparent;
+  color: var(--text-3);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.bento-view-tab:hover { color: var(--text-1); }
+.bento-view-tab.active {
+  background: var(--surface-3);
+  color: var(--text-1);
+}
+.bento-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+.bento-table th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--text-3);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.bento-table th.num { text-align: right; }
+.bento-table td {
+  padding: 7px 8px;
+  color: var(--text-1);
+  border-bottom: 1px solid var(--border-dim, rgba(255,255,255,0.04));
+}
+.bento-table td.num { text-align: right; }
+.bento-table tbody tr:last-child td { border-bottom: none; }
+.bento-table tbody tr:hover { background: rgba(255,255,255,0.02); }
+.bento-dept-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+/* ----------------------------------------------------------------------- */
 /* Bento — expanded cells                                                  */
 /* ----------------------------------------------------------------------- */
 .bento-span-4 { grid-column: span 4; }
