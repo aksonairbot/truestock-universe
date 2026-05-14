@@ -1,92 +1,69 @@
 // apps/web/app/badge-shelf.tsx
 //
-// Server component that renders a user's earned badges.
-// Used on member profiles, Today page, My Week/Month.
+// Compact badge display for Today page and member profiles.
+// Links to /badges for the full grid.
 
-import { getUserBadges, BADGES, TIER_ORDER, type BadgeDef } from "@/lib/badges";
-
-function fmtBadgeDate(d: Date): string {
-  return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "2-digit" });
-}
+import Link from "next/link";
+import { getUserBadges, BADGES } from "@/lib/badges";
 
 export async function BadgeShelf({
   userId,
   compact = false,
-  showLocked = false,
 }: {
   userId: string;
   compact?: boolean;
-  showLocked?: boolean;
 }) {
   const earned = await getUserBadges(userId);
-  const earnedKeys = new Set(earned.map((b) => b.key));
 
-  if (earned.length === 0 && !showLocked) return null;
+  if (earned.length === 0 && compact) return null;
 
-  // Sort earned: highest tier first, then by date
-  const sorted = [...earned].sort((a, b) => {
-    const tierDiff = (TIER_ORDER[b.tier] ?? 0) - (TIER_ORDER[a.tier] ?? 0);
-    return tierDiff !== 0 ? tierDiff : b.awardedAt.getTime() - a.awardedAt.getTime();
-  });
-
-  // Locked badges (not yet earned)
-  const locked = showLocked
-    ? BADGES.filter((b) => !earnedKeys.has(b.key)).sort((a, b) => (TIER_ORDER[a.tier] ?? 0) - (TIER_ORDER[b.tier] ?? 0))
-    : [];
+  const totalXp = earned.reduce((sum, b) => sum + b.xp, 0);
 
   if (compact) {
     return (
-      <div className="badge-shelf-compact">
-        {sorted.slice(0, 8).map((b) => (
-          <span key={b.key} className={`badge-chip badge-${b.tier}`} title={`${b.name} — ${b.description}`}>
+      <Link href="/badges" className="badge-shelf-compact">
+        {earned.slice(0, 6).map((b) => (
+          <span
+            key={b.key}
+            className="badge-chip"
+            style={{ borderColor: `${b.color}40`, background: `${b.color}12` }}
+            title={`${b.name} — ${b.description}`}
+          >
             <span className="badge-icon">{b.icon}</span>
           </span>
         ))}
-        {sorted.length > 8 && (
-          <span className="badge-chip badge-more">+{sorted.length - 8}</span>
+        {earned.length > 6 && (
+          <span className="badge-chip badge-more">+{earned.length - 6}</span>
         )}
-      </div>
+        <span className="badge-xp-tag">★ {totalXp} XP</span>
+      </Link>
     );
   }
 
+  // Full shelf for profile page
   return (
     <div className="badge-shelf">
       <div className="badge-shelf-header">
         <span className="badge-shelf-title">Achievements</span>
-        <span className="badge-shelf-count">{earned.length} / {BADGES.length}</span>
+        <Link href="/badges" className="badge-shelf-link">
+          {earned.length} / {BADGES.length} · View all →
+        </Link>
       </div>
-
-      {sorted.length > 0 && (
-        <div className="badge-grid">
-          {sorted.map((b) => (
-            <div key={b.key} className={`badge-card badge-${b.tier}`}>
-              <div className="badge-card-icon">{b.icon}</div>
-              <div className="badge-card-info">
-                <div className="badge-card-name">{b.name}</div>
-                <div className="badge-card-desc">{b.description}</div>
-                <div className="badge-card-date">{fmtBadgeDate(b.awardedAt)}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {locked.length > 0 && (
-        <>
-          <div className="badge-locked-divider">Locked</div>
-          <div className="badge-grid">
-            {locked.map((b) => (
-              <div key={b.key} className="badge-card badge-locked">
-                <div className="badge-card-icon badge-icon-locked">{b.icon}</div>
-                <div className="badge-card-info">
-                  <div className="badge-card-name">{b.name}</div>
-                  <div className="badge-card-desc">{b.description}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
+      <div className="badge-shelf-chips">
+        {earned.map((b) => (
+          <span
+            key={b.key}
+            className="badge-chip"
+            style={{ borderColor: `${b.color}40`, background: `${b.color}12` }}
+            title={`${b.name} — ${b.description}`}
+          >
+            <span className="badge-icon">{b.icon}</span>
+          </span>
+        ))}
+        {earned.length === 0 && (
+          <span className="badge-empty">No badges yet — <Link href="/badges">see what you can earn →</Link></span>
+        )}
+      </div>
     </div>
   );
 }
@@ -95,18 +72,15 @@ export async function BadgeShelf({
 export async function BadgeCount({ userId }: { userId: string }) {
   const earned = await getUserBadges(userId);
   if (earned.length === 0) return null;
-
-  // Show top 3 by tier
-  const top = [...earned]
-    .sort((a, b) => (TIER_ORDER[b.tier] ?? 0) - (TIER_ORDER[a.tier] ?? 0))
-    .slice(0, 3);
+  const totalXp = earned.reduce((sum, b) => sum + b.xp, 0);
 
   return (
     <span className="badge-inline">
-      {top.map((b) => (
+      {earned.slice(0, 3).map((b) => (
         <span key={b.key} title={b.name} className="badge-inline-icon">{b.icon}</span>
       ))}
       {earned.length > 3 && <span className="badge-inline-more">+{earned.length - 3}</span>}
+      <span className="badge-inline-xp">★{totalXp}</span>
     </span>
   );
 }

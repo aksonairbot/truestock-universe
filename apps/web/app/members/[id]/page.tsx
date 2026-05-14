@@ -396,7 +396,7 @@ export default async function MemberProfilePage({ params, searchParams }: PagePr
 
       {/* badges */}
       <div className="card" style={{ padding: 14, marginBottom: 12 }}>
-        <BadgeShelf userId={id} showLocked={me.id === id} />
+        <BadgeShelf userId={id} />
       </div>
 
       <div className="profile-cols">

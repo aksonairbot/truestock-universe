@@ -39,6 +39,7 @@ export default async function Nav() {
         <NavLink href="/">Today</NavLink>
         <NavLink href="/tasks">Tasks</NavLink>
         <NavLink href="/projects">Projects</NavLink>
+        <NavLink href="/badges">Badges</NavLink>
         {me && isPrivileged(me) && <NavLink href="/members">Members</NavLink>}
         {me && isPrivileged(me) && <NavLink href="/month">Month</NavLink>}
         <div className="flex-1" />
