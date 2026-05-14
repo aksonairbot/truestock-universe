@@ -493,7 +493,6 @@ export async function getOrGenerateDashboard(period: Period, opts?: { force?: bo
     if (!narrativeCached) {
       log.info("dashboard.generated", { period, periodKey, durationMs, model });
     }
-    revalidatePath(`/me/${period}`);
     return { ok: true, stats, narrative: narrative || undefined, model, generatedAt, cached: narrativeCached };
   } catch (e) {
     log.error("dashboard.failed", { period, error: (e as Error).message });
@@ -504,4 +503,5 @@ export async function getOrGenerateDashboard(period: Period, opts?: { force?: bo
 export async function refreshDashboard(formData: FormData): Promise<void> {
   const period = (formData.get("period") as Period) === "month" ? "month" : "week";
   await getOrGenerateDashboard(period, { force: true });
+  revalidatePath(`/me/${period}`);
 }
