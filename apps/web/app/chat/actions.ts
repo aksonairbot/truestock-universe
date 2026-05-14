@@ -210,13 +210,56 @@ export async function getOrCreateDM(otherUserId: string): Promise<{ id: string }
 
 // ---------- list users for new DM/group ----------
 
-export async function getChatUsers(): Promise<Array<{ id: string; name: string }>> {
+export interface ChatUser {
+  id: string;
+  name: string;
+  role: string;
+  avatarUrl: string | null;
+  lastActivity: string | null;       // ISO timestamp
+  lastActivityLabel: string | null;   // e.g. "Completed: Fix header bug"
+}
+
+export async function getChatUsers(): Promise<ChatUser[]> {
   const userId = await getCurrentUserId();
   const db = getDb();
-  const rows = await db
-    .select({ id: users.id, name: users.name })
-    .from(users)
-    .where(and(eq(users.isActive, true), sql`${users.id} <> ${userId}`))
-    .orderBy(asc(users.name));
-  return rows;
+
+  const rows = await db.execute(sql`
+    select
+      u.id, u.name, u.role, u.avatar_url,
+      greatest(
+        (select max(t.updated_at) from tasks t where t.assignee_id = u.id),
+        (select max(c.created_at) from comments c where c.author_id = u.id),
+        (select max(cm.created_at) from chat_messages cm where cm.sender_id = u.id)
+      ) as last_activity,
+      (
+        select t.title from tasks t
+        where t.assignee_id = u.id
+        order by t.updated_at desc limit 1
+      ) as last_task_title,
+      (
+        select t.status from tasks t
+        where t.assignee_id = u.id
+        order by t.updated_at desc limit 1
+      ) as last_task_status
+    from users u
+    where u.is_active = true and u.id <> ${userId}
+    order by last_activity desc nulls last, u.name asc
+  `);
+
+  return (rows as unknown as Array<any>).map((r) => {
+    let label: string | null = null;
+    if (r.last_task_title) {
+      const verb = r.last_task_status === "done" ? "Completed" : "Working on";
+      label = `${verb}: ${r.last_task_title}`;
+      if (label.length > 50) label = label.slice(0, 47) + "...";
+    }
+    return {
+      id: r.id,
+      name: r.name,
+      role: r.role,
+      avatarUrl: r.avatar_url,
+      lastActivity: r.last_activity ? new Date(r.last_activity).toISOString() : null,
+      lastActivityLabel: label,
+    };
+  });
 }

@@ -16,6 +16,7 @@ import {
   getMyChannels,
   type ChannelRow,
   type MessageRow,
+  type ChatUser,
 } from "./actions";
 
 interface Me {
@@ -31,7 +32,7 @@ export default function ChatShell({
 }: {
   me: Me;
   initialChannels: ChannelRow[];
-  allUsers: Array<{ id: string; name: string }>;
+  allUsers: ChatUser[];
 }) {
   return (
     <SocketProvider userId={me.id} userName={me.name}>
@@ -42,6 +43,8 @@ export default function ChatShell({
 
 /* ------------------------------------------------------------------ */
 
+type SidebarTab = "chats" | "members";
+
 function ChatInner({
   me,
   initialChannels,
@@ -49,7 +52,7 @@ function ChatInner({
 }: {
   me: Me;
   initialChannels: ChannelRow[];
-  allUsers: Array<{ id: string; name: string }>;
+  allUsers: ChatUser[];
 }) {
   const { socket, connected, onlineUsers } = useSocket();
   const [channels, setChannels] = useState<ChannelRow[]>(initialChannels);
@@ -59,6 +62,7 @@ function ChatInner({
   const [showNewDM, setShowNewDM] = useState(false);
   const [showNewGroup, setShowNewGroup] = useState(false);
   const [typingUsers, setTypingUsers] = useState<Map<string, string>>(new Map());
+  const [sidebarTab, setSidebarTab] = useState<SidebarTab>("members");
 
   // ---------- socket listeners ----------
   useEffect(() => {
@@ -190,38 +194,36 @@ function ChatInner({
           <div className="chat-sidebar-actions">
             <button
               className="chat-new-btn"
-              title="New DM"
-              onClick={() => { setShowNewDM(true); setShowNewGroup(false); }}
-            >
-              <IcNewDM />
-            </button>
-            <button
-              className="chat-new-btn"
               title="New Group"
-              onClick={() => { setShowNewGroup(true); setShowNewDM(false); }}
+              onClick={() => { setShowNewGroup(true); setShowNewDM(false); setSidebarTab("chats"); }}
             >
               <IcNewGroup />
             </button>
           </div>
         </div>
 
-        {/* connection pill */}
-        <div className={`chat-conn-pill ${connected ? "on" : "off"}`}>
-          {connected ? "Connected" : "Connecting..."}
+        {/* sidebar tabs: Members / Chats */}
+        <div className="chat-sidebar-tabs">
+          <button
+            className={`chat-sidebar-tab ${sidebarTab === "members" ? "active" : ""}`}
+            onClick={() => setSidebarTab("members")}
+          >
+            Members ({allUsers.length})
+          </button>
+          <button
+            className={`chat-sidebar-tab ${sidebarTab === "chats" ? "active" : ""}`}
+            onClick={() => setSidebarTab("chats")}
+          >
+            Chats
+            {channels.reduce((s, c) => s + c.unread, 0) > 0 && (
+              <span className="chat-tab-badge">
+                {channels.reduce((s, c) => s + c.unread, 0)}
+              </span>
+            )}
+          </button>
         </div>
 
-        {/* new-DM picker */}
-        {showNewDM && (
-          <UserPicker
-            users={allUsers}
-            onlineUsers={onlineUsers}
-            onSelect={startDM}
-            onClose={() => setShowNewDM(false)}
-            title="New Direct Message"
-          />
-        )}
-
-        {/* new-group picker */}
+        {/* new-group picker overlay */}
         {showNewGroup && (
           <GroupCreator
             users={allUsers}
@@ -231,26 +233,37 @@ function ChatInner({
           />
         )}
 
-        {/* channel list */}
-        <div className="chat-channel-list">
-          {channels.length === 0 && (
-            <div className="chat-empty-hint">No conversations yet. Start a DM!</div>
-          )}
-          {channels.map((ch) => (
-            <ChannelItem
-              key={ch.id}
-              channel={ch}
-              active={ch.id === activeId}
-              online={ch.type === "dm" && ch.memberNames.length > 0 && onlineUsers.includes(
-                // We don't store IDs in memberNames — so check presence indirectly
-                // For now just show a dot if any non-me online
-                ""
-              )}
-              onlineUsers={onlineUsers}
-              onClick={() => openChannel(ch.id)}
-            />
-          ))}
-        </div>
+        {/* MEMBERS tab */}
+        {sidebarTab === "members" && (
+          <div className="chat-channel-list">
+            {allUsers.map((u) => (
+              <MemberItem
+                key={u.id}
+                user={u}
+                online={onlineUsers.includes(u.id)}
+                onClick={() => startDM(u.id)}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* CHATS tab */}
+        {sidebarTab === "chats" && (
+          <div className="chat-channel-list">
+            {channels.length === 0 && (
+              <div className="chat-empty-hint">No conversations yet. Click a member to start!</div>
+            )}
+            {channels.map((ch) => (
+              <ChannelItem
+                key={ch.id}
+                channel={ch}
+                active={ch.id === activeId}
+                onlineUsers={onlineUsers}
+                onClick={() => openChannel(ch.id)}
+              />
+            ))}
+          </div>
+        )}
       </div>
 
       {/* ---------- main pane ---------- */}
@@ -279,6 +292,65 @@ function ChatInner({
       </div>
     </div>
   );
+}
+
+/* ================================================================== */
+/* Member list item                                                   */
+/* ================================================================== */
+
+function MemberItem({
+  user,
+  online,
+  onClick,
+}: {
+  user: ChatUser;
+  online: boolean;
+  onClick: () => void;
+}) {
+  const initials = user.name
+    .split(/\s+/)
+    .map((w) => w[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+
+  const timeAgo = user.lastActivity ? relativeTime(user.lastActivity) : null;
+
+  return (
+    <button className="chat-member-item" onClick={onClick} title={`DM ${user.name}`}>
+      <div className="chat-member-avatar">
+        {initials}
+        <span className={`chat-member-dot ${online ? "online" : ""}`} />
+      </div>
+      <div className="chat-member-info">
+        <div className="chat-member-name">
+          <span className="truncate">{user.name}</span>
+          <span className="chat-member-role">{user.role}</span>
+        </div>
+        <div className="chat-member-activity">
+          {user.lastActivityLabel ? (
+            <span className="truncate">{user.lastActivityLabel}</span>
+          ) : (
+            <span className="text-text-4">No recent activity</span>
+          )}
+          {timeAgo && <span className="chat-member-ago">{timeAgo}</span>}
+        </div>
+      </div>
+    </button>
+  );
+}
+
+function relativeTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "now";
+  if (mins < 60) return `${mins}m`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h`;
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return `${days}d`;
+  return `${Math.floor(days / 7)}w`;
 }
 
 /* ================================================================== */
