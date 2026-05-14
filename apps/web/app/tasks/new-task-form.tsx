@@ -214,7 +214,7 @@ export function NewTaskForm({ projects, users, currentUserId }: { projects: Proj
       {/* Suggest row */}
       <div className="md:col-span-2 flex items-center justify-between gap-3 pb-1">
         <div className="text-[11px] text-text-3 leading-snug max-w-[60ch]">
-          Ask Skynet to pre-fill project, assignee, priority, and due date based on the title + description.
+          Ask SeekPeek to pre-fill project, assignee, priority, and due date based on the title + description.
         </div>
         <button
           type="button"

@@ -223,8 +223,6 @@ export default async function HomePage({ searchParams }: PageProps) {
   const inProgress = inProgressRow?.n ?? 0;
 
   // Week completed (Mon-Sun window)
-  const nowIST = new Date();
-  const dayOfWeek = parseInt(new Intl.DateTimeFormat("en-US", { timeZone: TZ, weekday: "short" }).format(nowIST) === "Sun" ? "7" : new Intl.DateTimeFormat("en-US", { timeZone: TZ, weekday: "narrow" }).format(nowIST), 10);
   const mondayStr = shiftDate(today, -(new Date(`${today}T12:00:00+05:30`).getDay() || 7) + 1);
   const weekStart = new Date(`${mondayStr}T00:00:00+05:30`);
   const [weekCompRow] = await db

@@ -279,10 +279,11 @@ export async function TaskPaneContent({ taskId }: { taskId: string }) {
             ></textarea>
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-xs text-text-3 uppercase tracking-wider">Due in</span>
+            <span className="text-xs text-text-3 uppercase tracking-wider">Due in <span style={{color:'var(--danger)'}}>*</span></span>
             <input
               name="dueDate"
               type="text"
+              required
               defaultValue={task.dueDate ?? ""}
               placeholder="e.g. 3d, 8h, 2d 4h"
               className="bg-panel-2 border border-border-2 rounded-md px-3 py-2 text-sm w-44"

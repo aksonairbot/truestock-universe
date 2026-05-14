@@ -208,7 +208,7 @@ export function SubtaskList({
           onClick={runBreakdown}
           disabled={bdPending}
           className="break-down-btn"
-          title="Ask Skynet to suggest subtasks"
+          title="Ask SeekPeek to suggest subtasks"
         >
           {bdPending && !bdSuggestions ? (
             <>

@@ -152,6 +152,7 @@ export default async function ProjectDetailPage({ params }: PageProps) {
         <input type="hidden" name="projectSlug" value={project.slug} />
         <input type="hidden" name="status" value="todo" />
         <input type="hidden" name="priority" value="med" />
+        <input type="hidden" name="assigneeId" value={me.id} />
         <label className="flex-1 min-w-[200px] flex flex-col gap-1.5">
           <span className="text-[11px] text-text-3 uppercase tracking-wider font-medium">Quick add task</span>
           <input

@@ -25,7 +25,7 @@ export default async function NewTaskPage() {
       <div className="page-head">
         <div>
           <div className="page-title">New task</div>
-          <div className="page-sub">Quick capture. Use Suggest to triage with the local LLM.</div>
+          <div className="page-sub">Quick capture. Use Suggest to triage with AI.</div>
         </div>
         <Link href="/tasks" className="btn btn-ghost">← Back</Link>
       </div>

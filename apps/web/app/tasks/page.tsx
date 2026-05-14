@@ -22,6 +22,7 @@ import { StatusSelect, AssigneeSelect } from "./inline-controls";
 import { updateTaskStatus } from "./actions";
 import { TaskPane } from "./task-pane";
 import { TaskPaneContent } from "./task-pane-content";
+import { GroupForm } from "./group-form";
 
 export const dynamic = "force-dynamic";
 
@@ -320,28 +321,7 @@ export default async function TasksPage({ searchParams }: PageProps) {
           Sort
         </button>
         {!isBoard ? (
-          <form action="/tasks" method="GET" className="group-form">
-            {view ? <input type="hidden" name="view" value={view} /> : null}
-            {q ? <input type="hidden" name="q" value={q} /> : null}
-            <label className="group-select">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="14" height="14">
-                <rect x="3" y="4" width="18" height="4" rx="1" />
-                <rect x="3" y="10" width="18" height="4" rx="1" />
-                <rect x="3" y="16" width="18" height="4" rx="1" />
-              </svg>
-              <span>Group:</span>
-              <select name="group" defaultValue={group}>
-                {GROUP_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-              <noscript>
-                <button type="submit" className="btn btn-ghost btn-sm">Go</button>
-              </noscript>
-            </label>
-          </form>
+          <GroupForm view={view} group={group} q={q} />
         ) : null}
         <div className="tb-spacer" />
         <form action="/tasks" method="GET" className="search-form">
@@ -368,7 +348,7 @@ export default async function TasksPage({ searchParams }: PageProps) {
             {q ? <>No tasks match <span className="mono">"{q}"</span>.</> : "Clean slate. What's the next thing?"}
           </div>
           <div className="text-text-3 text-[12px] mb-3">
-            {q ? "Try a different search or clear it to see everything." : "Type the first task — Skynet will pick the project, assignee, and priority."}
+            {q ? "Try a different search or clear it to see everything." : "Type the first task — SeekPeek will pick the project, assignee, and priority."}
           </div>
           <Link href="/tasks/new" className="btn btn-primary btn-sm">
             {q ? "Clear search" : "✨ Capture a task"}

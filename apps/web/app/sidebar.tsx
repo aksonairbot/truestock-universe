@@ -22,6 +22,7 @@ export default function Sidebar({
   isPrivileged = false,
 }: SidebarProps) {
   const rawPath = usePathname() ?? "/";
+  const [mobileOpen, setMobileOpen] = useState(false);
   // Welcome page is a full-bleed landing for unauthenticated visitors — no app shell.
   if (rawPath === "/welcome" || rawPath.startsWith("/welcome/")) return null;
   // Normalize: strip trailing slash (except root), drop any query/hash
@@ -29,13 +30,44 @@ export default function Sidebar({
   const isActive = (href: string) =>
     pathname === href || (href !== "/" && pathname.startsWith(href + "/")) || pathname === href;
 
+  // Close mobile drawer on route change
+  useEffect(() => { setMobileOpen(false); }, [pathname]);
+
   return (
-    <aside
-      className="hidden lg:flex flex-col w-[236px] shrink-0 h-screen sticky top-0 overflow-y-auto px-3 py-4 gap-1 border-r border-border"
-      style={{
-        background: "linear-gradient(180deg, #0B0D12, #0A0B10)",
-      }}
-    >
+    <>
+      {/* mobile top bar */}
+      <div className="mobile-topbar lg:hidden">
+        <button
+          type="button"
+          className="mobile-hamburger"
+          onClick={() => setMobileOpen(true)}
+          aria-label="Open navigation"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="20" height="20">
+            <path d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
+        <Link href="/" className="mobile-topbar-brand">
+          <div className="brand-mark" style={{ width: 20, height: 20 }} />
+          <span>{orgName}</span>
+        </Link>
+        <div style={{ width: 36 }} /> {/* spacer for centering */}
+      </div>
+
+      {/* mobile backdrop */}
+      {mobileOpen && (
+        <div
+          className="mobile-backdrop lg:hidden"
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
+
+      <aside
+        className={`sidebar-aside ${mobileOpen ? "is-open" : ""}`}
+        style={{
+          background: "linear-gradient(180deg, #0B0D12, #0A0B10)",
+        }}
+      >
       {/* brand — clicks to home (today summary) */}
       <Link href="/" className="flex items-center gap-2.5 px-2.5 pb-4 pt-1 group">
         <div className="brand-mark" />
@@ -122,6 +154,7 @@ export default function Sidebar({
         </div>
       )}
     </aside>
+    </>
   );
 }
 

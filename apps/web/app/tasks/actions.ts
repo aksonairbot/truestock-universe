@@ -254,23 +254,30 @@ export async function updateTaskMeta(formData: FormData): Promise<void> {
   const dueDateInput = ((formData.get("dueDate") as string) ?? "").trim() || null;
 
   if (!title) throw new Error("title cannot be empty");
-  if (!dueDateInput) throw new Error("due date is required");
   const priority = isTaskPriority(priorityRaw) ? priorityRaw : "med";
 
-  // Convert due input: accept "3d", "8h", "2d 4h" or legacy YYYY-MM-DD
-  let dueDate: string | null = null;
+  const db = getDb();
+
+  // Build the update set. Due date: if provided, parse & update; if the form
+  // field was present but empty, the user cleared it — block that. If the
+  // field wasn't in the form at all (e.g. PrioritySelect), preserve the
+  // existing DB value.
+  const set: Record<string, unknown> = { title, description, priority, updatedAt: new Date() };
+
   if (dueDateInput) {
     if (/^\d{4}-\d{2}-\d{2}$/.test(dueDateInput)) {
-      dueDate = dueDateInput;
+      set.dueDate = dueDateInput;
     } else {
-      dueDate = deadlineToDateStr(offsetToDeadline(dueDateInput));
+      set.dueDate = deadlineToDateStr(offsetToDeadline(dueDateInput));
     }
+  } else if (formData.has("dueDate")) {
+    // Field present but blank — user deliberately cleared it. Block.
+    throw new Error("due date is required");
   }
 
-  const db = getDb();
   await db
     .update(tasks)
-    .set({ title, description, priority, dueDate, updatedAt: new Date() })
+    .set(set as any)
     .where(eq(tasks.id, taskId));
   log.info("task.meta_updated", { taskId });
   revalidatePath(`/tasks/${taskId}`);

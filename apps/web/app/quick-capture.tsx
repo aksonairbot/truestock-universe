@@ -53,7 +53,7 @@ export function QuickCapture() {
       />
       <div className="flex items-center justify-between mt-2 gap-3">
         <div className="text-[11px] text-text-3">
-          Cmd/Ctrl + Enter to send. Skynet picks project, assignee, priority, due — fall back to defaults if unsure.
+          Cmd/Ctrl + Enter to send. SeekPeek picks project, assignee, priority, due — fall back to defaults if unsure.
         </div>
         <button
           type="button"

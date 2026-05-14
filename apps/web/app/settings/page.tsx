@@ -4,7 +4,7 @@ import Link from "next/link";
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "Settings · Skynet",
+  title: "Settings · SeekPeek",
   description: "User and workspace settings",
 };
 
@@ -16,7 +16,7 @@ export default async function SettingsPage() {
       <div className="page-head">
         <div>
           <h1 className="page-title">Settings</h1>
-          <p className="page-subtitle">Manage your account and preferences</p>
+          <p className="page-sub">Manage your account and preferences</p>
         </div>
       </div>
 
