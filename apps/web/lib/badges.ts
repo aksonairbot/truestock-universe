@@ -219,7 +219,7 @@ export async function checkAndAwardBadges(
 
   for (const badge of BADGES) {
     if (has.has(badge.key)) continue;
-    const current = (stats as Record<string, number>)[badge.statKey] ?? 0;
+    const current = (stats as unknown as Record<string, number>)[badge.statKey] ?? 0;
     if (current >= badge.target) {
       try {
         await db.insert(userBadges).values({ userId, badgeKey: badge.key }).onConflictDoNothing();
@@ -265,7 +265,7 @@ export async function getBadgeProgress(userId: string): Promise<BadgeProgress[]>
 
   return BADGES.map((badge) => ({
     badge,
-    current: Math.min((stats as Record<string, number>)[badge.statKey] ?? 0, badge.target),
+    current: Math.min((stats as unknown as Record<string, number>)[badge.statKey] ?? 0, badge.target),
     earned: earnedMap.has(badge.key),
     earnedAt: earnedMap.get(badge.key) ?? undefined,
   }));
