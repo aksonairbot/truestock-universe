@@ -228,7 +228,7 @@ export async function getChatUsers(): Promise<ChatUser[]> {
       u.id, u.name, u.role, u.avatar_url,
       greatest(
         (select max(t.updated_at) from tasks t where t.assignee_id = u.id),
-        (select max(c.created_at) from comments c where c.author_id = u.id),
+        (select max(c.created_at) from task_comments c where c.author_id = u.id),
         (select max(cm.created_at) from chat_messages cm where cm.sender_id = u.id)
       ) as last_activity,
       (
