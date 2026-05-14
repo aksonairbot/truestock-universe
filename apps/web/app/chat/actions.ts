@@ -117,10 +117,11 @@ export async function sendMessage(channelId: string, body: string): Promise<Mess
   const userId = await getCurrentUserId();
   const db = getDb();
 
-  const [msg] = await db
+  const rows = await db
     .insert(chatMessages)
     .values({ channelId, senderId: userId, body: body.trim() })
     .returning();
+  const msg = rows[0]!;
 
   // Update last_read_at for sender
   await db
@@ -129,13 +130,13 @@ export async function sendMessage(channelId: string, body: string): Promise<Mess
     .where(and(eq(chatChannelMembers.channelId, channelId), eq(chatChannelMembers.userId, userId)));
 
   // Get sender name
-  const [sender] = await db.select({ name: users.name }).from(users).where(eq(users.id, userId)).limit(1);
+  const senderRows = await db.select({ name: users.name }).from(users).where(eq(users.id, userId)).limit(1);
 
   return {
     id: msg.id,
     channelId: msg.channelId,
     senderId: msg.senderId,
-    senderName: sender?.name ?? "Unknown",
+    senderName: senderRows[0]?.name ?? "Unknown",
     body: msg.body,
     createdAt: msg.createdAt.toISOString(),
   };
