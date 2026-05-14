@@ -90,7 +90,7 @@ export async function quickCapture(text: string): Promise<QuickCaptureResult> {
     : "med";
   const dueDate = sug?.dueOffsetDays !== null && sug?.dueOffsetDays !== undefined
     ? offsetToDate(sug.dueOffsetDays)
-    : null;
+    : offsetToDate(3); // default 3 business days when AI triage has no opinion
 
   // ---- insert ----
   const [created] = await db

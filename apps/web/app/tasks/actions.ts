@@ -254,6 +254,7 @@ export async function updateTaskMeta(formData: FormData): Promise<void> {
   const dueDateInput = ((formData.get("dueDate") as string) ?? "").trim() || null;
 
   if (!title) throw new Error("title cannot be empty");
+  if (!dueDateInput) throw new Error("due date is required");
   const priority = isTaskPriority(priorityRaw) ? priorityRaw : "med";
 
   // Convert due input: accept "3d", "8h", "2d 4h" or legacy YYYY-MM-DD
@@ -288,7 +289,7 @@ export async function addSubtask(formData: FormData): Promise<void> {
 
   const db = getDb();
   const [parent] = await db
-    .select({ projectId: tasks.projectId, assigneeId: tasks.assigneeId })
+    .select({ projectId: tasks.projectId, assigneeId: tasks.assigneeId, dueDate: tasks.dueDate })
     .from(tasks)
     .where(eq(tasks.id, parentId))
     .limit(1);
@@ -296,6 +297,14 @@ export async function addSubtask(formData: FormData): Promise<void> {
 
   // Use explicit assignee if provided, otherwise inherit from parent
   const assigneeId = assigneeIdRaw ?? parent.assigneeId;
+
+  // Due date: inherit from parent, or default to 3 days from now
+  let dueDate: string | null = parent.dueDate;
+  if (!dueDate) {
+    const d = new Date();
+    d.setDate(d.getDate() + 3);
+    dueDate = d.toISOString().slice(0, 10);
+  }
 
   const userId = await getCurrentUserId();
   const [created] = await db
@@ -307,6 +316,7 @@ export async function addSubtask(formData: FormData): Promise<void> {
       createdById: userId,
       status: "todo",
       priority: "med",
+      dueDate,
       parentTaskId: parentId,
     })
     .returning({ id: tasks.id, assigneeId: tasks.assigneeId });

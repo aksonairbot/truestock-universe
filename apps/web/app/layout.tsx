@@ -29,8 +29,8 @@ async function getSidebarData() {
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const { user, unread, chatUnread } = await getSidebarData();
   return (
-    <html lang="en">
-      <body className="antialiased">
+    <html lang="en" suppressHydrationWarning>
+      <body className="antialiased" suppressHydrationWarning>
         <div className="relative z-10 flex min-h-screen">
           <Sidebar user={user} unreadCount={unread} chatUnreadCount={chatUnread} isPrivileged={user?.role === "admin" || user?.role === "manager"} />
           <main className="flex-1 min-w-0 overflow-x-hidden">{children}</main>

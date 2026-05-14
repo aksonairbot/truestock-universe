@@ -101,14 +101,22 @@ export async function getOrGenerateProjectSummary(
 
   const started = Date.now();
   try {
-    const r = await llm.complete({
-      sensitivity: "internal",
-      system,
-      prompt,
-      temperature: 0.4,
-      maxTokens: 220,
-      timeoutMs: 25_000,
-    });
+    // Wrap LLM call in a top-level 30s race so the Suspense boundary always
+    // resolves even if the full provider fallback chain (3 × 25s) hangs.
+    const raceTimeout = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error("LLM summary timed out after 30s")), 30_000),
+    );
+    const r = await Promise.race([
+      llm.complete({
+        sensitivity: "internal",
+        system,
+        prompt,
+        temperature: 0.4,
+        maxTokens: 220,
+        timeoutMs: 12_000, // per-provider timeout (down from 25s)
+      }),
+      raceTimeout,
+    ]);
     let body = (r.text ?? "").trim();
     if (!body || body.length < 6) return { ok: false, error: "empty model output" };
     if (body.length > 1200) body = body.slice(0, 1200);
