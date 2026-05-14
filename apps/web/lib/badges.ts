@@ -109,10 +109,11 @@ export async function checkAndAwardBadges(
 
   if (trigger === "task_completed") {
     // ── Milestone badges ──
-    const [{ count: doneCount }] = await db
+    const [countRow] = await db
       .select({ count: sql<number>`count(*)::int` })
       .from(tasks)
       .where(and(eq(tasks.assigneeId, userId), eq(tasks.status, "done")));
+    const doneCount = countRow?.count ?? 0;
 
     if (doneCount >= 1)   await award("first_blood");
     if (doneCount >= 10)  await award("getting_warmed_up");
@@ -158,7 +159,7 @@ export async function checkAndAwardBadges(
       if (task?.dueDate && task?.completedAt) {
         const dueDate = new Date(`${task.dueDate}T23:59:59+05:30`);
         if (task.completedAt <= dueDate) {
-          const [{ onTimeCount }] = await db
+          const [onTimeRow] = await db
             .select({ onTimeCount: sql<number>`count(*)::int` })
             .from(tasks)
             .where(and(
@@ -167,6 +168,7 @@ export async function checkAndAwardBadges(
               sql`${tasks.dueDate} IS NOT NULL`,
               sql`${tasks.completedAt} <= (${tasks.dueDate}::date + interval '1 day' - interval '1 second' + interval '5 hours 30 minutes')`,
             ));
+          const onTimeCount = onTimeRow?.onTimeCount ?? 0;
           if (onTimeCount >= 5)  await award("on_time_five");
           if (onTimeCount >= 20) await award("on_time_twenty");
         }
@@ -174,20 +176,20 @@ export async function checkAndAwardBadges(
 
       // Project clearer — all tasks in this project now done
       if (task?.projectId) {
-        const [{ openInProject }] = await db
+        const [openRow] = await db
           .select({ openInProject: sql<number>`count(*)::int` })
           .from(tasks)
           .where(and(
             eq(tasks.projectId, task.projectId),
             sql`${tasks.status} NOT IN ('done', 'cancelled')`,
           ));
-        if (openInProject === 0) await award("project_clearer", { projectId: task.projectId });
+        if ((openRow?.openInProject ?? 1) === 0) await award("project_clearer", { projectId: task.projectId });
       }
     }
 
     // Five in a day
     const todayIST = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
-    const [{ todayDone }] = await db
+    const [todayRow] = await db
       .select({ todayDone: sql<number>`count(*)::int` })
       .from(tasks)
       .where(and(
@@ -196,17 +198,17 @@ export async function checkAndAwardBadges(
         sql`${tasks.completedAt} >= ${todayIST}::date AT TIME ZONE 'Asia/Kolkata'`,
         sql`${tasks.completedAt} < (${todayIST}::date + interval '1 day') AT TIME ZONE 'Asia/Kolkata'`,
       ));
-    if (todayDone >= 5) await award("five_in_a_day");
+    if ((todayRow?.todayDone ?? 0) >= 5) await award("five_in_a_day");
 
     // Cross-pollinator — tasks done in 5+ projects
-    const [{ projectCount }] = await db
+    const [projRow] = await db
       .select({ projectCount: sql<number>`count(DISTINCT ${tasks.projectId})::int` })
       .from(tasks)
       .where(and(eq(tasks.assigneeId, userId), eq(tasks.status, "done")));
-    if (projectCount >= 5) await award("cross_project");
+    if ((projRow?.projectCount ?? 0) >= 5) await award("cross_project");
 
     // Clean week — zero overdue right now
-    const [{ overdueNow }] = await db
+    const [overdueRow] = await db
       .select({ overdueNow: sql<number>`count(*)::int` })
       .from(tasks)
       .where(and(
@@ -215,14 +217,15 @@ export async function checkAndAwardBadges(
         sql`${tasks.dueDate} IS NOT NULL`,
         sql`${tasks.dueDate}::date < ${todayIST}::date`,
       ));
-    if (overdueNow === 0 && doneCount >= 5) await award("zero_overdue_week");
+    if ((overdueRow?.overdueNow ?? 1) === 0 && doneCount >= 5) await award("zero_overdue_week");
   }
 
   if (trigger === "comment_posted") {
-    const [{ commentCount }] = await db
+    const [cmtRow] = await db
       .select({ commentCount: sql<number>`count(*)::int` })
       .from(taskComments)
       .where(eq(taskComments.authorId, userId));
+    const commentCount = cmtRow?.commentCount ?? 0;
 
     if (commentCount >= 1)   await award("first_comment");
     if (commentCount >= 50)  await award("commentator");
