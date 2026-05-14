@@ -482,7 +482,7 @@ function groupMessages(messages: MessageRow[]): MsgGroup[] {
       prev.senderId === m.senderId &&
       // Same sender within 3 minutes → group together
       new Date(m.createdAt).getTime() -
-        new Date(prev.items[prev.items.length - 1].createdAt).getTime() <
+        new Date(prev.items[prev.items.length - 1]!.createdAt).getTime() <
         3 * 60 * 1000
     ) {
       prev.items.push(m);
