@@ -68,6 +68,52 @@ export async function BadgeShelf({
   );
 }
 
+/** Banner for Today page — shows latest earned badge + XP summary */
+export async function LatestBadgeBanner({ userId }: { userId: string }) {
+  const earned = await getUserBadges(userId);
+  const totalXp = earned.reduce((sum, b) => sum + b.xp, 0);
+
+  // Sort by award date descending to get latest
+  const latest = [...earned].sort(
+    (a, b) => b.awardedAt.getTime() - a.awardedAt.getTime(),
+  )[0];
+
+  return (
+    <Link href="/badges" className="badge-banner">
+      {latest ? (
+        <>
+          <div className="badge-banner-latest" style={{ "--bc": latest.color } as React.CSSProperties}>
+            <span className="badge-banner-icon">{latest.icon}</span>
+          </div>
+          <div className="badge-banner-info">
+            <div className="badge-banner-label">Latest badge</div>
+            <div className="badge-banner-name">{latest.name}</div>
+            <div className="badge-banner-desc">{latest.description}</div>
+          </div>
+        </>
+      ) : (
+        <div className="badge-banner-info">
+          <div className="badge-banner-label">Achievements</div>
+          <div className="badge-banner-name">No badges yet</div>
+          <div className="badge-banner-desc">Complete tasks to earn your first badge!</div>
+        </div>
+      )}
+      <div className="badge-banner-stats">
+        <div className="badge-banner-xp">★ {totalXp} XP</div>
+        <div className="badge-banner-count">{earned.length} / {BADGES.length}</div>
+      </div>
+      {earned.length > 0 && (
+        <div className="badge-banner-chips">
+          {earned.slice(0, 5).map((b) => (
+            <span key={b.key} className="badge-banner-chip" title={b.name}>{b.icon}</span>
+          ))}
+          {earned.length > 5 && <span className="badge-banner-chip-more">+{earned.length - 5}</span>}
+        </div>
+      )}
+    </Link>
+  );
+}
+
 /** Tiny inline badge count for members table rows */
 export async function BadgeCount({ userId }: { userId: string }) {
   const earned = await getUserBadges(userId);
