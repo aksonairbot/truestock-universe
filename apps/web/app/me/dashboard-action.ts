@@ -139,8 +139,8 @@ async function computeStats(userId: string, period: Period): Promise<BentoStats>
   const prevStartDay = shiftIST(todayIST, -(2 * windowDays - 1));
   const prevEndDay = shiftIST(todayIST, -windowDays);
   const periodKey = period === "week" ? isoWeekKey(now) : monthKey(now);
-  const startFmt = new Date(`${startDay}T12:00:00+05:30`).toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
-  const endFmt = new Date(`${endDay}T12:00:00+05:30`).toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
+  const startFmt = new Date(`${startDay}T12:00:00+05:30`).toLocaleDateString("en-IN", { day: "2-digit", month: "short", timeZone: TZ });
+  const endFmt = new Date(`${endDay}T12:00:00+05:30`).toLocaleDateString("en-IN", { day: "2-digit", month: "short", timeZone: TZ });
   const rangeLabel = `${startFmt} → ${endFmt}`;
 
   const { start: startStart } = dayBoundsIST(startDay);
@@ -425,6 +425,8 @@ export interface DashboardResult {
   error?: string;
 }
 
+const NARRATIVE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
+
 export async function getOrGenerateDashboard(period: Period, opts?: { force?: boolean }): Promise<DashboardResult> {
   const userId = await getCurrentUserId();
   const me = await getCurrentUser();
@@ -432,37 +434,44 @@ export async function getOrGenerateDashboard(period: Period, opts?: { force?: bo
   const periodKey = period === "week" ? isoWeekKey(now) : monthKey(now);
   const db = getDb();
 
-  if (!opts?.force) {
-    const [existing] = await db
-      .select()
-      .from(aiDashboards)
-      .where(and(eq(aiDashboards.userId, userId), eq(aiDashboards.period, period), eq(aiDashboards.periodKey, periodKey)))
-      .limit(1);
-    if (existing) {
-      // Guard: existing cache may have older shape; if it lacks new fields, regenerate.
-      const old = existing.bodyJson as unknown as Partial<BentoStats>;
-      if (old && Array.isArray((old as any).weeklyTrend) && Array.isArray((old as any).dayOfWeek)) {
-        return {
-          ok: true,
-          stats: existing.bodyJson as unknown as BentoStats,
-          narrative: existing.narrative ?? undefined,
-          model: existing.model ?? undefined,
-          generatedAt: existing.generatedAt, cached: true,
-        };
-      }
-    }
-  }
-
+  // Always compute fresh stats so numbers are live
   try {
     const stats = await computeStats(userId, period);
+
+    // Reuse cached narrative if it's recent enough (saves LLM call)
     let narrative = "", model = "", durationMs = 0;
-    try {
-      const r = await generateNarrative(stats, me.name);
-      narrative = r.body; model = r.model; durationMs = r.durationMs;
-    } catch (e) {
-      log.warn("dashboard.narrative_failed", { period, error: (e as Error).message });
+    let generatedAt = now;
+    let narrativeCached = false;
+
+    if (!opts?.force) {
+      const [existing] = await db
+        .select()
+        .from(aiDashboards)
+        .where(and(eq(aiDashboards.userId, userId), eq(aiDashboards.period, period), eq(aiDashboards.periodKey, periodKey)))
+        .limit(1);
+      if (existing?.narrative && existing.generatedAt) {
+        const age = now.getTime() - new Date(existing.generatedAt).getTime();
+        if (age < NARRATIVE_TTL_MS) {
+          narrative = existing.narrative;
+          model = existing.model ?? "";
+          generatedAt = existing.generatedAt;
+          narrativeCached = true;
+        }
+      }
     }
 
+    // Generate fresh narrative if needed
+    if (!narrative) {
+      try {
+        const r = await generateNarrative(stats, me.name);
+        narrative = r.body; model = r.model; durationMs = r.durationMs;
+        generatedAt = now;
+      } catch (e) {
+        log.warn("dashboard.narrative_failed", { period, error: (e as Error).message });
+      }
+    }
+
+    // Persist latest stats + narrative
     await db
       .insert(aiDashboards)
       .values({
@@ -474,14 +483,18 @@ export async function getOrGenerateDashboard(period: Period, opts?: { force?: bo
         target: [aiDashboards.userId, aiDashboards.period, aiDashboards.periodKey],
         set: {
           bodyJson: stats as unknown as object,
-          narrative: narrative || null, model: model || null, durationMs,
-          generatedAt: new Date(),
+          ...(!narrativeCached ? {
+            narrative: narrative || null, model: model || null, durationMs,
+            generatedAt: new Date(),
+          } : {}),
         },
       });
 
-    log.info("dashboard.generated", { period, periodKey, durationMs, model });
+    if (!narrativeCached) {
+      log.info("dashboard.generated", { period, periodKey, durationMs, model });
+    }
     revalidatePath(`/me/${period}`);
-    return { ok: true, stats, narrative: narrative || undefined, model, generatedAt: new Date(), cached: false };
+    return { ok: true, stats, narrative: narrative || undefined, model, generatedAt, cached: narrativeCached };
   } catch (e) {
     log.error("dashboard.failed", { period, error: (e as Error).message });
     return { ok: false, error: (e as Error).message };

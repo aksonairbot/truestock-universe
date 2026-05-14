@@ -17,10 +17,10 @@ function fmtSignedDelta(now: number, prev: number): { label: string; cls: string
 }
 
 function dayLabel(d: string): string {
-  return new Date(`${d}T12:00:00+05:30`).toLocaleDateString("en-IN", { weekday: "short" });
+  return new Date(`${d}T12:00:00+05:30`).toLocaleDateString("en-IN", { weekday: "short", timeZone: "Asia/Kolkata" });
 }
 function dayShort(d: string): string {
-  return new Date(`${d}T12:00:00+05:30`).toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
+  return new Date(`${d}T12:00:00+05:30`).toLocaleDateString("en-IN", { day: "2-digit", month: "short", timeZone: "Asia/Kolkata" });
 }
 
 const PRIO_COLOR: Record<string, string> = {

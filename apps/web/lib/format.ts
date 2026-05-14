@@ -44,7 +44,7 @@ export function formatDelta(value: number | null | undefined, suffix = "%"): str
 export function formatDateShort(d: Date | string | null): string {
   if (!d) return "—";
   const date = typeof d === "string" ? new Date(d) : d;
-  return date.toLocaleDateString("en-IN", { month: "short", day: "numeric" });
+  return date.toLocaleDateString("en-IN", { month: "short", day: "numeric", timeZone: "Asia/Kolkata" });
 }
 
 export function formatRelative(d: Date | string | null): string {

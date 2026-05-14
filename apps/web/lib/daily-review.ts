@@ -41,6 +41,7 @@ function yesterdayRange(): { start: string; end: string; label: string; dateStr:
     end: `${istDay}T00:00:00+05:30`,
     dateStr: yStr,
     label: yesterday.toLocaleDateString("en-IN", {
+      timeZone: "Asia/Kolkata",
       weekday: "long",
       day: "2-digit",
       month: "short",

@@ -35,10 +35,11 @@ const PRIORITY_BADGE: Record<string, string> = {
 function fmtDate(d: string | Date | null): string {
   if (!d) return "—";
   const date = typeof d === "string" ? new Date(d) : d;
-  return date.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+  return date.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric", timeZone: "Asia/Kolkata" });
 }
 function fmtTime(d: Date): string {
   return d.toLocaleString("en-IN", {
+    timeZone: "Asia/Kolkata",
     day: "2-digit",
     month: "short",
     hour: "2-digit",

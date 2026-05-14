@@ -63,7 +63,7 @@ type GroupKey = (typeof GROUP_OPTIONS)[number]["value"];
 function fmtDate(d: string | Date | null): string {
   if (!d) return "—";
   const date = typeof d === "string" ? new Date(d) : d;
-  return date.toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
+  return date.toLocaleDateString("en-IN", { day: "2-digit", month: "short", timeZone: "Asia/Kolkata" });
 }
 
 function startOfToday(): Date {

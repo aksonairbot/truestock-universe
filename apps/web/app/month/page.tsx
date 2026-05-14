@@ -54,6 +54,7 @@ function getMonthEnd(dateStr: string): Date {
 function fmtMonthYear(dateStr: string): string {
   const d = new Date(`${dateStr}-01T12:00:00+05:30`);
   return d.toLocaleDateString("en-IN", {
+    timeZone: "Asia/Kolkata",
     month: "long",
     year: "numeric",
   });

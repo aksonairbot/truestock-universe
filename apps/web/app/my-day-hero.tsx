@@ -35,7 +35,7 @@ function startOfTodayIST(): Date {
 function fmtDateShort(d: string | Date | null): string {
   if (!d) return "—";
   const date = typeof d === "string" ? new Date(`${d}T12:00:00+05:30`) : d;
-  return date.toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
+  return date.toLocaleDateString("en-IN", { day: "2-digit", month: "short", timeZone: TZ });
 }
 function fmtTime(d: Date): string {
   return d.toLocaleString("en-IN", {
@@ -237,7 +237,7 @@ export async function MyDayHero() {
       <div className="myday-head">
         <div>
           <div className="myday-greeting">{greeting()}, {me.name.split(/\s+/)[0]}.</div>
-          <div className="myday-date">{new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "short" })}</div>
+          <div className="myday-date">{new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "short", timeZone: TZ })}</div>
         </div>
         {streak > 0 ? (
           <div className={`streak-chip ${streak >= 7 ? "streak-hot" : ""}`} title={`Current streak: ${streak} day${streak === 1 ? "" : "s"}. ${closedToday === 0 ? "Close 1 today to keep it alive." : "Already closed today — locked in."}`}>

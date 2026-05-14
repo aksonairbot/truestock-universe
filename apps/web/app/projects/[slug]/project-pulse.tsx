@@ -50,7 +50,7 @@ function relativeTime(d: Date): string {
   if (h < 24) return `${h}h ago`;
   const days = Math.floor(h / 24);
   if (days < 7) return `${days}d ago`;
-  return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
+  return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", timeZone: "Asia/Kolkata" });
 }
 
 export async function ProjectPulse({ projectId }: { projectId: string }) {

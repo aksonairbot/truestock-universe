@@ -77,6 +77,7 @@ function shiftDate(date: string, days: number): string {
 function fmtHumanDate(date: string): string {
   const d = new Date(`${date}T12:00:00+05:30`);
   return d.toLocaleDateString("en-IN", {
+    timeZone: TZ,
     weekday: "long",
     day: "numeric",
     month: "short",

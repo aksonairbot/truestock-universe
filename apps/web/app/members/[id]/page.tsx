@@ -54,10 +54,10 @@ function avaInitials(name?: string | null): string {
 function fmtDate(d: string | Date | null): string {
   if (!d) return "—";
   const date = typeof d === "string" ? new Date(d) : d;
-  return date.toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
+  return date.toLocaleDateString("en-IN", { day: "2-digit", month: "short", timeZone: "Asia/Kolkata" });
 }
 function fmtTime(d: Date): string {
-  return d.toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Kolkata" });
 }
 function istDayString(d: Date): string {
   return new Intl.DateTimeFormat("en-CA", {
@@ -449,7 +449,7 @@ export default async function MemberProfilePage({ params, searchParams }: PagePr
             <div className="profile-timeline">
               {orderedDays.map((day) => {
                 const evs = eventsByDay.get(day)!;
-                const dayLabel = new Date(`${day}T12:00:00+05:30`).toLocaleDateString("en-IN", { weekday: "short", day: "2-digit", month: "short" });
+                const dayLabel = new Date(`${day}T12:00:00+05:30`).toLocaleDateString("en-IN", { weekday: "short", day: "2-digit", month: "short", timeZone: "Asia/Kolkata" });
                 return (
                   <div key={day} className="profile-tl-day">
                     <div className="profile-tl-date">{dayLabel} · {evs.length} event{evs.length === 1 ? "" : "s"}</div>
