@@ -1,78 +1,162 @@
 #!/bin/bash
-set -e
+# ============================================================
+# SeekPeek — Safe Deploy with Auto-Tagging & Rollback
+# ============================================================
+# Every successful deploy gets a Git tag. If a deploy breaks,
+# you can roll back instantly:
+#
+#   bash deploy.sh                    → deploy latest
+#   bash deploy.sh --rollback v1.2    → roll back to v1.2
+#   bash deploy.sh --tags             → list all deploy tags
+#   bash deploy.sh --dry-run          → show what would deploy
+# ============================================================
 
+set -e
 SERVER="root@206.189.141.160"
 REMOTE="/opt/truestock-universe"
 LOCAL="$HOME/Documents/Claude/Projects/Superman/truestock-universe"
 
-echo "=== SeekPeek Deploy ==="
+cd "$LOCAL"
 
-# 1. Sync key source directories
-echo "[1/5] Syncing source files..."
-scp -r "$LOCAL/packages/db/src/schema.ts" "$SERVER:$REMOTE/packages/db/src/schema.ts"
-scp -r "$LOCAL/packages/db/drizzle/0014_review_actions.sql" "$SERVER:$REMOTE/packages/db/drizzle/"
-scp -r "$LOCAL/packages/db/drizzle/0015_project_banners.sql" "$SERVER:$REMOTE/packages/db/drizzle/"
-scp -r "$LOCAL/packages/db/drizzle/0016_org_settings.sql" "$SERVER:$REMOTE/packages/db/drizzle/"
+# ── List tags ──
+if [ "$1" = "--tags" ]; then
+    echo ""
+    echo "Deploy history:"
+    git tag -l 'v*' --sort=-v:refname | while read tag; do
+        DATE=$(git log -1 --format='%ai' "$tag" 2>/dev/null | cut -d' ' -f1)
+        MSG=$(git tag -l -n1 "$tag" | sed "s/^$tag//;s/^ *//")
+        echo "  $tag  ($DATE)  $MSG"
+    done
+    echo ""
+    exit 0
+fi
 
-# App source
-scp "$LOCAL/apps/web/app/globals.css" "$SERVER:$REMOTE/apps/web/app/globals.css"
-scp "$LOCAL/apps/web/app/tasks/actions.ts" "$SERVER:$REMOTE/apps/web/app/tasks/actions.ts"
-scp "$LOCAL/apps/web/app/tasks/review-actions.tsx" "$SERVER:$REMOTE/apps/web/app/tasks/review-actions.tsx"
-scp "$LOCAL/apps/web/app/tasks/task-pane-content.tsx" "$SERVER:$REMOTE/apps/web/app/tasks/task-pane-content.tsx"
-scp "$LOCAL/apps/web/app/tasks/[id]/page.tsx" "$SERVER:$REMOTE/apps/web/app/tasks/[id]/page.tsx"
-scp "$LOCAL/apps/web/lib/notify.ts" "$SERVER:$REMOTE/apps/web/lib/notify.ts"
+# ── Rollback mode ──
+if [ "$1" = "--rollback" ] && [ -n "$2" ]; then
+    TAG="$2"
+    echo ""
+    echo "⚠️  ROLLING BACK to $TAG"
+    echo ""
 
-# New files from earlier sessions (attachments, error boundary, etc.)
-scp "$LOCAL/apps/web/app/error.tsx" "$SERVER:$REMOTE/apps/web/app/error.tsx"
-scp "$LOCAL/apps/web/app/tasks/attachment-upload.tsx" "$SERVER:$REMOTE/apps/web/app/tasks/attachment-upload.tsx"
-scp "$LOCAL/apps/web/app/tasks/task-attachments.tsx" "$SERVER:$REMOTE/apps/web/app/tasks/task-attachments.tsx"
-scp "$LOCAL/apps/web/app/tasks/new-task-form.tsx" "$SERVER:$REMOTE/apps/web/app/tasks/new-task-form.tsx"
-scp "$LOCAL/apps/web/app/tasks/page.tsx" "$SERVER:$REMOTE/apps/web/app/tasks/page.tsx"
-scp "$LOCAL/apps/web/app/page.tsx" "$SERVER:$REMOTE/apps/web/app/page.tsx"
-scp "$LOCAL/apps/web/app/projects/[slug]/page.tsx" "$SERVER:$REMOTE/apps/web/app/projects/[slug]/page.tsx"
-scp "$LOCAL/apps/web/next.config.mjs" "$SERVER:$REMOTE/apps/web/next.config.mjs"
+    # Verify tag exists
+    if ! git rev-parse "$TAG" >/dev/null 2>&1; then
+        echo "Error: tag $TAG not found. Run 'bash deploy.sh --tags' to see available tags."
+        exit 1
+    fi
 
-# Review attachments
-ssh "$SERVER" "mkdir -p $REMOTE/apps/web/app/api/tasks/\[id\]/attachments $REMOTE/apps/web/app/api/attachments/\[id\] $REMOTE/apps/web/app/api/reviews/\[responseId\]/attachments"
-scp "$LOCAL/apps/web/app/reviews/review-attachments.tsx" "$SERVER:$REMOTE/apps/web/app/reviews/review-attachments.tsx"
-scp "$LOCAL/apps/web/app/reviews/fill/[responseId]/page.tsx" "$SERVER:$REMOTE/apps/web/app/reviews/fill/[responseId]/page.tsx"
-scp "$LOCAL/apps/web/app/reviews/[cycleId]/response/[responseId]/page.tsx" "$SERVER:$REMOTE/apps/web/app/reviews/[cycleId]/response/[responseId]/page.tsx"
-scp "$LOCAL/apps/web/app/reviews/actions.ts" "$SERVER:$REMOTE/apps/web/app/reviews/actions.ts"
+    git checkout "$TAG"
+    scp -r apps/web/src "$SERVER:$REMOTE/apps/web/" 2>/dev/null || true
+    scp -r apps/web/app "$SERVER:$REMOTE/apps/web/"
+    scp -r packages "$SERVER:$REMOTE/"
+    scp apps/web/package.json "$SERVER:$REMOTE/apps/web/"
+    ssh "$SERVER" "cd $REMOTE && pnpm install && pnpm build && systemctl restart truestock-universe-web"
+    git checkout main
 
-# API routes
-scp "$LOCAL/apps/web/app/api/tasks/[id]/attachments/route.ts" "$SERVER:$REMOTE/apps/web/app/api/tasks/[id]/attachments/route.ts"
-scp "$LOCAL/apps/web/app/api/attachments/[id]/route.ts" "$SERVER:$REMOTE/apps/web/app/api/attachments/[id]/route.ts"
-scp "$LOCAL/apps/web/app/api/reviews/[responseId]/attachments/route.ts" "$SERVER:$REMOTE/apps/web/app/api/reviews/[responseId]/attachments/route.ts"
+    echo ""
+    echo "✓ Rolled back to $TAG. Service restarted."
+    exit 0
+fi
 
-# Organisation settings
-ssh "$SERVER" "mkdir -p $REMOTE/apps/web/app/settings/organisation"
-scp "$LOCAL/apps/web/app/settings/page.tsx" "$SERVER:$REMOTE/apps/web/app/settings/page.tsx"
-scp "$LOCAL/apps/web/app/settings/org-actions.ts" "$SERVER:$REMOTE/apps/web/app/settings/org-actions.ts"
-scp "$LOCAL/apps/web/app/settings/organisation/page.tsx" "$SERVER:$REMOTE/apps/web/app/settings/organisation/page.tsx"
-scp "$LOCAL/apps/web/app/settings/organisation/org-settings-form.tsx" "$SERVER:$REMOTE/apps/web/app/settings/organisation/org-settings-form.tsx"
+# ── Normal deploy ──
+echo ""
+echo "======================================"
+echo "  SeekPeek — Deploy"
+echo "======================================"
 
-# Members actions (security fix)
-scp "$LOCAL/apps/web/app/members/actions.ts" "$SERVER:$REMOTE/apps/web/app/members/actions.ts"
+# Step 1: Calculate version
+LAST_TAG=$(git tag -l 'v*' --sort=-v:refname | head -1)
+if [ -z "$LAST_TAG" ]; then
+    NEXT_VERSION="v1.0"
+else
+    MAJOR=$(echo "$LAST_TAG" | cut -d'v' -f2 | cut -d'.' -f1)
+    MINOR=$(echo "$LAST_TAG" | cut -d'.' -f2)
+    NEXT_VERSION="v${MAJOR}.$((MINOR + 1))"
+fi
 
-# 2. Sync banner images
-echo "[2/5] Syncing banner images..."
-scp "$LOCAL/apps/web/public/banners/ai.png" "$SERVER:$REMOTE/apps/web/public/banners/"
-scp "$LOCAL/apps/web/public/banners/high.png" "$SERVER:$REMOTE/apps/web/public/banners/"
+echo ""
+echo "  Last version: ${LAST_TAG:-none}"
+echo "  This deploy:  $NEXT_VERSION"
+echo ""
 
-# 3. Run migrations
-echo "[3/5] Running migrations..."
+# Dry run check
+if [ "$1" = "--dry-run" ]; then
+    echo "Files that would be deployed:"
+    if [ -n "$LAST_TAG" ]; then
+        git diff --stat "$LAST_TAG"..HEAD
+    else
+        echo "  (first tagged deploy — all files)"
+    fi
+    exit 0
+fi
+
+# Step 2: Commit any uncommitted changes
+if ! git diff --quiet || ! git diff --cached --quiet; then
+    echo "[1/6] Committing local changes..."
+    git add -A
+    git commit -m "deploy: $NEXT_VERSION"
+else
+    echo "[1/6] ✓ Working tree clean"
+fi
+
+# Step 3: Upload to server
+echo "[2/6] Uploading to server..."
+scp -r apps/web/app "$SERVER:$REMOTE/apps/web/"
+scp -r apps/web/src "$SERVER:$REMOTE/apps/web/" 2>/dev/null || true
+scp -r apps/web/public "$SERVER:$REMOTE/apps/web/"
+scp -r packages "$SERVER:$REMOTE/"
+scp apps/web/package.json "$SERVER:$REMOTE/apps/web/"
+scp apps/web/next.config.mjs "$SERVER:$REMOTE/apps/web/" 2>/dev/null || true
+scp package.json pnpm-workspace.yaml "$SERVER:$REMOTE/" 2>/dev/null || true
+
+# Step 4: Run any new migrations
+echo "[3/6] Running migrations..."
 ssh "$SERVER" "cd $REMOTE && export \$(grep DATABASE_URL .env) && \
-  psql \"\$DATABASE_URL\" -f packages/db/drizzle/0013_review_attachments.sql 2>&1 || true && \
-  psql \"\$DATABASE_URL\" -f packages/db/drizzle/0014_review_actions.sql 2>&1 || true && \
-  psql \"\$DATABASE_URL\" -f packages/db/drizzle/0015_project_banners.sql 2>&1 || true && \
-  psql \"\$DATABASE_URL\" -f packages/db/drizzle/0016_org_settings.sql 2>&1"
+  for f in packages/db/drizzle/*.sql; do \
+    psql \"\$DATABASE_URL\" -f \"\$f\" 2>&1 | grep -v 'already exists' || true; \
+  done"
 
-# 4. Create uploads directory
-echo "[4/5] Ensuring uploads directory exists..."
-ssh "$SERVER" "mkdir -p /opt/truestock-universe/uploads"
+# Step 5: Build on server
+echo "[4/6] Building..."
+ssh "$SERVER" "cd $REMOTE && pnpm install --frozen-lockfile 2>/dev/null || pnpm install && pnpm build"
 
-# 5. Build and restart
-echo "[5/5] Building and restarting..."
-ssh "$SERVER" "cd $REMOTE && pnpm build && systemctl restart truestock-universe-web"
+# Step 6: Restart and verify
+echo "[5/6] Restarting service..."
+ssh "$SERVER" "systemctl restart truestock-universe-web"
 
-echo "=== Deploy complete! ==="
+sleep 3
+STATUS=$(ssh "$SERVER" "systemctl is-active truestock-universe-web")
+
+if [ "$STATUS" = "active" ]; then
+    # Tag this successful deploy
+    git tag -a "$NEXT_VERSION" -m "Deploy $(date '+%Y-%m-%d %H:%M') — $STATUS"
+    git push origin main --tags 2>/dev/null || echo "  ⚠ Git push failed — tag saved locally"
+
+    echo ""
+    echo "======================================"
+    echo "  ✓ Deployed $NEXT_VERSION"
+    echo "  Service: active"
+    echo "  Site: https://seekpeak.in"
+    echo ""
+    echo "  Rollback: bash deploy.sh --rollback ${LAST_TAG:-v1.0}"
+    echo "  History:  bash deploy.sh --tags"
+    echo "======================================"
+else
+    echo ""
+    echo "======================================"
+    echo "  ✗ BUILD FAILED — service is $STATUS"
+    echo "======================================"
+
+    if [ -n "$LAST_TAG" ]; then
+        echo ""
+        echo "  Auto-rolling back to $LAST_TAG..."
+        git checkout "$LAST_TAG"
+        scp -r apps/web/app "$SERVER:$REMOTE/apps/web/"
+        scp -r packages "$SERVER:$REMOTE/"
+        ssh "$SERVER" "cd $REMOTE && pnpm build && systemctl restart truestock-universe-web"
+        git checkout main
+        echo "  ✓ Rolled back to $LAST_TAG"
+    else
+        echo "  No previous version to roll back to."
+        echo "  Check logs: ssh $SERVER journalctl -u truestock-universe-web -n 50"
+    fi
+fi
