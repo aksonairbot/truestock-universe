@@ -118,58 +118,58 @@ export default async function TeamMonthPage({ searchParams }: PageProps) {
     );
   }
 
-  // Completed this month
-  const completedRows = await db
-    .select({ assigneeId: tasks.assigneeId, n: sql<number>`count(*)::int` })
-    .from(tasks)
-    .where(
-      and(
-        eq(tasks.status, "done"),
-        gte(tasks.completedAt, mStart),
-        lte(tasks.completedAt, mEnd),
-        inArray(tasks.assigneeId, userIds),
-      ),
-    )
-    .groupBy(tasks.assigneeId);
-
-  // Created this month
-  const createdRows = await db
-    .select({ createdById: tasks.createdById, n: sql<number>`count(*)::int` })
-    .from(tasks)
-    .where(
-      and(
-        gte(tasks.createdAt, mStart),
-        lte(tasks.createdAt, mEnd),
-        inArray(tasks.createdById, userIds),
-      ),
-    )
-    .groupBy(tasks.createdById);
-
-  // Comments this month
-  const commentRows = await db
-    .select({ authorId: taskComments.authorId, n: sql<number>`count(*)::int` })
-    .from(taskComments)
-    .where(
-      and(
-        gte(taskComments.createdAt, mStart),
-        lte(taskComments.createdAt, mEnd),
-        inArray(taskComments.authorId, userIds),
-      ),
-    )
-    .groupBy(taskComments.authorId);
-
-  // Overdue right now
-  const overdueRows = await db
-    .select({ assigneeId: tasks.assigneeId, n: sql<number>`count(*)::int` })
-    .from(tasks)
-    .where(
-      and(
-        sql`${tasks.status} NOT IN ('done','cancelled')`,
-        sql`${tasks.dueDate}::date < ${today}::date`,
-        inArray(tasks.assigneeId, userIds),
-      ),
-    )
-    .groupBy(tasks.assigneeId);
+  // All 4 stat queries run in parallel — no dependencies between them.
+  const [completedRows, createdRows, commentRows, overdueRows] = await Promise.all([
+    // Completed this month
+    db
+      .select({ assigneeId: tasks.assigneeId, n: sql<number>`count(*)::int` })
+      .from(tasks)
+      .where(
+        and(
+          eq(tasks.status, "done"),
+          gte(tasks.completedAt, mStart),
+          lte(tasks.completedAt, mEnd),
+          inArray(tasks.assigneeId, userIds),
+        ),
+      )
+      .groupBy(tasks.assigneeId),
+    // Created this month
+    db
+      .select({ createdById: tasks.createdById, n: sql<number>`count(*)::int` })
+      .from(tasks)
+      .where(
+        and(
+          gte(tasks.createdAt, mStart),
+          lte(tasks.createdAt, mEnd),
+          inArray(tasks.createdById, userIds),
+        ),
+      )
+      .groupBy(tasks.createdById),
+    // Comments this month
+    db
+      .select({ authorId: taskComments.authorId, n: sql<number>`count(*)::int` })
+      .from(taskComments)
+      .where(
+        and(
+          gte(taskComments.createdAt, mStart),
+          lte(taskComments.createdAt, mEnd),
+          inArray(taskComments.authorId, userIds),
+        ),
+      )
+      .groupBy(taskComments.authorId),
+    // Overdue right now
+    db
+      .select({ assigneeId: tasks.assigneeId, n: sql<number>`count(*)::int` })
+      .from(tasks)
+      .where(
+        and(
+          sql`${tasks.status} NOT IN ('done'::task_status,'cancelled'::task_status)`,
+          sql`${tasks.dueDate}::date < ${today}::date`,
+          inArray(tasks.assigneeId, userIds),
+        ),
+      )
+      .groupBy(tasks.assigneeId),
+  ]);
 
   // Build maps
   const completedMap = new Map(completedRows.map((r) => [r.assigneeId, r.n]));
@@ -289,7 +289,7 @@ function MemberCard({
         ) : (
           <div
             className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-semibold"
-            style={{ background: "linear-gradient(135deg,#7B5CFF,#22D3EE)", color: "#0B0D12" }}
+            style={{ background: "linear-gradient(135deg,#7B5CFF,#22D3EE)", color: "var(--avatar-contrast)" }}
           >
             {initials}
           </div>

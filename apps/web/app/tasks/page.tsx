@@ -14,8 +14,10 @@
 // updateTaskStatus directly (no JS).
 
 import Link from "next/link";
+import { Suspense } from "react";
 import { getDb, tasks, projects, users, eq, desc, or, and, ilike, inArray, sql } from "@tu/db";
 import { getCurrentUser } from "@/lib/auth";
+import { getActiveUsers } from "@/lib/cached-queries";
 import { isAdmin, getDepartmentScope } from "@/lib/access";
 import { fmtDueCountdown, dueStatus } from "@/lib/worktime";
 import { StatusSelect, AssigneeSelect } from "./inline-controls";
@@ -142,18 +144,24 @@ function isOverdue(t: { dueDate: string | Date | null; status: string }): boolea
 // ---------------------------------------------------------------------------
 // page
 // ---------------------------------------------------------------------------
+const PAGE_SIZE = 50;
+
 interface PageProps {
-  searchParams: Promise<{ view?: string; group?: string; q?: string; task?: string }>;
+  searchParams: Promise<{ view?: string; group?: string; q?: string; task?: string; page?: string }>;
 }
 
 export default async function TasksPage({ searchParams }: PageProps) {
-  const { view, group: groupRaw, q: qRaw, task: taskIdRaw } = await searchParams;
+  const t0 = Date.now();
+  const { view, group: groupRaw, q: qRaw, task: taskIdRaw, page: pageRaw } = await searchParams;
   const taskId = (taskIdRaw ?? "").trim() || null;
   const isBoard = view === "board";
   const group: GroupKey = (GROUP_OPTIONS.find((g) => g.value === groupRaw)?.value ?? "due") as GroupKey;
   const q = (qRaw ?? "").trim();
+  const page = Math.max(1, parseInt(pageRaw ?? "1", 10) || 1);
 
+  const tAuth0 = Date.now();
   const me = await getCurrentUser();
+  const tAuth1 = Date.now();
   const canSeeAll = isAdmin(me);
   const deptScope = getDepartmentScope(me);
   const db = getDb();
@@ -164,61 +172,87 @@ export default async function TasksPage({ searchParams }: PageProps) {
     : undefined;
 
   // Data wall: admin sees all, manager sees department tasks, member sees own.
-  // Always include parent tasks where a subtask is assigned to the user.
-  const hasMySubtask = sql`${tasks.id} in (select parent_task_id from tasks where assignee_id = ${me.id} and parent_task_id is not null)`;
-
+  // Uses SQL subqueries instead of pre-fetching IDs — eliminates 2 sequential round-trips.
   let scopeFilter;
   if (canSeeAll) {
     scopeFilter = undefined;
   } else if (deptScope) {
-    // Manager — see tasks where assignee or creator is in their department
-    const deptMembers = await db
-      .select({ id: users.id })
-      .from(users)
-      .where(eq(users.departmentId, deptScope));
-    const deptIds = deptMembers.map((u) => u.id);
-    if (deptIds.length > 0) {
-      scopeFilter = or(inArray(tasks.assigneeId, deptIds), inArray(tasks.createdById, deptIds), hasMySubtask);
-    } else {
-      scopeFilter = or(eq(tasks.assigneeId, me.id), eq(tasks.createdById, me.id), hasMySubtask);
-    }
+    // Manager — see tasks where assignee or creator is in their department,
+    // OR tasks whose subtasks are assigned to me (parent visibility).
+    scopeFilter = or(
+      sql`${tasks.assigneeId} in (select id from users where department_id = ${deptScope})`,
+      sql`${tasks.createdById} in (select id from users where department_id = ${deptScope})`,
+      sql`${tasks.id} in (select parent_task_id from tasks where assignee_id = ${me.id} and parent_task_id is not null)`
+    );
   } else {
-    scopeFilter = or(eq(tasks.assigneeId, me.id), eq(tasks.createdById, me.id), hasMySubtask);
+    // Member — own tasks + parent tasks whose subtasks are assigned to me
+    scopeFilter = or(
+      eq(tasks.assigneeId, me.id),
+      eq(tasks.createdById, me.id),
+      sql`${tasks.id} in (select parent_task_id from tasks where assignee_id = ${me.id} and parent_task_id is not null)`
+    );
   }
 
   const where = searchFilter && scopeFilter
     ? and(searchFilter, scopeFilter)
     : searchFilter ?? scopeFilter ?? undefined;
 
-  const rows = await db
-    .select({
-      id: tasks.id,
-      title: tasks.title,
-      status: tasks.status,
-      priority: tasks.priority,
-      dueDate: tasks.dueDate,
-      createdAt: tasks.createdAt,
-      project: { slug: projects.slug, name: projects.name, color: projects.color, iconUrl: projects.iconUrl },
-      assignee: { id: users.id, name: users.name },
-    })
-    .from(tasks)
-    .innerJoin(projects, eq(tasks.projectId, projects.id))
-    .leftJoin(users, eq(tasks.assigneeId, users.id))
-    .where(where)
-    .orderBy(desc(tasks.createdAt));
+  // Parallel: paginated rows + combined stats (single scan) + user list
+  const offset = (page - 1) * PAGE_SIZE;
+  const tQ0 = Date.now();
 
-  const allUsers = await db.select({ id: users.id, name: users.name }).from(users);
+  const [rows, [statsRow], allUsers] = await Promise.all([
+    db
+      .select({
+        id: tasks.id,
+        title: tasks.title,
+        status: tasks.status,
+        priority: tasks.priority,
+        dueDate: tasks.dueDate,
+        createdAt: tasks.createdAt,
+        project: { slug: projects.slug, name: projects.name, color: projects.color, iconUrl: projects.iconUrl },
+        assignee: { id: users.id, name: users.name },
+      })
+      .from(tasks)
+      .innerJoin(projects, eq(tasks.projectId, projects.id))
+      .leftJoin(users, eq(tasks.assigneeId, users.id))
+      .where(where)
+      .orderBy(desc(tasks.createdAt))
+      .limit(PAGE_SIZE)
+      .offset(offset),
+    // One query, three stats via FILTER — single table scan instead of three
+    db
+      .select({
+        total: sql<number>`count(*)::int`,
+        open: sql<number>`count(*) filter (where status not in ('done','cancelled'))::int`,
+        overdue: sql<number>`count(*) filter (where status not in ('done','cancelled') and due_date < (now() at time zone 'Asia/Kolkata')::date)::int`,
+      })
+      .from(tasks)
+      .innerJoin(projects, eq(tasks.projectId, projects.id))
+      .where(where),
+    // Cached per-request — shared with TaskPaneContent if panel is open
+    getActiveUsers(),
+  ]);
 
-  const open = rows.filter((r) => r.status !== "done" && r.status !== "cancelled").length;
-  const overdueCount = rows.filter((r) => isOverdue(r)).length;
+  const tQ1 = Date.now();
+  if (process.env.NODE_ENV !== "production") {
+    console.log(`[TASKS-PAGE PERF] auth=${tAuth1-tAuth0}ms  queries=${tQ1-tQ0}ms  total=${tQ1-t0}ms  user=${me.email}  admin=${canSeeAll}  dept=${deptScope ?? 'none'}`);
+  }
+
+  const totalCount = statsRow?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+  const open = statsRow?.open ?? 0;
+  const overdueCount = statsRow?.overdue ?? 0;
 
   const baseQuery = (extra: Record<string, string | undefined>) => {
     const params = new URLSearchParams();
     if (view) params.set("view", view);
     if (group !== "due") params.set("group", group);
     if (q) params.set("q", q);
+    // preserve page unless explicitly overridden
+    if (page > 1 && !("page" in extra)) params.set("page", String(page));
     for (const [k, v] of Object.entries(extra)) {
-      if (v === undefined || v === "") params.delete(k);
+      if (v === undefined || v === "" || v === "1") params.delete(k);
       else params.set(k, v);
     }
     const s = params.toString();
@@ -242,13 +276,14 @@ export default async function TasksPage({ searchParams }: PageProps) {
         <div>
           <div className="page-title">Tasks</div>
           <div className="page-sub">
-            {rows.length} total · {open} open
+            {totalCount} total · {open} open
             {overdueCount > 0 ? (
               <>
                 {" · "}
                 <span style={{ color: "var(--danger)" }}>{overdueCount} overdue</span>
               </>
             ) : null}
+            {totalPages > 1 ? ` · page ${page} of ${totalPages}` : null}
             {" · signed in as "}
             <span className="mono">{me.email}</span>
           </div>
@@ -360,12 +395,71 @@ export default async function TasksPage({ searchParams }: PageProps) {
         <ListView rows={rows} users={allUsers} group={group} rowHref={rowHrefForTask} />
       )}
 
-      {/* Asana-style slide-over — server-rendered content inside a client shell */}
+      {/* ------------------------- pagination ------------------------- */}
+      {totalPages > 1 ? (
+        <div className="pagination">
+          {page > 1 ? (
+            <Link href={baseQuery({ page: String(page - 1) })} className="btn btn-ghost btn-sm">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14">
+                <path d="m15 18-6-6 6-6" />
+              </svg>
+              Prev
+            </Link>
+          ) : (
+            <span className="btn btn-ghost btn-sm disabled" style={{ opacity: 0.3 }}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14">
+                <path d="m15 18-6-6 6-6" />
+              </svg>
+              Prev
+            </span>
+          )}
+          <span className="pagination-info">
+            {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, totalCount)} of {totalCount}
+          </span>
+          {page < totalPages ? (
+            <Link href={baseQuery({ page: String(page + 1) })} className="btn btn-ghost btn-sm">
+              Next
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14">
+                <path d="m9 18 6-6-6-6" />
+              </svg>
+            </Link>
+          ) : (
+            <span className="btn btn-ghost btn-sm disabled" style={{ opacity: 0.3 }}>
+              Next
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14">
+                <path d="m9 18 6-6-6-6" />
+              </svg>
+            </span>
+          )}
+        </div>
+      ) : null}
+
+      {/* Asana-style slide-over — Suspense so list renders without waiting for pane queries */}
       {taskId ? (
         <TaskPane>
-          <TaskPaneContent taskId={taskId} />
+          <Suspense fallback={<TaskPaneSkeleton />}>
+            <TaskPaneContent taskId={taskId} />
+          </Suspense>
         </TaskPane>
       ) : null}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Task pane loading skeleton
+// ---------------------------------------------------------------------------
+function TaskPaneSkeleton() {
+  return (
+    <div className="task-pane-inner animate-pulse">
+      <div className="h-3 w-32 bg-panel-2 rounded mb-3" />
+      <div className="h-6 w-3/4 bg-panel-2 rounded mb-4" />
+      <div className="space-y-3 mb-4">
+        {[1, 2, 3, 4].map((i) => (
+          <div key={i} className="h-4 bg-panel-2 rounded w-full" />
+        ))}
+      </div>
+      <div className="h-20 bg-panel-2 rounded" />
     </div>
   );
 }

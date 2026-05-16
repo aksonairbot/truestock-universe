@@ -91,7 +91,7 @@ export async function TeamVelocity() {
     select (completed_at at time zone 'Asia/Kolkata')::date::text as d,
            count(*)::int as n
     from tasks
-    where status = 'done'
+    where status = 'done'::task_status
       and completed_at >= ${start14d.toISOString()}
     group by d
     order by d

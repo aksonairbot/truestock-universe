@@ -19,6 +19,11 @@ function isRole(v: string): v is Role {
  * `googleSubject` claim and this form becomes the back-up only.
  */
 export async function createMember(formData: FormData): Promise<void> {
+  const me = await getCurrentUser();
+  if (me.role !== "admin" && me.role !== "manager") {
+    throw new Error("Only admins and managers can create members.");
+  }
+
   const name = ((formData.get("name") as string) ?? "").trim();
   const email = ((formData.get("email") as string) ?? "").trim().toLowerCase();
   const roleRaw = ((formData.get("role") as string) ?? "member").trim();

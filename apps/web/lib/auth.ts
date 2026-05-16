@@ -2,7 +2,12 @@
 //
 // Auth helper. Always uses real NextAuth sessions.
 // No more stub fallback — every page requires a valid Google session.
+//
+// Uses React cache() to deduplicate within a single server request — if
+// multiple server components call getCurrentUser() in the same render, only
+// one DB query fires.
 
+import { cache } from "react";
 import { getDb, users, eq } from "@tu/db";
 import type { User } from "@tu/db";
 
@@ -18,7 +23,7 @@ async function lookupById(id: string): Promise<User | null> {
   return u ?? null;
 }
 
-export async function getCurrentUser(): Promise<User> {
+export const getCurrentUser: () => Promise<User> = cache(async () => {
   const { auth } = await import("@/auth");
   const session = await auth();
   const uid = (session?.user as any)?.id as string | undefined;
@@ -30,7 +35,7 @@ export async function getCurrentUser(): Promise<User> {
     throw new Error("Not signed in.");
   }
   return u;
-}
+});
 
 /** Same as getCurrentUser but returns null instead of throwing. */
 export async function tryGetCurrentUser(): Promise<User | null> {

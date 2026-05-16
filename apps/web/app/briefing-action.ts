@@ -54,7 +54,7 @@ async function fetchContext(userId: string, kind: BriefingKind) {
     })
     .from(tasks)
     .innerJoin(projects, eq(tasks.projectId, projects.id))
-    .where(and(eq(tasks.assigneeId, userId), sql`${tasks.status} not in ('done', 'cancelled')`))
+    .where(and(eq(tasks.assigneeId, userId), sql`${tasks.status} not in ('done'::task_status, 'cancelled'::task_status)`))
     .orderBy(desc(tasks.priority), tasks.dueDate);
 
   // Closed today (for EoD)

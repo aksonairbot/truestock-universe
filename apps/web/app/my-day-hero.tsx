@@ -61,7 +61,7 @@ async function computeStreak(userId: string): Promise<{ current: number; thresho
     select distinct (completed_at at time zone 'Asia/Kolkata')::date::text as d
     from tasks
     where assignee_id = ${userId}
-      and status = 'done'
+      and status = 'done'::task_status
       and completed_at is not null
       and completed_at >= now() - interval '2 years'
     order by d desc
@@ -161,7 +161,7 @@ export async function MyDayHero() {
     })
     .from(tasks)
     .innerJoin(projects, eq(tasks.projectId, projects.id))
-    .where(and(eq(tasks.assigneeId, me.id), sql`${tasks.status} not in ('done','cancelled')`));
+    .where(and(eq(tasks.assigneeId, me.id), sql`${tasks.status} not in ('done'::task_status,'cancelled'::task_status)`));
 
   function dueRank(due: string | null): number {
     if (!due) return 3; // no due date → lowest tier within "later"
@@ -209,7 +209,7 @@ export async function MyDayHero() {
       select t.id, t.title, p.slug as project_slug, p.name as project_name
       from tasks t join projects p on t.project_id = p.id
       where t.assignee_id = ${me.id}
-        and t.status not in ('done','cancelled')
+        and t.status not in ('done'::task_status,'cancelled'::task_status)
     ),
     latest as (
       select c.task_id, c.created_at, c.author_id,

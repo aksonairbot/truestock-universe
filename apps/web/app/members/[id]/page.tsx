@@ -134,20 +134,100 @@ export default async function MemberProfilePage({ params, searchParams }: PagePr
   const startWindow = shiftDays(today, -(win - 1));
   const start14d = shiftDays(today, -13);
 
-  // ------------- Open task queue (sectioned) ----------------
-  const openTasks = await db
-    .select({
-      id: tasks.id,
-      title: tasks.title,
-      status: tasks.status,
-      priority: tasks.priority,
-      dueDate: tasks.dueDate,
-      project: { slug: projects.slug, name: projects.name },
-    })
-    .from(tasks)
-    .innerJoin(projects, eq(tasks.projectId, projects.id))
-    .where(and(eq(tasks.assigneeId, id), sql`${tasks.status} not in ('done','cancelled')`))
-    .orderBy(tasks.dueDate);
+  // All 6 queries run in parallel — no dependencies between them.
+  const [openTasks, doneRows, commentRows, recentCompleted, recentCreated, recentComments] = await Promise.all([
+    // ------------- Open task queue (sectioned) ----------------
+    db
+      .select({
+        id: tasks.id,
+        title: tasks.title,
+        status: tasks.status,
+        priority: tasks.priority,
+        dueDate: tasks.dueDate,
+        project: { slug: projects.slug, name: projects.name },
+      })
+      .from(tasks)
+      .innerJoin(projects, eq(tasks.projectId, projects.id))
+      .where(and(eq(tasks.assigneeId, id), sql`${tasks.status} not in ('done'::task_status,'cancelled'::task_status)`))
+      .orderBy(tasks.dueDate),
+    // ------------- Stats (window-scoped) ----------------
+    db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(tasks)
+      .where(
+        and(
+          eq(tasks.assigneeId, id),
+          eq(tasks.status, "done"),
+          sql`${tasks.completedAt} >= ${startWindow.toISOString()}`,
+        ),
+      ),
+    db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(taskComments)
+      .where(
+        and(
+          eq(taskComments.authorId, id),
+          sql`${taskComments.createdAt} >= ${startWindow.toISOString()}`,
+        ),
+      ),
+    // ------------- Recent activity timeline (14 days, capped) ----------------
+    db
+      .select({
+        kind: sql<string>`'completed'`.as("kind"),
+        taskId: tasks.id,
+        title: tasks.title,
+        at: tasks.completedAt,
+        project: { slug: projects.slug, name: projects.name },
+        body: sql<string | null>`null`.as("body"),
+      })
+      .from(tasks)
+      .innerJoin(projects, eq(tasks.projectId, projects.id))
+      .where(
+        and(
+          eq(tasks.assigneeId, id),
+          eq(tasks.status, "done"),
+          sql`${tasks.completedAt} >= ${start14d.toISOString()}`,
+        ),
+      )
+      .orderBy(desc(tasks.completedAt)),
+    db
+      .select({
+        kind: sql<string>`'created'`.as("kind"),
+        taskId: tasks.id,
+        title: tasks.title,
+        at: tasks.createdAt,
+        project: { slug: projects.slug, name: projects.name },
+        body: sql<string | null>`null`.as("body"),
+      })
+      .from(tasks)
+      .innerJoin(projects, eq(tasks.projectId, projects.id))
+      .where(
+        and(
+          eq(tasks.createdById, id),
+          sql`${tasks.createdAt} >= ${start14d.toISOString()}`,
+        ),
+      )
+      .orderBy(desc(tasks.createdAt)),
+    db
+      .select({
+        kind: sql<string>`'commented'`.as("kind"),
+        taskId: taskComments.taskId,
+        title: tasks.title,
+        at: taskComments.createdAt,
+        project: { slug: projects.slug, name: projects.name },
+        body: taskComments.body,
+      })
+      .from(taskComments)
+      .innerJoin(tasks, eq(taskComments.taskId, tasks.id))
+      .innerJoin(projects, eq(tasks.projectId, projects.id))
+      .where(
+        and(
+          eq(taskComments.authorId, id),
+          sql`${taskComments.createdAt} >= ${start14d.toISOString()}`,
+        ),
+      )
+      .orderBy(desc(taskComments.createdAt)),
+  ]);
 
   // Group by due bucket
   const grouped: Record<string, typeof openTasks> = {};
@@ -162,91 +242,9 @@ export default async function MemberProfilePage({ params, searchParams }: PagePr
     busy += w * (overdue ? 2 : 1);
   }
 
-  // ------------- Stats (window-scoped) ----------------
-  const [doneRow] = await db
-    .select({ n: sql<number>`count(*)::int` })
-    .from(tasks)
-    .where(
-      and(
-        eq(tasks.assigneeId, id),
-        eq(tasks.status, "done"),
-        sql`${tasks.completedAt} >= ${startWindow.toISOString()}`,
-      ),
-    );
-  const doneCount = doneRow?.n ?? 0;
-
-  const [commentRow] = await db
-    .select({ n: sql<number>`count(*)::int` })
-    .from(taskComments)
-    .where(
-      and(
-        eq(taskComments.authorId, id),
-        sql`${taskComments.createdAt} >= ${startWindow.toISOString()}`,
-      ),
-    );
-  const commentCount = commentRow?.n ?? 0;
-
+  const doneCount = doneRows[0]?.n ?? 0;
+  const commentCount = commentRows[0]?.n ?? 0;
   const overdueCount = grouped.overdue!.length;
-
-  // ------------- Recent activity timeline (14 days, capped) ----------------
-  const recentCompleted = await db
-    .select({
-      kind: sql<string>`'completed'`.as("kind"),
-      taskId: tasks.id,
-      title: tasks.title,
-      at: tasks.completedAt,
-      project: { slug: projects.slug, name: projects.name },
-      body: sql<string | null>`null`.as("body"),
-    })
-    .from(tasks)
-    .innerJoin(projects, eq(tasks.projectId, projects.id))
-    .where(
-      and(
-        eq(tasks.assigneeId, id),
-        eq(tasks.status, "done"),
-        sql`${tasks.completedAt} >= ${start14d.toISOString()}`,
-      ),
-    )
-    .orderBy(desc(tasks.completedAt));
-
-  const recentCreated = await db
-    .select({
-      kind: sql<string>`'created'`.as("kind"),
-      taskId: tasks.id,
-      title: tasks.title,
-      at: tasks.createdAt,
-      project: { slug: projects.slug, name: projects.name },
-      body: sql<string | null>`null`.as("body"),
-    })
-    .from(tasks)
-    .innerJoin(projects, eq(tasks.projectId, projects.id))
-    .where(
-      and(
-        eq(tasks.createdById, id),
-        sql`${tasks.createdAt} >= ${start14d.toISOString()}`,
-      ),
-    )
-    .orderBy(desc(tasks.createdAt));
-
-  const recentComments = await db
-    .select({
-      kind: sql<string>`'commented'`.as("kind"),
-      taskId: taskComments.taskId,
-      title: tasks.title,
-      at: taskComments.createdAt,
-      project: { slug: projects.slug, name: projects.name },
-      body: taskComments.body,
-    })
-    .from(taskComments)
-    .innerJoin(tasks, eq(taskComments.taskId, tasks.id))
-    .innerJoin(projects, eq(tasks.projectId, projects.id))
-    .where(
-      and(
-        eq(taskComments.authorId, id),
-        sql`${taskComments.createdAt} >= ${start14d.toISOString()}`,
-      ),
-    )
-    .orderBy(desc(taskComments.createdAt));
 
   type Event = {
     kind: string;

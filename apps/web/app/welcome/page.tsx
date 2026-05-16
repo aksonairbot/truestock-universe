@@ -154,57 +154,110 @@ export default function WelcomePage() {
             </div>
           </div>
 
-          {/* App mockup */}
+          {/* App mockup — matches real product */}
           <div className="lp-mockup">
             <div className="lp-mockup-window">
               <div className="lp-mock-sidebar">
                 <div className="lp-mock-brand"><div className="lp-brand-icon" style={{ width: 18, height: 18, borderRadius: 5 }} /><span>SeekPeek</span></div>
-                <div className="lp-mock-nav-item lp-mock-active">Quick Capture</div>
-                <div className="lp-mock-nav-item">Morning Briefings</div>
-                <div className="lp-mock-nav-item">Clarity Check</div>
-                <div className="lp-mock-nav-item">Private Streaks</div>
-                <div className="lp-mock-nav-item">Team Dashboards</div>
-                <div className="lp-mock-nav-item">Team Chat</div>
+                <div className="lp-mock-nav-item lp-mock-active">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="14" height="14"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg>
+                  Today
+                </div>
+                <div className="lp-mock-nav-item">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="14" height="14"><path d="M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2z" /></svg>
+                  My Week
+                </div>
+                <div className="lp-mock-nav-item">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="14" height="14"><path d="M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2z" /></svg>
+                  Month
+                </div>
+                <div className="lp-mock-nav-item">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="14" height="14"><polyline points="9 11 12 14 22 4" /><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" /></svg>
+                  Tasks <span className="lp-mock-badge">6</span>
+                </div>
+                <div className="lp-mock-nav-item">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="14" height="14"><path d="M3 3h18v18H3z" /><path d="M3 9h18M9 21V9" /></svg>
+                  Projects
+                </div>
+                <div className="lp-mock-nav-item">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="14" height="14"><circle cx="9" cy="8" r="3" /><path d="M3 21c1-3 3.5-5 6-5s5 2 6 5" /><path d="M16 3.13a4 4 0 010 7.75" /></svg>
+                  Members
+                </div>
+                <div className="lp-mock-nav-item">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="14" height="14"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" /></svg>
+                  Team
+                </div>
+                <div className="lp-mock-nav-item">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="14" height="14"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" /></svg>
+                  Chat
+                </div>
                 <div className="lp-mock-spacer" />
-                <div className="lp-mock-nav-item">Settings</div>
                 <div className="lp-mock-user">
                   <div className="lp-ava" style={{ width: 22, height: 22, fontSize: 9, background: "linear-gradient(135deg,#7B5CFF,#F472B6)" }}>R</div>
                   <span>Robert Fox<br /><small>Product Designer</small></span>
                 </div>
               </div>
               <div className="lp-mock-main">
-                <div className="lp-mock-header">
-                  <span>Good morning, Robert <span role="img" aria-label="wave">👋</span></span>
-                  <span className="lp-mock-muted">Here&apos;s what&apos;s moving today.</span>
+                {/* Hero banner with cosmic gradient */}
+                <div className="lp-mock-banner">
+                  <div className="lp-mock-banner-content">
+                    <span className="lp-mock-banner-label">TODAY&apos;S VIEW</span>
+                    <span className="lp-mock-banner-title">SeekPeek</span>
+                    <span className="lp-mock-banner-sub">Plan better. Prioritize smarter. Deliver more.</span>
+                    <span className="lp-mock-banner-date">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="11" height="11"><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></svg>
+                      Friday, 15 May 2026
+                    </span>
+                    <div className="lp-mock-banner-pills">
+                      <span className="lp-mock-bpill lp-mock-bpill-green">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12"><polyline points="20 6 9 17 4 12" /></svg>
+                        <strong>3</strong> Closed Today
+                      </span>
+                      <span className="lp-mock-bpill">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12"><circle cx="9" cy="8" r="3" /><path d="M3 21c1-3 3.5-5 6-5s5 2 6 5" /></svg>
+                        <strong>4</strong> Active
+                      </span>
+                    </div>
+                  </div>
+                  {/* Floating stat cards */}
+                  <div className="lp-mock-float-cards">
+                    <div className="lp-mock-fcard">
+                      <span className="lp-mock-fcard-label">TASKS DUE TODAY</span>
+                      <span className="lp-mock-fcard-n" style={{ color: "#7B5CFF" }}>5</span>
+                      <span className="lp-mock-fcard-hint" style={{ color: "#EF4444" }}>High priority</span>
+                    </div>
+                    <div className="lp-mock-fcard">
+                      <span className="lp-mock-fcard-label">IN PROGRESS</span>
+                      <span className="lp-mock-fcard-n" style={{ color: "#FBBF24" }}>9</span>
+                      <span className="lp-mock-fcard-hint">Across projects</span>
+                    </div>
+                    <div className="lp-mock-fcard">
+                      <span className="lp-mock-fcard-label">COMPLETED THIS WEEK</span>
+                      <span className="lp-mock-fcard-n" style={{ color: "#4ADE80" }}>13</span>
+                      <span className="lp-mock-fcard-hint" style={{ color: "#4ADE80" }}>Keep it up!</span>
+                    </div>
+                    <div className="lp-mock-fcard">
+                      <span className="lp-mock-fcard-label">FOCUS SCORE</span>
+                      <span className="lp-mock-fcard-n" style={{ color: "#F472B6" }}>100%</span>
+                      <span className="lp-mock-fcard-hint" style={{ color: "#4ADE80" }}>On track</span>
+                    </div>
+                  </div>
                 </div>
-                <div className="lp-mock-stats">
-                  <div className="lp-mock-stat"><span className="lp-mock-stat-n">12</span><span>Tasks Captured</span></div>
-                  <div className="lp-mock-stat"><span className="lp-mock-stat-n" style={{ color: "#22D3EE" }}>8</span><span>Tasks Assigned</span></div>
-                  <div className="lp-mock-stat"><span className="lp-mock-stat-n" style={{ color: "#FBBF24" }}>5</span><span>Due Today</span></div>
-                  <div className="lp-mock-stat"><span className="lp-mock-stat-n" style={{ color: "#4ADE80" }}>23</span><span>Day Streak</span></div>
-                </div>
-                <div className="lp-mock-section-title">Today&apos;s Focus</div>
-                <div className="lp-mock-tasks">
-                  <div className="lp-mock-task">
-                    <span className="lp-mock-dot" style={{ background: "#EF4444" }} />
-                    Refund-rate spike on Stock Bee
-                    <span className="lp-mock-chip" style={{ background: "rgba(245,184,74,0.15)", color: "#FBCD7D" }}>Stock Bee</span>
-                    <span className="lp-mock-chip" style={{ background: "rgba(239,68,68,0.15)", color: "#FCA5A5" }}>urgent</span>
+                {/* AI Summary */}
+                <div className="lp-mock-ai-row">
+                  <div className="lp-mock-ai-card">
+                    <span className="lp-mock-ai-label">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="12" height="12"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" /></svg>
+                      AI BRIEFING
+                    </span>
+                    <span className="lp-mock-ai-text">You have 5 tasks due today. The refund-rate spike on Stock Bee needs urgent attention — it&apos;s been escalated by the team.</span>
                   </div>
-                  <div className="lp-mock-task">
-                    <span className="lp-mock-dot" style={{ background: "#FBBF24" }} />
-                    Investigate conversion drop on checkout
-                    <span className="lp-mock-chip" style={{ background: "rgba(74,222,128,0.12)", color: "#86EFAC" }}>Growth</span>
-                  </div>
-                  <div className="lp-mock-task">
-                    <span className="lp-mock-dot" style={{ background: "#22D3EE" }} />
-                    Fix onboarding flow for mobile users
-                    <span className="lp-mock-chip" style={{ background: "rgba(123,92,255,0.12)", color: "#C8BBFF" }}>Product</span>
-                  </div>
-                  <div className="lp-mock-task">
-                    <span className="lp-mock-dot" style={{ background: "#4ADE80" }} />
-                    Prepare investor update deck
-                    <span className="lp-mock-chip" style={{ background: "rgba(244,114,182,0.12)", color: "#F9B5D7" }}>Company</span>
+                  <div className="lp-mock-ai-card">
+                    <span className="lp-mock-ai-label">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="12" height="12"><circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" /></svg>
+                      END OF DAY
+                    </span>
+                    <span className="lp-mock-ai-text">Great momentum this week — 13 tasks shipped. Keep the streak alive tomorrow!</span>
                   </div>
                 </div>
               </div>

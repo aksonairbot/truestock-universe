@@ -11,11 +11,13 @@ import {
   projects,
   users,
   taskComments,
+  taskAttachments,
   eq,
   asc,
   sql,
 } from "@tu/db";
 import { getCurrentUser } from "@/lib/auth";
+import { getActiveUsers } from "@/lib/cached-queries";
 import {
   StatusSelect,
   AssigneeSelect,
@@ -24,6 +26,8 @@ import {
 import { addComment, updateTaskMeta, cancelTask, deleteTask } from "./actions";
 import { fmtDueCountdown } from "@/lib/worktime";
 import { SubtaskList } from "./subtask-list";
+import { TaskAttachments } from "./task-attachments";
+import { ReviewActions } from "./review-actions";
 
 const PRIORITY_BADGE: Record<string, string> = {
   low: "bg-panel-2 text-text-2",
@@ -92,40 +96,52 @@ export async function TaskPaneContent({ taskId }: { taskId: string }) {
     );
   }
 
-  const [creator] = task.createdById
-    ? await db.select({ name: users.name }).from(users).where(eq(users.id, task.createdById)).limit(1)
-    : [undefined];
+  // Parallel fetch: creator + users + comments + subtasks + attachments (no waterfall)
+  const [creatorArr, allUsers, comments, subtaskRows, attachmentRows] = await Promise.all([
+    task.createdById
+      ? db.select({ name: users.name }).from(users).where(eq(users.id, task.createdById)).limit(1)
+      : Promise.resolve([undefined]),
+    getActiveUsers(),
+    db
+      .select({
+        id: taskComments.id,
+        body: taskComments.body,
+        kind: taskComments.kind,
+        createdAt: taskComments.createdAt,
+        author: { id: users.id, name: users.name, email: users.email },
+      })
+      .from(taskComments)
+      .leftJoin(users, eq(taskComments.authorId, users.id))
+      .where(eq(taskComments.taskId, task.id))
+      .orderBy(asc(taskComments.createdAt)),
+    db
+      .select({
+        id: tasks.id,
+        title: tasks.title,
+        status: tasks.status,
+        assigneeName: users.name,
+        assigneeId: tasks.assigneeId,
+        dueDate: tasks.dueDate,
+        dueTime: tasks.dueTime,
+      })
+      .from(tasks)
+      .leftJoin(users, eq(tasks.assigneeId, users.id))
+      .where(sql`${tasks.parentTaskId} = ${task.id}`)
+      .orderBy(asc(tasks.createdAt)),
+    db
+      .select({
+        id: taskAttachments.id,
+        filename: taskAttachments.filename,
+        mime: taskAttachments.mime,
+        sizeBytes: taskAttachments.sizeBytes,
+      })
+      .from(taskAttachments)
+      .where(eq(taskAttachments.taskId, task.id))
+      .orderBy(asc(taskAttachments.createdAt)),
+  ]);
+  const [creator] = creatorArr;
 
-  const allUsers = await db.select({ id: users.id, name: users.name }).from(users);
-
-  const comments = await db
-    .select({
-      id: taskComments.id,
-      body: taskComments.body,
-      createdAt: taskComments.createdAt,
-      author: { id: users.id, name: users.name, email: users.email },
-    })
-    .from(taskComments)
-    .leftJoin(users, eq(taskComments.authorId, users.id))
-    .where(eq(taskComments.taskId, task.id))
-    .orderBy(asc(taskComments.createdAt));
-
-  // ----- subtasks (children where parent_task_id = this) -----
-  const subtaskRows = await db
-    .select({
-      id: tasks.id,
-      title: tasks.title,
-      status: tasks.status,
-      assigneeName: users.name,
-      assigneeId: tasks.assigneeId,
-    })
-    .from(tasks)
-    .leftJoin(users, eq(tasks.assigneeId, users.id))
-    .where(sql`${tasks.parentTaskId} = ${task.id}`)
-    .orderBy(asc(tasks.createdAt));
-
-  // ----- duration insight: how many days has this been open vs the
-  //       project's median time-to-close over the last 90 days?
+  // ----- duration insight: how many days has this task been open -----
   const todayIST = new Date(new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit",
   }).format(new Date()) + "T12:00:00+05:30");
@@ -134,22 +150,6 @@ export async function TaskPaneContent({ taskId }: { taskId: string }) {
     ? (task.completedAt instanceof Date ? task.completedAt.getTime() : new Date(task.completedAt).getTime())
     : todayIST.getTime();
   const ageDays = Math.max(0, Math.floor((endMs - createdMs) / 86400000));
-
-  // Median of completed-task durations in this project (last 90d), excluding this one.
-  // Postgres: percentile_cont(0.5) within group (order by ...).
-  const medianRows = await db.execute(sql<{ med: number | null }>`
-    select percentile_cont(0.5) within group (
-      order by extract(epoch from (completed_at - created_at)) / 86400.0
-    ) as med
-    from tasks
-    where project_id = (select project_id from tasks where id = ${task.id})
-      and status = 'done'
-      and completed_at is not null
-      and completed_at >= now() - interval '90 days'
-      and id <> ${task.id}
-  `);
-  const medianDays = (medianRows as unknown as Array<{ med: number | null }>)[0]?.med ?? null;
-  const medianRound = medianDays !== null ? Math.max(1, Math.round(Number(medianDays))) : null;
 
 
   return (
@@ -214,16 +214,11 @@ export async function TaskPaneContent({ taskId }: { taskId: string }) {
       </div>
 
       {/* duration insight */}
-      <div className={`duration-chip ${medianRound !== null && ageDays > medianRound * 2 ? "is-overrun" : ""}`}>
+      <div className={`duration-chip ${!task.completedAt && ageDays > 14 ? "is-overrun" : ""}`}>
         <span className="duration-label">Day {ageDays + 1}</span>
-        {medianRound !== null ? (
-          <span className="duration-median">project median {medianRound}d</span>
-        ) : (
-          <span className="duration-median">no project history yet</span>
-        )}
         {task.completedAt ? (
-          <span className="duration-state">closed</span>
-        ) : medianRound !== null && ageDays > medianRound * 2 ? (
+          <span className="duration-state">closed in {ageDays}d</span>
+        ) : ageDays > 14 ? (
           <span className="duration-state is-warn">running long</span>
         ) : null}
       </div>
@@ -237,8 +232,23 @@ export async function TaskPaneContent({ taskId }: { taskId: string }) {
           status: s.status,
           assigneeName: s.assigneeName,
           assigneeId: s.assigneeId,
+          dueDate: s.dueDate,
+          dueTime: s.dueTime,
         }))}
         users={allUsers}
+      />
+
+      {/* attachments */}
+      <TaskAttachments
+        taskId={task.id}
+        attachments={attachmentRows.map((a) => ({
+          id: a.id,
+          filename: a.filename,
+          mime: a.mime,
+          sizeBytes: Number(a.sizeBytes),
+          url: `/api/attachments/${a.id}`,
+        }))}
+        disabled={task.status === "done" || task.status === "cancelled"}
       />
 
       {/* description */}
@@ -251,55 +261,60 @@ export async function TaskPaneContent({ taskId }: { taskId: string }) {
         <div className="text-text-3 italic text-sm mb-4">No description</div>
       )}
 
-      {/* inline edit */}
-      <details className="mb-4">
-        <summary className="text-xs text-text-3 hover:text-text cursor-pointer">
-          Edit title / description / due date
-        </summary>
-        <form action={updateTaskMeta} className="card mt-2 grid grid-cols-1 gap-3">
-          <input type="hidden" name="taskId" value={task.id} />
-          <input type="hidden" name="priority" value={task.priority} />
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-text-3 uppercase tracking-wider">Title</span>
-            <input
-              name="title"
-              type="text"
-              required
-              defaultValue={task.title}
-              className="bg-panel-2 border border-border-2 rounded-md px-3 py-2 text-sm w-full"
-            />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-text-3 uppercase tracking-wider">Description</span>
-            <textarea
-              name="description"
-              rows={4}
-              defaultValue={task.description ?? ""}
-              className="bg-panel-2 border border-border-2 rounded-md px-3 py-2 text-sm w-full"
-            ></textarea>
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-text-3 uppercase tracking-wider">Due in <span style={{color:'var(--danger)'}}>*</span></span>
-            <input
-              name="dueDate"
-              type="text"
-              required
-              defaultValue={task.dueDate ?? ""}
-              placeholder="e.g. 3d, 8h, 2d 4h"
-              className="bg-panel-2 border border-border-2 rounded-md px-3 py-2 text-sm w-44"
-            />
-            <span className="text-[10px] text-text-4">Working hours: Mon–Fri, 9–6 PM</span>
-          </label>
-          <div className="flex justify-end">
-            <button
-              type="submit"
-              className="bg-accent hover:bg-accent-2 text-white font-semibold text-sm rounded-md px-4 py-2 transition"
-            >
-              Save
-            </button>
-          </div>
-        </form>
-      </details>
+      {/* inline edit — visible for open tasks, hidden for done/cancelled */}
+      {task.status !== "done" && task.status !== "cancelled" ? (
+        <>
+          <h3 className="task-pane-section-h">Edit</h3>
+          <form action={updateTaskMeta} className="card mb-4 grid grid-cols-1 gap-3">
+            <input type="hidden" name="taskId" value={task.id} />
+            <input type="hidden" name="priority" value={task.priority} />
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-text-3 uppercase tracking-wider">Title</span>
+              <input
+                name="title"
+                type="text"
+                required
+                defaultValue={task.title}
+                className="bg-panel-2 border border-border-2 rounded-md px-3 py-2 text-sm w-full"
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-text-3 uppercase tracking-wider">Description</span>
+              <textarea
+                name="description"
+                rows={4}
+                defaultValue={task.description ?? ""}
+                className="bg-panel-2 border border-border-2 rounded-md px-3 py-2 text-sm w-full"
+              ></textarea>
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-text-3 uppercase tracking-wider">Due in <span style={{color:'var(--danger)'}}>*</span></span>
+              <input
+                name="dueDate"
+                type="text"
+                required
+                defaultValue={task.dueDate ?? ""}
+                placeholder="e.g. 3d, 8h, 2d 4h (max 10d)"
+                className="bg-panel-2 border border-border-2 rounded-md px-3 py-2 text-sm w-44"
+              />
+              <span className="text-[10px] text-text-4">Working hours: Mon–Fri, 9–6 PM · max 10 working days</span>
+            </label>
+            <div className="flex justify-end">
+              <button
+                type="submit"
+                className="bg-accent hover:bg-accent-2 text-white font-semibold text-sm rounded-md px-4 py-2 transition"
+              >
+                Save
+              </button>
+            </div>
+          </form>
+        </>
+      ) : null}
+
+      {/* Review actions — visible only for managers/admins when task is in review */}
+      {task.status === "review" && (me.role === "admin" || me.role === "manager") && (
+        <ReviewActions taskId={task.id} />
+      )}
 
       {/* comments */}
       <h3 className="task-pane-section-h">
@@ -316,6 +331,12 @@ export async function TaskPaneContent({ taskId }: { taskId: string }) {
                   {avaInitial(c.author?.name)}
                 </span>
                 <span className="font-medium">{c.author?.name ?? "(unknown)"}</span>
+                {c.kind === "review_approve" && (
+                  <span className="comment-review-badge approved">✓ Approved</span>
+                )}
+                {c.kind === "review_revise" && (
+                  <span className="comment-review-badge revision">↩ Revision</span>
+                )}
                 <span className="text-text-3 font-normal ml-auto text-xs">
                   {fmtTime(c.createdAt)}
                 </span>

@@ -1,39 +1,45 @@
 "use client";
 
-export default function GlobalError({
+import { useEffect } from "react";
+
+export default function ErrorBoundary({
   error,
   reset,
 }: {
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  useEffect(() => {
+    console.error("[APP ERROR]", error);
+  }, [error]);
+
   return (
-    <div
-      style={{
-        minHeight: "60vh",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 16,
-        padding: 32,
-        color: "var(--text-2)",
-      }}
-    >
-      <div style={{ fontSize: 48, opacity: 0.3 }}>⚠</div>
-      <h2 style={{ fontSize: 18, color: "var(--text)", fontWeight: 600 }}>
-        Something went wrong
-      </h2>
-      <p style={{ fontSize: 13, maxWidth: 400, textAlign: "center", lineHeight: 1.6 }}>
-        {error.message || "An unexpected error occurred. Please try again."}
-      </p>
-      <button
-        onClick={reset}
-        className="btn btn-primary btn-sm"
-        style={{ marginTop: 8 }}
-      >
-        Try again
-      </button>
+    <div className="min-h-screen flex items-center justify-center px-6">
+      <div className="card max-w-md w-full text-center py-10">
+        <div className="text-4xl mb-4" aria-hidden="true">&#9888;</div>
+        <h1 className="text-lg font-semibold mb-2">Something went wrong</h1>
+        <p className="text-sm text-text-2 mb-6 leading-relaxed">
+          {error.message?.includes("session") || error.message?.includes("auth")
+            ? "Your session may have expired. Please log in again."
+            : "An unexpected error occurred. Please try again."}
+        </p>
+        <div className="flex items-center justify-center gap-3">
+          <button
+            onClick={reset}
+            className="btn btn-primary"
+          >
+            Try again
+          </button>
+          <a href="/api/auth/signin" className="btn btn-ghost">
+            Log in
+          </a>
+        </div>
+        {error.digest && (
+          <p className="text-[10px] text-text-4 mt-4 mono">
+            Error ID: {error.digest}
+          </p>
+        )}
+      </div>
     </div>
   );
 }

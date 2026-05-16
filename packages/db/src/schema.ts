@@ -331,6 +331,8 @@ export const notificationKindEnum = pgEnum("notification_kind", [
   "task_completed",     // someone closed a task you created
   "comment_on_assigned",// someone else commented on a task you're assigned to
   "review_requested",   // task moved to "review" — notify managers/admins
+  "review_approved",    // manager approved your task review
+  "review_revision",    // manager requested revision on your task
 ]);
 
 // ---------- users ----------
@@ -436,6 +438,7 @@ export const tasks = pgTable(
     status: taskStatusEnum("status").notNull().default("todo"),
     priority: taskPriorityEnum("priority").notNull().default("med"),
     dueDate: date("due_date"),
+    dueTime: text("due_time"),          // "HH:MM" — only used on subtasks
     startedAt: timestamp("started_at", { withTimezone: true }),
     completedAt: timestamp("completed_at", { withTimezone: true }),
     estimatedMinutes: integer("estimated_minutes"),
@@ -469,6 +472,7 @@ export const taskComments = pgTable(
       .notNull()
       .references(() => users.id),
     body: text("body").notNull(), // markdown
+    kind: text("kind"), // null = normal comment; "review_approve" | "review_revise" for review feedback
     editedAt: timestamp("edited_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
@@ -1090,6 +1094,128 @@ export type NewUserBadge = typeof userBadges.$inferInsert;
 export type AiKnowledgeDigest = typeof aiKnowledgeDigests.$inferSelect;
 export type NewAiKnowledgeDigest = typeof aiKnowledgeDigests.$inferInsert;
 
+// ---------- yearly reviews ----------
+
+export const reviewCycleStatusEnum = pgEnum("review_cycle_status", [
+  "draft",    // admin is still setting it up
+  "open",     // members can fill their forms
+  "closed",   // deadline passed, no more edits
+]);
+
+export const reviewResponseStatusEnum = pgEnum("review_response_status", [
+  "pending",    // not started
+  "in_progress", // saved but not submitted
+  "submitted",  // member clicked submit
+]);
+
+/** A review cycle — typically one per financial year. */
+export const reviewCycles = pgTable("review_cycles", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),             // e.g. "FY 2025-26 Yearly Review"
+  fyStart: date("fy_start").notNull(),      // e.g. 2025-04-01
+  fyEnd: date("fy_end").notNull(),          // e.g. 2026-03-31
+  deadline: timestamp("deadline", { withTimezone: true }), // when the form closes
+  status: reviewCycleStatusEnum("status").notNull().default("draft"),
+  createdById: uuid("created_by_id").notNull().references(() => users.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+/** Fixed set of questions for a cycle (order matters). */
+export const reviewQuestions = pgTable(
+  "review_questions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    cycleId: uuid("cycle_id").notNull().references(() => reviewCycles.id, { onDelete: "cascade" }),
+    orderIndex: integer("order_index").notNull().default(0),
+    questionText: text("question_text").notNull(),
+    helpText: text("help_text"),            // optional guidance shown below the question
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    byCycle: index("review_questions_cycle_idx").on(t.cycleId, t.orderIndex),
+  }),
+);
+
+/** One response row per member per cycle. Answers stored as JSONB keyed by questionId. */
+export const reviewResponses = pgTable(
+  "review_responses",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    cycleId: uuid("cycle_id").notNull().references(() => reviewCycles.id, { onDelete: "cascade" }),
+    userId: uuid("user_id").notNull().references(() => users.id),
+    status: reviewResponseStatusEnum("status").notNull().default("pending"),
+    /** { [questionId]: "answer text" } */
+    answers: jsonb("answers").$type<Record<string, string>>().notNull().default({}),
+    submittedAt: timestamp("submitted_at", { withTimezone: true }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    uniquePerCycle: uniqueIndex("review_responses_cycle_user_idx").on(t.cycleId, t.userId),
+    byUser: index("review_responses_user_idx").on(t.userId),
+  }),
+);
+
+// Relations
+export const reviewCyclesRelations = relations(reviewCycles, ({ one, many }) => ({
+  createdBy: one(users, { fields: [reviewCycles.createdById], references: [users.id] }),
+  questions: many(reviewQuestions),
+  responses: many(reviewResponses),
+}));
+
+export const reviewQuestionsRelations = relations(reviewQuestions, ({ one }) => ({
+  cycle: one(reviewCycles, { fields: [reviewQuestions.cycleId], references: [reviewCycles.id] }),
+}));
+
+export const reviewResponsesRelations = relations(reviewResponses, ({ one }) => ({
+  cycle: one(reviewCycles, { fields: [reviewResponses.cycleId], references: [reviewCycles.id] }),
+  user: one(users, { fields: [reviewResponses.userId], references: [users.id] }),
+}));
+
+// ---------- review attachments ----------
+// PDFs, presentations, or supporting documents attached to a review response.
+export const reviewAttachments = pgTable(
+  "review_attachments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    responseId: uuid("response_id")
+      .notNull()
+      .references(() => reviewResponses.id, { onDelete: "cascade" }),
+    uploaderId: uuid("uploader_id")
+      .notNull()
+      .references(() => users.id),
+    filename: text("filename").notNull(),
+    mime: text("mime"),
+    sizeBytes: bigint("size_bytes", { mode: "bigint" }).notNull(),
+    spacesKey: text("spaces_key").notNull().unique(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    byResponse: index("review_attachments_response_idx").on(t.responseId),
+  }),
+);
+
+export const reviewAttachmentsRelations = relations(reviewAttachments, ({ one }) => ({
+  response: one(reviewResponses, {
+    fields: [reviewAttachments.responseId],
+    references: [reviewResponses.id],
+  }),
+  uploader: one(users, {
+    fields: [reviewAttachments.uploaderId],
+    references: [users.id],
+  }),
+}));
+
+// Types
+export type ReviewCycle = typeof reviewCycles.$inferSelect;
+export type NewReviewCycle = typeof reviewCycles.$inferInsert;
+export type ReviewQuestion = typeof reviewQuestions.$inferSelect;
+export type NewReviewQuestion = typeof reviewQuestions.$inferInsert;
+export type ReviewResponse = typeof reviewResponses.$inferSelect;
+export type NewReviewResponse = typeof reviewResponses.$inferInsert;
+export type ReviewAttachment = typeof reviewAttachments.$inferSelect;
+export type NewReviewAttachment = typeof reviewAttachments.$inferInsert;
+
 // ---------- chat ----------
 
 export const chatChannelTypeEnum = pgEnum("chat_channel_type", ["dm", "group"]);
@@ -1152,3 +1278,28 @@ export type ChatChannel = typeof chatChannels.$inferSelect;
 export type NewChatChannel = typeof chatChannels.$inferInsert;
 export type ChatMessage = typeof chatMessages.$inferSelect;
 export type NewChatMessage = typeof chatMessages.$inferInsert;
+
+// ---------- org_settings ----------
+//
+// Single-row table storing workspace-wide organisation settings.
+// Only admins can read/write.
+export const orgSettings = pgTable("org_settings", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  companyName: text("company_name").notNull().default("My Organisation"),
+  logoUrl: text("logo_url"),
+  domain: text("domain"),
+  timezone: text("timezone").notNull().default("Asia/Kolkata"),
+  workingHoursStart: text("working_hours_start").notNull().default("09:00"),
+  workingHoursEnd: text("working_hours_end").notNull().default("18:00"),
+  workingDays: jsonb("working_days").notNull().$type<number[]>().default([1, 2, 3, 4, 5]),
+  defaultRole: text("default_role").notNull().default("member"),
+  reviewCycleFrequency: text("review_cycle_frequency").notNull().default("quarterly"),
+  notifyOnTaskAssign: boolean("notify_on_task_assign").notNull().default(true),
+  notifyOnReviewStart: boolean("notify_on_review_start").notNull().default(true),
+  notifyOnDueSoon: boolean("notify_on_due_soon").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export type OrgSettings = typeof orgSettings.$inferSelect;
+export type NewOrgSettings = typeof orgSettings.$inferInsert;

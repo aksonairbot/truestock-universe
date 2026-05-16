@@ -37,8 +37,10 @@ let sentryCapture: ((err: unknown, ctx?: Fields) => void) | null = null;
 async function initSentry() {
   if (sentryReady || !process.env.SENTRY_DSN) return;
   try {
-    // Dynamic import — only loaded if @sentry/node is installed
-    const Sentry = await import("@sentry/node" as string).catch(() => null);
+    // Dynamic import — only loaded if @sentry/node is installed.
+    // String concatenation hides it from Next.js static analysis / webpack bundling.
+    const mod = ["@sentry", "node"].join("/");
+    const Sentry = await import(/* webpackIgnore: true */ mod).catch(() => null);
     if (!Sentry) return;
     Sentry.init({
       dsn: process.env.SENTRY_DSN,

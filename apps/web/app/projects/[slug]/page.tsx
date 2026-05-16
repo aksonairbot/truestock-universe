@@ -4,7 +4,12 @@ import { notFound } from "next/navigation";
 import { getDb, projects, products, tasks, users, eq, and, or, asc, desc, inArray, sql, } from "@tu/db";
 import { getCurrentUser } from "@/lib/auth";
 import { isAdmin, getDepartmentScope } from "@/lib/access";
-import { createTask } from "../../tasks/actions";
+import { createTask as _createTask } from "../../tasks/actions";
+
+async function createTaskAction(formData: FormData): Promise<void> {
+  "use server";
+  await _createTask(formData);
+}
 import { ProjectBanner } from "../project-banner";
 import { ProjectIconUpload } from "../project-icon-upload";
 import { ProjectPulse } from "./project-pulse";
@@ -148,7 +153,7 @@ export default async function ProjectDetailPage({ params }: PageProps) {
       </div>
 
       {/* quick add */}
-      <form action={createTask} className="card mb-5 flex flex-wrap items-end gap-3">
+      <form action={createTaskAction} className="card mb-5 flex flex-wrap items-end gap-3">
         <input type="hidden" name="projectSlug" value={project.slug} />
         <input type="hidden" name="status" value="todo" />
         <input type="hidden" name="priority" value="med" />

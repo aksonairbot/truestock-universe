@@ -17,6 +17,8 @@ type Subtask = {
   status: string;
   assigneeName: string | null;
   assigneeId: string | null;
+  dueDate: string | null;
+  dueTime: string | null;
   pending?: boolean;
 };
 
@@ -71,6 +73,12 @@ function SubtaskRow({ s, users }: { s: Subtask; users: UserOption[] }) {
         ) : null}
       </button>
       <span className="subtask-title">{s.title}</span>
+      {s.dueDate ? (
+        <span className="subtask-due" title={s.dueTime ? `${s.dueDate} ${s.dueTime}` : s.dueDate}>
+          {new Date(s.dueDate + "T12:00:00").toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}
+          {s.dueTime ? ` ${s.dueTime}` : ""}
+        </span>
+      ) : null}
       <select
         className="subtask-assignee-select"
         value={s.assigneeId ?? ""}
@@ -107,6 +115,8 @@ export function SubtaskList({
   const [adding, setAdding] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [selectedAssignee, setSelectedAssignee] = useState("");
+  const [selectedDueDate, setSelectedDueDate] = useState("");
+  const [selectedDueTime, setSelectedDueTime] = useState("");
   const [bdPending, bdStart] = useTransition();
   const [bdError, setBdError] = useState<string | null>(null);
   const [bdSuggestions, setBdSuggestions] = useState<string[] | null>(null);
@@ -140,7 +150,7 @@ export function SubtaskList({
         fd.set("title", title);
         const tmpId = `tmp-bd-${Date.now()}-${Math.random()}`;
         const optimisticItem: Subtask = {
-          id: tmpId, title, status: "todo", assigneeName: null, assigneeId: null, pending: true,
+          id: tmpId, title, status: "todo", assigneeName: null, assigneeId: null, dueDate: null, dueTime: null, pending: true,
         };
         addOptimistic(optimisticItem);
         setList((prev) => [...prev, { ...optimisticItem, pending: false }]);
@@ -168,18 +178,24 @@ export function SubtaskList({
       status: "todo",
       assigneeName,
       assigneeId: selectedAssignee || null,
+      dueDate: selectedDueDate || null,
+      dueTime: selectedDueTime || null,
       pending: true,
     };
     const fd = new FormData();
     fd.set("parentId", parentId);
     fd.set("title", title);
     if (selectedAssignee) fd.set("assigneeId", selectedAssignee);
+    if (selectedDueDate) fd.set("dueDate", selectedDueDate);
+    if (selectedDueTime) fd.set("dueTime", selectedDueTime);
 
     start(async () => {
       addOptimistic(optimisticItem);
       setList((prev) => [...prev, { ...optimisticItem, pending: false }]);
       if (inputRef.current) inputRef.current.value = "";
       setSelectedAssignee("");
+      setSelectedDueDate("");
+      setSelectedDueTime("");
       try {
         await addSubtask(fd);
       } catch {
@@ -289,6 +305,24 @@ export function SubtaskList({
                   <option key={u.id} value={u.id}>{u.name}</option>
                 ))}
               </select>
+              <input
+                type="date"
+                className="subtask-due-input"
+                value={selectedDueDate}
+                onChange={(e) => setSelectedDueDate(e.target.value)}
+                disabled={pending}
+                title="Due date"
+                placeholder="Due date"
+              />
+              <input
+                type="time"
+                className="subtask-time-input"
+                value={selectedDueTime}
+                onChange={(e) => setSelectedDueTime(e.target.value)}
+                disabled={pending}
+                title="Due time"
+                step="900"
+              />
               <button
                 type="submit"
                 className="subtask-save-btn"

@@ -110,7 +110,7 @@ async function computeStreak(userId: string): Promise<{ current: number; best: n
   const rows = await db.execute(sql<{ d: string }>`
     select distinct (completed_at at time zone 'Asia/Kolkata')::date::text as d
     from tasks
-    where assignee_id = ${userId} and status = 'done' and completed_at is not null
+    where assignee_id = ${userId} and status = 'done'::task_status and completed_at is not null
       and completed_at >= now() - interval '2 years'
     order by d desc
   `);
@@ -158,57 +158,232 @@ async function computeStats(userId: string, period: Period): Promise<BentoStats>
   const { start: prevStartStart } = dayBoundsIST(prevStartDay);
   const { end: prevEndEnd } = dayBoundsIST(prevEndDay);
 
-  // ----- headline counts -----
-  const [closedRow] = await db.select({ n: sql<number>`count(*)::int` })
-    .from(tasks)
-    .where(and(eq(tasks.assigneeId, userId), eq(tasks.status, "done"),
-      sql`${tasks.completedAt} >= ${startStart.toISOString()} and ${tasks.completedAt} <= ${endEnd.toISOString()}`));
-  const closed = closedRow?.n ?? 0;
+  // ----- Run all independent query groups in parallel -----
+  const trendWeeks = period === "week" ? 4 : 8;
+  const trendStartDay = shiftIST(todayIST, -(trendWeeks - 1) * 7 - 6);
+  const trendStartBound = dayBoundsIST(trendStartDay).start;
 
-  const [closedPrevRow] = await db.select({ n: sql<number>`count(*)::int` })
-    .from(tasks)
-    .where(and(eq(tasks.assigneeId, userId), eq(tasks.status, "done"),
-      sql`${tasks.completedAt} >= ${prevStartStart.toISOString()} and ${tasks.completedAt} <= ${prevEndEnd.toISOString()}`));
-  const closedPrev = closedPrevRow?.n ?? 0;
+  const [
+    headlineCounts,
+    dailyRows,
+    trendRows,
+    dowRows,
+    prioRows,
+    projectRows,
+    projBreakdownRows,
+    teamRows,
+    deptRows,
+    oldestRows,
+    fastSlowRows,
+    longerRows,
+    streakResult,
+  ] = await Promise.all([
+    // 1. Headline counts — single query instead of 5
+    db.execute(sql<{ closed: number; closed_prev: number; comments: number; comments_rcv: number; created: number }>`
+      select
+        coalesce((select count(*) from tasks
+          where assignee_id = ${userId} and status = 'done'::task_status
+            and completed_at >= ${startStart.toISOString()} and completed_at <= ${endEnd.toISOString()}), 0)::int as closed,
+        coalesce((select count(*) from tasks
+          where assignee_id = ${userId} and status = 'done'::task_status
+            and completed_at >= ${prevStartStart.toISOString()} and completed_at <= ${prevEndEnd.toISOString()}), 0)::int as closed_prev,
+        coalesce((select count(*) from task_comments
+          where author_id = ${userId}
+            and created_at >= ${startStart.toISOString()} and created_at <= ${endEnd.toISOString()}), 0)::int as comments,
+        coalesce((select count(*) from task_comments c join tasks t on t.id = c.task_id
+          where t.assignee_id = ${userId} and c.author_id <> ${userId}
+            and c.created_at >= ${startStart.toISOString()} and c.created_at <= ${endEnd.toISOString()}), 0)::int as comments_rcv,
+        coalesce((select count(*) from tasks
+          where created_by_id = ${userId}
+            and created_at >= ${startStart.toISOString()} and created_at <= ${endEnd.toISOString()}), 0)::int as created
+    `),
 
-  const [commentsSent] = await db.select({ n: sql<number>`count(*)::int` })
-    .from(taskComments)
-    .where(and(eq(taskComments.authorId, userId),
-      sql`${taskComments.createdAt} >= ${startStart.toISOString()} and ${taskComments.createdAt} <= ${endEnd.toISOString()}`));
-  const comments = commentsSent?.n ?? 0;
+    // 2. Daily breakdown
+    db.execute(sql<{ d: string; closed: number; commented: number }>`
+      with d as (
+        select generate_series(${startStart.toISOString()}::timestamptz, ${endEnd.toISOString()}::timestamptz, '1 day') as ts
+      )
+      select to_char((d.ts at time zone 'Asia/Kolkata')::date, 'YYYY-MM-DD') as d,
+        coalesce((select count(*) from tasks t
+          where t.assignee_id = ${userId} and t.status = 'done'::task_status
+            and (t.completed_at at time zone 'Asia/Kolkata')::date = (d.ts at time zone 'Asia/Kolkata')::date), 0)::int as closed,
+        coalesce((select count(*) from task_comments c
+          where c.author_id = ${userId}
+            and (c.created_at at time zone 'Asia/Kolkata')::date = (d.ts at time zone 'Asia/Kolkata')::date), 0)::int as commented
+      from d order by d
+    `),
 
-  // Comments BY OTHERS on tasks assigned to user
-  const [commentsRcvRow] = await db.execute(sql<{ n: number }>`
-    select count(*)::int as n
-    from task_comments c
-    join tasks t on t.id = c.task_id
-    where t.assignee_id = ${userId}
-      and c.author_id <> ${userId}
-      and c.created_at >= ${startStart.toISOString()}
-      and c.created_at <= ${endEnd.toISOString()}
-  `) as unknown as Array<{ n: number }>;
-  const commentsReceived = Number(commentsRcvRow?.n) || 0;
+    // 3. Multi-week trend — single query instead of 4-8 loop
+    db.execute(sql<{ week_start: string; n: number }>`
+      with weeks as (
+        select generate_series(
+          ${trendStartBound.toISOString()}::timestamptz,
+          ${endEnd.toISOString()}::timestamptz,
+          '7 days'
+        )::date as ws
+      )
+      select to_char(w.ws, 'YYYY-MM-DD') as week_start,
+        coalesce((select count(*) from tasks t
+          where t.assignee_id = ${userId} and t.status = 'done'::task_status
+            and t.completed_at >= w.ws::timestamptz
+            and t.completed_at < (w.ws + 7)::timestamptz), 0)::int as n
+      from weeks w order by w.ws
+    `),
 
-  const [createdRow] = await db.select({ n: sql<number>`count(*)::int` })
-    .from(tasks)
-    .where(and(eq(tasks.createdById, userId),
-      sql`${tasks.createdAt} >= ${startStart.toISOString()} and ${tasks.createdAt} <= ${endEnd.toISOString()}`));
-  const newCreated = createdRow?.n ?? 0;
+    // 4. Day-of-week pattern
+    db.execute(sql<{ dow: number; n: number }>`
+      select extract(dow from (completed_at at time zone 'Asia/Kolkata'))::int as dow,
+             count(*)::int as n
+      from tasks
+      where assignee_id = ${userId} and status = 'done'::task_status
+        and completed_at >= ${startStart.toISOString()}
+        and completed_at <= ${endEnd.toISOString()}
+      group by dow
+    `),
 
-  // ----- daily breakdown -----
-  const dailyRows = await db.execute(sql<{ d: string; closed: number; commented: number }>`
-    with d as (
-      select generate_series(${startStart.toISOString()}::timestamptz, ${endEnd.toISOString()}::timestamptz, '1 day') as ts
-    )
-    select to_char((d.ts at time zone 'Asia/Kolkata')::date, 'YYYY-MM-DD') as d,
-      coalesce((select count(*) from tasks t
-        where t.assignee_id = ${userId} and t.status = 'done'
-          and (t.completed_at at time zone 'Asia/Kolkata')::date = (d.ts at time zone 'Asia/Kolkata')::date), 0)::int as closed,
-      coalesce((select count(*) from task_comments c
-        where c.author_id = ${userId}
-          and (c.created_at at time zone 'Asia/Kolkata')::date = (d.ts at time zone 'Asia/Kolkata')::date), 0)::int as commented
-    from d order by d
-  `);
+    // 5. Priority mix
+    db.execute(sql<{ priority: string; n: number }>`
+      select priority::text as priority, count(*)::int as n
+      from tasks
+      where assignee_id = ${userId} and status = 'done'::task_status
+        and completed_at >= ${startStart.toISOString()}
+        and completed_at <= ${endEnd.toISOString()}
+      group by priority
+    `),
+
+    // 6. Top 3 projects
+    db.select({ slug: projects.slug, name: projects.name, n: sql<number>`count(*)::int` })
+      .from(tasks)
+      .innerJoin(projects, eq(tasks.projectId, projects.id))
+      .where(and(eq(tasks.assigneeId, userId), eq(tasks.status, "done"),
+        sql`${tasks.completedAt} >= ${startStart.toISOString()} and ${tasks.completedAt} <= ${endEnd.toISOString()}`))
+      .groupBy(projects.slug, projects.name)
+      .orderBy(desc(sql`count(*)`))
+      .limit(3),
+
+    // 7. Full project breakdown
+    db.execute(sql<{ slug: string; name: string; closed: number; open: number; created: number }>`
+      select p.slug, p.name,
+        coalesce(sum(case when t.status = 'done'::task_status and t.completed_at >= ${startStart.toISOString()}
+          and t.completed_at <= ${endEnd.toISOString()} then 1 else 0 end), 0)::int as closed,
+        coalesce(sum(case when t.status not in ('done'::task_status, 'cancelled'::task_status) then 1 else 0 end), 0)::int as open,
+        coalesce(sum(case when t.created_at >= ${startStart.toISOString()}
+          and t.created_at <= ${endEnd.toISOString()} then 1 else 0 end), 0)::int as created
+      from projects p
+      left join tasks t on t.project_id = p.id
+      group by p.slug, p.name
+      having coalesce(sum(case when t.status = 'done'::task_status and t.completed_at >= ${startStart.toISOString()}
+          and t.completed_at <= ${endEnd.toISOString()} then 1 else 0 end), 0) > 0
+        or coalesce(sum(case when t.status not in ('done'::task_status, 'cancelled'::task_status) then 1 else 0 end), 0) > 0
+        or coalesce(sum(case when t.created_at >= ${startStart.toISOString()}
+          and t.created_at <= ${endEnd.toISOString()} then 1 else 0 end), 0) > 0
+      order by closed desc, open desc
+    `),
+
+    // 8. Team breakdown
+    db.execute(sql<{ name: string; closed: number; comments: number; created: number }>`
+      select u.name,
+        coalesce((select count(*) from tasks t
+          where t.assignee_id = u.id and t.status = 'done'::task_status
+            and t.completed_at >= ${startStart.toISOString()}
+            and t.completed_at <= ${endEnd.toISOString()}), 0)::int as closed,
+        coalesce((select count(*) from task_comments c
+          where c.author_id = u.id
+            and c.created_at >= ${startStart.toISOString()}
+            and c.created_at <= ${endEnd.toISOString()}), 0)::int as comments,
+        coalesce((select count(*) from tasks t2
+          where t2.created_by_id = u.id
+            and t2.created_at >= ${startStart.toISOString()}
+            and t2.created_at <= ${endEnd.toISOString()}), 0)::int as created
+      from users u
+      where u.is_active = true
+      order by closed desc, comments desc
+    `),
+
+    // 9. Department breakdown
+    db.execute(sql<{ id: string; name: string; color: string | null; closed: number; open: number; created: number; members: number }>`
+      select d.id, d.name, d.color,
+        coalesce(sum(case when t.status = 'done'::task_status and t.completed_at >= ${startStart.toISOString()}
+          and t.completed_at <= ${endEnd.toISOString()} then 1 else 0 end), 0)::int as closed,
+        coalesce(sum(case when t.status not in ('done'::task_status, 'cancelled'::task_status) then 1 else 0 end), 0)::int as open,
+        coalesce(sum(case when t.created_at >= ${startStart.toISOString()}
+          and t.created_at <= ${endEnd.toISOString()} then 1 else 0 end), 0)::int as created,
+        (select count(*)::int from users u2 where u2.department_id = d.id and u2.is_active = true) as members
+      from departments d
+      left join users u on u.department_id = d.id and u.is_active = true
+      left join tasks t on t.assignee_id = u.id
+      group by d.id, d.name, d.color
+      order by closed desc, open desc
+    `),
+
+    // 10. Oldest open
+    db.select({ id: tasks.id, title: tasks.title, createdAt: tasks.createdAt, project: projects.name })
+      .from(tasks)
+      .innerJoin(projects, eq(tasks.projectId, projects.id))
+      .where(and(eq(tasks.assigneeId, userId), sql`${tasks.status} not in ('done'::task_status, 'cancelled'::task_status)`))
+      .orderBy(tasks.createdAt)
+      .limit(1),
+
+    // 11. Fastest + slowest closures — single query
+    db.execute(sql<{ id: string; title: string; project: string; days: number; rk: number }>`
+      (select t.id, t.title, p.name as project,
+              extract(epoch from (t.completed_at - t.created_at)) / 86400.0 as days, 1 as rk
+       from tasks t join projects p on t.project_id = p.id
+       where t.assignee_id = ${userId} and t.status = 'done'::task_status
+         and t.completed_at >= ${startStart.toISOString()} and t.completed_at <= ${endEnd.toISOString()}
+         and t.created_at is not null and t.completed_at - t.created_at > interval '5 minutes'
+       order by days asc limit 1)
+      union all
+      (select t.id, t.title, p.name as project,
+              extract(epoch from (t.completed_at - t.created_at)) / 86400.0 as days, 2 as rk
+       from tasks t join projects p on t.project_id = p.id
+       where t.assignee_id = ${userId} and t.status = 'done'::task_status
+         and t.completed_at >= ${startStart.toISOString()} and t.completed_at <= ${endEnd.toISOString()}
+         and t.created_at is not null
+       order by days desc limit 1)
+    `),
+
+    // 12. Tougher than median
+    db.execute(sql<{ id: string; title: string; project: string; days: number; median_days: number }>`
+      with closed_in_window as (
+        select t.id, t.title, p.name as project,
+               extract(epoch from (t.completed_at - t.created_at)) / 86400.0 as days,
+               t.project_id
+        from tasks t join projects p on t.project_id = p.id
+        where t.assignee_id = ${userId} and t.status = 'done'::task_status
+          and t.completed_at >= ${startStart.toISOString()}
+          and t.completed_at <= ${endEnd.toISOString()}
+          and t.created_at is not null
+      ),
+      medians as (
+        select project_id,
+               percentile_cont(0.5) within group (
+                 order by extract(epoch from (completed_at - created_at)) / 86400.0
+               ) as median_days
+        from tasks
+        where status = 'done'::task_status and completed_at >= now() - interval '90 days'
+          and created_at is not null
+        group by project_id
+      )
+      select cw.id, cw.title, cw.project, cw.days, coalesce(m.median_days, 2) as median_days
+      from closed_in_window cw left join medians m on m.project_id = cw.project_id
+      where cw.days > coalesce(m.median_days, 2)
+      order by (cw.days - coalesce(m.median_days, 2)) desc limit 3
+    `),
+
+    // 13. Streak
+    computeStreak(userId),
+  ]);
+
+  // ----- Unpack results -----
+
+  const hl = (headlineCounts as unknown as Array<any>)[0] ?? {};
+  const closed = Number(hl.closed) || 0;
+  const closedPrev = Number(hl.closed_prev) || 0;
+  const comments = Number(hl.comments) || 0;
+  const commentsReceived = Number(hl.comments_rcv) || 0;
+  const newCreated = Number(hl.created) || 0;
+
   const daily = (dailyRows as unknown as Array<{ d: string; closed: number; commented: number }>).map((r) => ({
     day: r.d.toString().slice(0, 10),
     closed: Number(r.closed) || 0,
@@ -216,52 +391,22 @@ async function computeStats(userId: string, period: Period): Promise<BentoStats>
   }));
   const daysActive = daily.filter((d) => d.closed > 0 || d.commented > 0).length;
 
-  // ----- multi-week trend (week=4 buckets of 7d; month=8 buckets of 7d) -----
-  const trendWeeks = period === "week" ? 4 : 8;
-  const weeklyTrend: BentoStats["weeklyTrend"] = [];
-  for (let i = trendWeeks - 1; i >= 0; i--) {
-    const weekEnd = shiftIST(todayIST, -i * 7);
-    const weekStart = shiftIST(weekEnd, -6);
-    const wsStart = dayBoundsIST(weekStart).start;
-    const wsEnd = dayBoundsIST(weekEnd).end;
-    const [r] = await db.select({ n: sql<number>`count(*)::int` })
-      .from(tasks)
-      .where(and(eq(tasks.assigneeId, userId), eq(tasks.status, "done"),
-        sql`${tasks.completedAt} >= ${wsStart.toISOString()} and ${tasks.completedAt} <= ${wsEnd.toISOString()}`));
-    const wd = new Date(`${weekStart}T12:00:00+05:30`);
-    const wkKey = isoWeekKey(wd);
-    weeklyTrend.push({ weekStart, weekKey: wkKey, closed: r?.n ?? 0 });
-  }
+  // Build weeklyTrend from the single trend query
+  const rawTrend = (trendRows as unknown as Array<{ week_start: string; n: number }>);
+  const weeklyTrend: BentoStats["weeklyTrend"] = rawTrend.map((r) => {
+    const ws = r.week_start.toString().slice(0, 10);
+    return { weekStart: ws, weekKey: isoWeekKey(new Date(`${ws}T12:00:00+05:30`)), closed: Number(r.n) || 0 };
+  });
 
-  // ----- day-of-week pattern across the window -----
-  const dowRows = await db.execute(sql<{ dow: number; n: number }>`
-    select extract(dow from (completed_at at time zone 'Asia/Kolkata'))::int as dow,
-           count(*)::int as n
-    from tasks
-    where assignee_id = ${userId} and status = 'done'
-      and completed_at >= ${startStart.toISOString()}
-      and completed_at <= ${endEnd.toISOString()}
-    group by dow
-  `);
   const dowMap = new Map<number, number>();
   for (const r of (dowRows as unknown as Array<{ dow: number; n: number }>)) {
     dowMap.set(Number(r.dow), Number(r.n) || 0);
   }
-  // Order Mon..Sun in display
   const dowDisplayOrder = [1, 2, 3, 4, 5, 6, 0];
   const dayOfWeek = dowDisplayOrder.map((d) => ({
     dow: d, label: DOW_LABELS[d]!, total: dowMap.get(d) ?? 0,
   }));
 
-  // ----- priority mix -----
-  const prioRows = await db.execute(sql<{ priority: string; n: number }>`
-    select priority::text as priority, count(*)::int as n
-    from tasks
-    where assignee_id = ${userId} and status = 'done'
-      and completed_at >= ${startStart.toISOString()}
-      and completed_at <= ${endEnd.toISOString()}
-    group by priority
-  `);
   const prioMap = new Map<string, number>();
   for (const r of (prioRows as unknown as Array<{ priority: string; n: number }>)) {
     prioMap.set(r.priority, Number(r.n) || 0);
@@ -270,38 +415,8 @@ async function computeStats(userId: string, period: Period): Promise<BentoStats>
     priority: p, n: prioMap.get(p) ?? 0,
   }));
 
-  // ----- top 3 projects -----
-  const projectRows = await db
-    .select({ slug: projects.slug, name: projects.name, n: sql<number>`count(*)::int` })
-    .from(tasks)
-    .innerJoin(projects, eq(tasks.projectId, projects.id))
-    .where(and(eq(tasks.assigneeId, userId), eq(tasks.status, "done"),
-      sql`${tasks.completedAt} >= ${startStart.toISOString()} and ${tasks.completedAt} <= ${endEnd.toISOString()}`))
-    .groupBy(projects.slug, projects.name)
-    .orderBy(desc(sql`count(*)`))
-    .limit(3);
   const topProjects = projectRows.map((r) => ({ slug: r.slug, name: r.name, closed: r.n }));
 
-  // ----- full project breakdown (all projects, closed + open + created in window) -----
-  const projBreakdownRows = await db.execute(sql<{
-    slug: string; name: string; closed: number; open: number; created: number;
-  }>`
-    select p.slug, p.name,
-      coalesce(sum(case when t.status = 'done' and t.completed_at >= ${startStart.toISOString()}
-        and t.completed_at <= ${endEnd.toISOString()} then 1 else 0 end), 0)::int as closed,
-      coalesce(sum(case when t.status not in ('done', 'cancelled') then 1 else 0 end), 0)::int as open,
-      coalesce(sum(case when t.created_at >= ${startStart.toISOString()}
-        and t.created_at <= ${endEnd.toISOString()} then 1 else 0 end), 0)::int as created
-    from projects p
-    left join tasks t on t.project_id = p.id
-    group by p.slug, p.name
-    having coalesce(sum(case when t.status = 'done' and t.completed_at >= ${startStart.toISOString()}
-        and t.completed_at <= ${endEnd.toISOString()} then 1 else 0 end), 0) > 0
-      or coalesce(sum(case when t.status not in ('done', 'cancelled') then 1 else 0 end), 0) > 0
-      or coalesce(sum(case when t.created_at >= ${startStart.toISOString()}
-        and t.created_at <= ${endEnd.toISOString()} then 1 else 0 end), 0) > 0
-    order by closed desc, open desc
-  `);
   const projectBreakdown = (projBreakdownRows as unknown as Array<{
     slug: string; name: string; closed: number; open: number; created: number;
   }>).map((r) => ({
@@ -309,27 +424,6 @@ async function computeStats(userId: string, period: Period): Promise<BentoStats>
     closed: Number(r.closed) || 0, open: Number(r.open) || 0, created: Number(r.created) || 0,
   }));
 
-  // ----- team breakdown (all members, closures + comments + created in window) -----
-  const teamRows = await db.execute(sql<{
-    name: string; closed: number; comments: number; created: number;
-  }>`
-    select u.name,
-      coalesce((select count(*) from tasks t
-        where t.assignee_id = u.id and t.status = 'done'
-          and t.completed_at >= ${startStart.toISOString()}
-          and t.completed_at <= ${endEnd.toISOString()}), 0)::int as closed,
-      coalesce((select count(*) from task_comments c
-        where c.author_id = u.id
-          and c.created_at >= ${startStart.toISOString()}
-          and c.created_at <= ${endEnd.toISOString()}), 0)::int as comments,
-      coalesce((select count(*) from tasks t2
-        where t2.created_by_id = u.id
-          and t2.created_at >= ${startStart.toISOString()}
-          and t2.created_at <= ${endEnd.toISOString()}), 0)::int as created
-    from users u
-    where u.is_active = true
-    order by closed desc, comments desc
-  `);
   const teamBreakdown = (teamRows as unknown as Array<{
     name: string; closed: number; comments: number; created: number;
   }>).map((r) => ({
@@ -337,23 +431,6 @@ async function computeStats(userId: string, period: Period): Promise<BentoStats>
     comments: Number(r.comments) || 0, created: Number(r.created) || 0,
   }));
 
-  // ----- department breakdown -----
-  const deptRows = await db.execute(sql<{
-    id: string; name: string; color: string | null; closed: number; open: number; created: number; members: number;
-  }>`
-    select d.id, d.name, d.color,
-      coalesce(sum(case when t.status = 'done' and t.completed_at >= ${startStart.toISOString()}
-        and t.completed_at <= ${endEnd.toISOString()} then 1 else 0 end), 0)::int as closed,
-      coalesce(sum(case when t.status not in ('done', 'cancelled') then 1 else 0 end), 0)::int as open,
-      coalesce(sum(case when t.created_at >= ${startStart.toISOString()}
-        and t.created_at <= ${endEnd.toISOString()} then 1 else 0 end), 0)::int as created,
-      (select count(*)::int from users u2 where u2.department_id = d.id and u2.is_active = true) as members
-    from departments d
-    left join users u on u.department_id = d.id and u.is_active = true
-    left join tasks t on t.assignee_id = u.id
-    group by d.id, d.name, d.color
-    order by closed desc, open desc
-  `);
   const deptBreakdown = (deptRows as unknown as Array<{
     id: string; name: string; color: string | null; closed: number; open: number; created: number; members: number;
   }>).map((r) => ({
@@ -362,75 +439,17 @@ async function computeStats(userId: string, period: Period): Promise<BentoStats>
     created: Number(r.created) || 0, members: Number(r.members) || 0,
   }));
 
-  // ----- oldest open -----
-  const oldestRows = await db
-    .select({ id: tasks.id, title: tasks.title, createdAt: tasks.createdAt, project: projects.name })
-    .from(tasks)
-    .innerJoin(projects, eq(tasks.projectId, projects.id))
-    .where(and(eq(tasks.assigneeId, userId), sql`${tasks.status} not in ('done', 'cancelled')`))
-    .orderBy(tasks.createdAt)
-    .limit(1);
   const oldestOpen = oldestRows[0] ? {
     id: oldestRows[0].id, title: oldestRows[0].title, project: oldestRows[0].project,
     ageDays: Math.floor((Date.now() - (oldestRows[0].createdAt instanceof Date ? oldestRows[0].createdAt : new Date(oldestRows[0].createdAt)).getTime()) / 86400000),
   } : undefined;
 
-  // ----- fastest + slowest closures in window -----
-  const fastRows = await db.execute(sql<{ id: string; title: string; project: string; days: number }>`
-    select t.id, t.title, p.name as project,
-           extract(epoch from (t.completed_at - t.created_at)) / 86400.0 as days
-    from tasks t join projects p on t.project_id = p.id
-    where t.assignee_id = ${userId} and t.status = 'done'
-      and t.completed_at >= ${startStart.toISOString()}
-      and t.completed_at <= ${endEnd.toISOString()}
-      and t.created_at is not null
-      and t.completed_at - t.created_at > interval '5 minutes'
-    order by days asc limit 1
-  `);
-  const slowRows = await db.execute(sql<{ id: string; title: string; project: string; days: number }>`
-    select t.id, t.title, p.name as project,
-           extract(epoch from (t.completed_at - t.created_at)) / 86400.0 as days
-    from tasks t join projects p on t.project_id = p.id
-    where t.assignee_id = ${userId} and t.status = 'done'
-      and t.completed_at >= ${startStart.toISOString()}
-      and t.completed_at <= ${endEnd.toISOString()}
-      and t.created_at is not null
-    order by days desc limit 1
-  `);
-  const fr = (fastRows as unknown as Array<{ id: string; title: string; project: string; days: number }>)[0];
-  const sr = (slowRows as unknown as Array<{ id: string; title: string; project: string; days: number }>)[0];
+  const fsRows = fastSlowRows as unknown as Array<{ id: string; title: string; project: string; days: number; rk: number }>;
+  const fr = fsRows.find((r) => Number(r.rk) === 1);
+  const sr = fsRows.find((r) => Number(r.rk) === 2);
   const fastest = fr ? { id: fr.id, title: fr.title, project: fr.project, days: Math.max(1, Math.round(Number(fr.days))) } : undefined;
   const slowest = sr ? { id: sr.id, title: sr.title, project: sr.project, days: Math.max(1, Math.round(Number(sr.days))) } : undefined;
 
-  // ----- tougher than median (limit 3) -----
-  const longerRows = await db.execute(sql<{
-    id: string; title: string; project: string; days: number; median_days: number;
-  }>`
-    with closed_in_window as (
-      select t.id, t.title, p.name as project,
-             extract(epoch from (t.completed_at - t.created_at)) / 86400.0 as days,
-             t.project_id
-      from tasks t join projects p on t.project_id = p.id
-      where t.assignee_id = ${userId} and t.status = 'done'
-        and t.completed_at >= ${startStart.toISOString()}
-        and t.completed_at <= ${endEnd.toISOString()}
-        and t.created_at is not null
-    ),
-    medians as (
-      select project_id,
-             percentile_cont(0.5) within group (
-               order by extract(epoch from (completed_at - created_at)) / 86400.0
-             ) as median_days
-      from tasks
-      where status = 'done' and completed_at >= now() - interval '90 days'
-        and created_at is not null
-      group by project_id
-    )
-    select cw.id, cw.title, cw.project, cw.days, coalesce(m.median_days, 2) as median_days
-    from closed_in_window cw left join medians m on m.project_id = cw.project_id
-    where cw.days > coalesce(m.median_days, 2)
-    order by (cw.days - coalesce(m.median_days, 2)) desc limit 3
-  `);
   const longerThanMedian = (longerRows as unknown as Array<{
     id: string; title: string; project: string; days: number; median_days: number;
   }>).map((r) => ({
@@ -439,7 +458,7 @@ async function computeStats(userId: string, period: Period): Promise<BentoStats>
     medianDays: Math.max(1, Math.round(Number(r.median_days))),
   }));
 
-  const { current: streak, best: streakBest } = await computeStreak(userId);
+  const { current: streak, best: streakBest } = streakResult;
 
   return {
     period, periodKey, rangeLabel, startIST: startDay, endIST: endDay,
@@ -687,11 +706,11 @@ export async function getDeptDashboard(deptId: string, period: Period): Promise<
     // Headline counts
     const headlineRows = await db.execute(sql.raw(`
       select
-        coalesce(sum(case when status = 'done' and completed_at >= '${startStart.toISOString()}'
+        coalesce(sum(case when status = 'done'::task_status and completed_at >= '${startStart.toISOString()}'
           and completed_at <= '${endEnd.toISOString()}' then 1 else 0 end), 0)::int as closed,
-        coalesce(sum(case when status = 'done' and completed_at >= '${prevStartStart.toISOString()}'
+        coalesce(sum(case when status = 'done'::task_status and completed_at >= '${prevStartStart.toISOString()}'
           and completed_at <= '${prevEndEnd.toISOString()}' then 1 else 0 end), 0)::int as closed_prev,
-        coalesce(sum(case when status not in ('done', 'cancelled') then 1 else 0 end), 0)::int as open,
+        coalesce(sum(case when status not in ('done'::task_status, 'cancelled'::task_status) then 1 else 0 end), 0)::int as open,
         coalesce(sum(case when created_at >= '${startStart.toISOString()}'
           and created_at <= '${endEnd.toISOString()}' then 1 else 0 end), 0)::int as created
       from tasks where assignee_id in (${memberIdList})
@@ -709,9 +728,9 @@ export async function getDeptDashboard(deptId: string, period: Period): Promise<
     // Per-member breakdown
     const memberStatRows = await db.execute(sql.raw(`
       select u.id, u.name,
-        coalesce(sum(case when t.status = 'done' and t.completed_at >= '${startStart.toISOString()}'
+        coalesce(sum(case when t.status = 'done'::task_status and t.completed_at >= '${startStart.toISOString()}'
           and t.completed_at <= '${endEnd.toISOString()}' then 1 else 0 end), 0)::int as closed,
-        coalesce(sum(case when t.status not in ('done', 'cancelled') then 1 else 0 end), 0)::int as open,
+        coalesce(sum(case when t.status not in ('done'::task_status, 'cancelled'::task_status) then 1 else 0 end), 0)::int as open,
         coalesce(sum(case when t.created_at >= '${startStart.toISOString()}'
           and t.created_at <= '${endEnd.toISOString()}' then 1 else 0 end), 0)::int as created,
         coalesce((select count(*)::int from task_comments c where c.author_id = u.id
@@ -725,22 +744,22 @@ export async function getDeptDashboard(deptId: string, period: Period): Promise<
     // Per-project breakdown
     const projRows = await db.execute(sql.raw(`
       select p.slug, p.name,
-        coalesce(sum(case when t.status = 'done' and t.completed_at >= '${startStart.toISOString()}'
+        coalesce(sum(case when t.status = 'done'::task_status and t.completed_at >= '${startStart.toISOString()}'
           and t.completed_at <= '${endEnd.toISOString()}' then 1 else 0 end), 0)::int as closed,
-        coalesce(sum(case when t.status not in ('done', 'cancelled') then 1 else 0 end), 0)::int as open
+        coalesce(sum(case when t.status not in ('done'::task_status, 'cancelled'::task_status) then 1 else 0 end), 0)::int as open
       from tasks t join projects p on t.project_id = p.id
       where t.assignee_id in (${memberIdList})
       group by p.slug, p.name
-      having coalesce(sum(case when t.status = 'done' and t.completed_at >= '${startStart.toISOString()}'
+      having coalesce(sum(case when t.status = 'done'::task_status and t.completed_at >= '${startStart.toISOString()}'
         and t.completed_at <= '${endEnd.toISOString()}' then 1 else 0 end), 0) > 0
-        or coalesce(sum(case when t.status not in ('done', 'cancelled') then 1 else 0 end), 0) > 0
+        or coalesce(sum(case when t.status not in ('done'::task_status, 'cancelled'::task_status) then 1 else 0 end), 0) > 0
       order by closed desc
     `));
 
     // Priority mix
     const prioRows = await db.execute(sql.raw(`
       select priority::text as priority, count(*)::int as n
-      from tasks where assignee_id in (${memberIdList}) and status = 'done'
+      from tasks where assignee_id in (${memberIdList}) and status = 'done'::task_status
         and completed_at >= '${startStart.toISOString()}'
         and completed_at <= '${endEnd.toISOString()}'
       group by priority
@@ -757,7 +776,7 @@ export async function getDeptDashboard(deptId: string, period: Period): Promise<
       )
       select to_char((d.ts at time zone 'Asia/Kolkata')::date, 'YYYY-MM-DD') as d,
         coalesce((select count(*) from tasks t
-          where t.assignee_id in (${memberIdList}) and t.status = 'done'
+          where t.assignee_id in (${memberIdList}) and t.status = 'done'::task_status
             and (t.completed_at at time zone 'Asia/Kolkata')::date = (d.ts at time zone 'Asia/Kolkata')::date), 0)::int as closed,
         coalesce((select count(*) from task_comments c
           where c.author_id in (${memberIdList})

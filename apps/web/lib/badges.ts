@@ -95,22 +95,22 @@ export async function computeUserStats(userId: string): Promise<UserStats> {
   // Single SQL with scalar subqueries — one round-trip for all counts
   const rows = await db.execute(sql`
     SELECT
-      (SELECT count(*)::int FROM tasks WHERE assignee_id = ${userId} AND status = 'done') AS done_count,
-      (SELECT count(*)::int FROM tasks WHERE assignee_id = ${userId} AND status = 'done' AND priority IN ('high', 'urgent')) AS high_priority_done,
-      (SELECT count(*)::int FROM tasks WHERE assignee_id = ${userId} AND status = 'done' AND completed_at IS NOT NULL AND completed_at >= now() - interval '7 days') AS weekly_done,
+      (SELECT count(*)::int FROM tasks WHERE assignee_id = ${userId} AND status = 'done'::task_status) AS done_count,
+      (SELECT count(*)::int FROM tasks WHERE assignee_id = ${userId} AND status = 'done'::task_status AND priority IN ('high', 'urgent')) AS high_priority_done,
+      (SELECT count(*)::int FROM tasks WHERE assignee_id = ${userId} AND status = 'done'::task_status AND completed_at IS NOT NULL AND completed_at >= now() - interval '7 days') AS weekly_done,
       (SELECT count(*)::int FROM task_comments WHERE author_id = ${userId}) AS comment_count,
-      (SELECT count(DISTINCT project_id)::int FROM tasks WHERE assignee_id = ${userId} AND status = 'done') AS project_count,
-      (SELECT count(*)::int FROM tasks WHERE assignee_id = ${userId} AND status = 'done' AND completed_at IS NOT NULL AND completed_at - created_at <= interval '24 hours') AS speed_task_count,
-      (SELECT count(*)::int FROM tasks WHERE assignee_id = ${userId} AND status = 'done' AND completed_at IS NOT NULL AND extract(hour FROM completed_at AT TIME ZONE 'Asia/Kolkata') < 9) AS early_bird_count,
+      (SELECT count(DISTINCT project_id)::int FROM tasks WHERE assignee_id = ${userId} AND status = 'done'::task_status) AS project_count,
+      (SELECT count(*)::int FROM tasks WHERE assignee_id = ${userId} AND status = 'done'::task_status AND completed_at IS NOT NULL AND completed_at - created_at <= interval '24 hours') AS speed_task_count,
+      (SELECT count(*)::int FROM tasks WHERE assignee_id = ${userId} AND status = 'done'::task_status AND completed_at IS NOT NULL AND extract(hour FROM completed_at AT TIME ZONE 'Asia/Kolkata') < 9) AS early_bird_count,
       (SELECT count(*)::int FROM tasks WHERE created_by_id = ${userId} AND description IS NOT NULL AND description != '') AS tasks_with_desc,
-      (SELECT count(*)::int FROM tasks WHERE assignee_id = ${userId} AND status = 'done' AND due_date IS NOT NULL AND completed_at IS NOT NULL AND completed_at <= (due_date::date + interval '1 day')) AS on_time_count,
+      (SELECT count(*)::int FROM tasks WHERE assignee_id = ${userId} AND status = 'done'::task_status AND due_date IS NOT NULL AND completed_at IS NOT NULL AND completed_at <= (due_date::date + interval '1 day')) AS on_time_count,
       (SELECT count(*)::int FROM tasks WHERE created_by_id = ${userId} AND assignee_id IS NOT NULL AND assignee_id != ${userId}) AS assigned_to_others,
       (SELECT count(*)::int FROM tasks WHERE created_by_id = ${userId} AND due_date IS NOT NULL) AS tasks_with_due,
       (SELECT count(DISTINCT t2.parent_task_id)::int FROM tasks t2 WHERE t2.parent_task_id IS NOT NULL AND t2.parent_task_id IN (SELECT id FROM tasks WHERE created_by_id = ${userId})) AS tasks_with_subtasks,
-      (SELECT count(*)::int FROM tasks WHERE assignee_id = ${userId} AND status = 'done' AND completed_at IS NOT NULL AND completed_at - created_at >= interval '7 days') AS comeback_count,
-      (SELECT COALESCE(max(cnt), 0)::int FROM (SELECT count(*) AS cnt FROM tasks WHERE assignee_id = ${userId} AND status = 'done' AND completed_at IS NOT NULL GROUP BY (completed_at AT TIME ZONE 'Asia/Kolkata')::date) sub) AS daily_max,
-      (SELECT count(*)::int FROM tasks WHERE assignee_id = ${userId} AND status = 'done' AND completed_at IS NOT NULL AND completed_at - created_at <= interval '1 hour') AS quick_finish_count,
-      (SELECT count(*)::int FROM tasks WHERE assignee_id = ${userId} AND status = 'done' AND parent_task_id IS NOT NULL) AS subtasks_done,
+      (SELECT count(*)::int FROM tasks WHERE assignee_id = ${userId} AND status = 'done'::task_status AND completed_at IS NOT NULL AND completed_at - created_at >= interval '7 days') AS comeback_count,
+      (SELECT COALESCE(max(cnt), 0)::int FROM (SELECT count(*) AS cnt FROM tasks WHERE assignee_id = ${userId} AND status = 'done'::task_status AND completed_at IS NOT NULL GROUP BY (completed_at AT TIME ZONE 'Asia/Kolkata')::date) sub) AS daily_max,
+      (SELECT count(*)::int FROM tasks WHERE assignee_id = ${userId} AND status = 'done'::task_status AND completed_at IS NOT NULL AND completed_at - created_at <= interval '1 hour') AS quick_finish_count,
+      (SELECT count(*)::int FROM tasks WHERE assignee_id = ${userId} AND status = 'done'::task_status AND parent_task_id IS NOT NULL) AS subtasks_done,
       (SELECT count(DISTINCT task_id)::int FROM task_comments WHERE author_id = ${userId}) AS tasks_commented_on
   `);
 
@@ -150,7 +150,7 @@ async function computeStreak(userId: string): Promise<number> {
     SELECT DISTINCT d::date AS day FROM (
       SELECT (completed_at AT TIME ZONE 'Asia/Kolkata')::date AS d
       FROM tasks
-      WHERE assignee_id = ${userId} AND status = 'done' AND completed_at IS NOT NULL
+      WHERE assignee_id = ${userId} AND status = 'done'::task_status AND completed_at IS NOT NULL
         AND completed_at >= now() - interval '90 days'
       UNION
       SELECT (created_at AT TIME ZONE 'Asia/Kolkata')::date AS d

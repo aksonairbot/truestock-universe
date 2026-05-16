@@ -29,7 +29,7 @@ export default async function NewTaskPage() {
         </div>
         <Link href="/tasks" className="btn btn-ghost">← Back</Link>
       </div>
-      <NewTaskForm projects={projectList} users={userList} currentUserId={me.id} />
+      <NewTaskForm projects={projectList} users={userList} currentUserId={me.id} userRole={me.role} />
     </div>
   );
 }

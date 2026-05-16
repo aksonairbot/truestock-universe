@@ -137,68 +137,68 @@ export default async function TeamWeekPage({ searchParams }: PageProps) {
     );
   }
 
-  // Completed this week
-  const completedRows = await db
-    .select({
-      assigneeId: tasks.assigneeId,
-      n: sql<number>`count(*)::int`,
-    })
-    .from(tasks)
-    .where(
-      and(
-        eq(tasks.status, "done"),
-        gte(tasks.completedAt, wStart),
-        lte(tasks.completedAt, wEnd),
-        inArray(tasks.assigneeId, userIds),
-      ),
-    )
-    .groupBy(tasks.assigneeId);
-
-  // In progress right now
-  const inProgressRows = await db
-    .select({
-      assigneeId: tasks.assigneeId,
-      n: sql<number>`count(*)::int`,
-    })
-    .from(tasks)
-    .where(
-      and(
-        eq(tasks.status, "in_progress"),
-        inArray(tasks.assigneeId, userIds),
-      ),
-    )
-    .groupBy(tasks.assigneeId);
-
-  // Overdue (not done/cancelled, dueDate < today)
-  const overdueRows = await db
-    .select({
-      assigneeId: tasks.assigneeId,
-      n: sql<number>`count(*)::int`,
-    })
-    .from(tasks)
-    .where(
-      and(
-        sql`${tasks.status} NOT IN ('done','cancelled')`,
-        sql`${tasks.dueDate}::date < ${today}::date`,
-        inArray(tasks.assigneeId, userIds),
-      ),
-    )
-    .groupBy(tasks.assigneeId);
-
-  // Open (backlog + todo + in_progress + review)
-  const openRows = await db
-    .select({
-      assigneeId: tasks.assigneeId,
-      n: sql<number>`count(*)::int`,
-    })
-    .from(tasks)
-    .where(
-      and(
-        sql`${tasks.status} = ANY(ARRAY['backlog','todo','in_progress','review'])`,
-        inArray(tasks.assigneeId, userIds),
-      ),
-    )
-    .groupBy(tasks.assigneeId);
+  // All 4 stat queries run in parallel — no dependencies between them.
+  const [completedRows, inProgressRows, overdueRows, openRows] = await Promise.all([
+    // Completed this week
+    db
+      .select({
+        assigneeId: tasks.assigneeId,
+        n: sql<number>`count(*)::int`,
+      })
+      .from(tasks)
+      .where(
+        and(
+          eq(tasks.status, "done"),
+          gte(tasks.completedAt, wStart),
+          lte(tasks.completedAt, wEnd),
+          inArray(tasks.assigneeId, userIds),
+        ),
+      )
+      .groupBy(tasks.assigneeId),
+    // In progress right now
+    db
+      .select({
+        assigneeId: tasks.assigneeId,
+        n: sql<number>`count(*)::int`,
+      })
+      .from(tasks)
+      .where(
+        and(
+          eq(tasks.status, "in_progress"),
+          inArray(tasks.assigneeId, userIds),
+        ),
+      )
+      .groupBy(tasks.assigneeId),
+    // Overdue (not done/cancelled, dueDate < today)
+    db
+      .select({
+        assigneeId: tasks.assigneeId,
+        n: sql<number>`count(*)::int`,
+      })
+      .from(tasks)
+      .where(
+        and(
+          sql`${tasks.status} NOT IN ('done'::task_status,'cancelled'::task_status)`,
+          sql`${tasks.dueDate}::date < ${today}::date`,
+          inArray(tasks.assigneeId, userIds),
+        ),
+      )
+      .groupBy(tasks.assigneeId),
+    // Open (backlog + todo + in_progress + review)
+    db
+      .select({
+        assigneeId: tasks.assigneeId,
+        n: sql<number>`count(*)::int`,
+      })
+      .from(tasks)
+      .where(
+        and(
+          sql`${tasks.status} = ANY(ARRAY['backlog','todo','in_progress','review']::task_status[])`,
+          inArray(tasks.assigneeId, userIds),
+        ),
+      )
+      .groupBy(tasks.assigneeId),
+  ]);
 
   // Build maps
   const completedMap = new Map(completedRows.map((r) => [r.assigneeId, r.n]));
@@ -318,7 +318,7 @@ function MemberCard({
         ) : (
           <div
             className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-semibold"
-            style={{ background: "linear-gradient(135deg,#7B5CFF,#22D3EE)", color: "#0B0D12" }}
+            style={{ background: "linear-gradient(135deg,#7B5CFF,#22D3EE)", color: "var(--avatar-contrast)" }}
           >
             {initials}
           </div>

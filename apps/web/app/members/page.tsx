@@ -98,85 +98,83 @@ export default async function MembersPage({ searchParams }: PageProps) {
   }
 
   // ---------------- open + overdue + busy per assignee ----------------
-  // Busy formula in SQL keeps it server-side & cheap.
-  const workloadRows = await db.execute(sql<{
-    assignee_id: string;
-    open: number;
-    overdue: number;
-    busy: number;
-  }>`
-    select
-      assignee_id,
-      count(*)::int as open,
-      count(*) filter (where due_date < (now() at time zone 'Asia/Kolkata')::date)::int as overdue,
-      sum(
-        (case priority
-           when 'urgent' then 4
-           when 'high'   then 3
-           when 'med'    then 2
-           else 1
-         end)
-        * (case when due_date < (now() at time zone 'Asia/Kolkata')::date then 2 else 1 end)
-      )::int as busy
-    from tasks
-    where assignee_id is not null
-      and status not in ('done', 'cancelled')
-    group by assignee_id
-  `);
-
-  const done7dRows = await db
-    .select({
-      assigneeId: tasks.assigneeId,
-      n: sql<number>`count(*)::int`.as("n"),
-    })
-    .from(tasks)
-    .where(
-      and(
-        sql`${tasks.assigneeId} is not null`,
-        eq(tasks.status, "done"),
-        sql`${tasks.completedAt} >= ${start7d.toISOString()}`,
-      ),
-    )
-    .groupBy(tasks.assigneeId);
-
-  const done1dRows = await db
-    .select({
-      assigneeId: tasks.assigneeId,
-      n: sql<number>`count(*)::int`.as("n"),
-    })
-    .from(tasks)
-    .where(
-      and(
-        sql`${tasks.assigneeId} is not null`,
-        eq(tasks.status, "done"),
-        sql`${tasks.completedAt} >= ${startToday.toISOString()}`,
-      ),
-    )
-    .groupBy(tasks.assigneeId);
-
-  const done30dRows = await db
-    .select({
-      assigneeId: tasks.assigneeId,
-      n: sql<number>`count(*)::int`.as("n"),
-    })
-    .from(tasks)
-    .where(
-      and(
-        sql`${tasks.assigneeId} is not null`,
-        eq(tasks.status, "done"),
-        sql`${tasks.completedAt} >= ${start30d.toISOString()}`,
-      ),
-    )
-    .groupBy(tasks.assigneeId);
-
-  const comments7dRows = await db
-    .select({
-      authorId: taskComments.authorId,
-      n: sql<number>`count(*)::int`.as("n"),
-    })
-    .from(taskComments)
-    .where(sql`${taskComments.createdAt} >= ${start7d.toISOString()}`)
-    .groupBy(taskComments.authorId);
+  // All 5 stat queries run in parallel — no dependencies between them.
+  const [workloadRows, done7dRows, done1dRows, done30dRows, comments7dRows] = await Promise.all([
+    db.execute(sql<{
+      assignee_id: string;
+      open: number;
+      overdue: number;
+      busy: number;
+    }>`
+      select
+        assignee_id,
+        count(*)::int as open,
+        count(*) filter (where due_date < (now() at time zone 'Asia/Kolkata')::date)::int as overdue,
+        sum(
+          (case priority
+             when 'urgent' then 4
+             when 'high'   then 3
+             when 'med'    then 2
+             else 1
+           end)
+          * (case when due_date < (now() at time zone 'Asia/Kolkata')::date then 2 else 1 end)
+        )::int as busy
+      from tasks
+      where assignee_id is not null
+        and status not in ('done'::task_status, 'cancelled'::task_status)
+      group by assignee_id
+    `),
+    db
+      .select({
+        assigneeId: tasks.assigneeId,
+        n: sql<number>`count(*)::int`.as("n"),
+      })
+      .from(tasks)
+      .where(
+        and(
+          sql`${tasks.assigneeId} is not null`,
+          eq(tasks.status, "done"),
+          sql`${tasks.completedAt} >= ${start7d.toISOString()}`,
+        ),
+      )
+      .groupBy(tasks.assigneeId),
+    db
+      .select({
+        assigneeId: tasks.assigneeId,
+        n: sql<number>`count(*)::int`.as("n"),
+      })
+      .from(tasks)
+      .where(
+        and(
+          sql`${tasks.assigneeId} is not null`,
+          eq(tasks.status, "done"),
+          sql`${tasks.completedAt} >= ${startToday.toISOString()}`,
+        ),
+      )
+      .groupBy(tasks.assigneeId),
+    db
+      .select({
+        assigneeId: tasks.assigneeId,
+        n: sql<number>`count(*)::int`.as("n"),
+      })
+      .from(tasks)
+      .where(
+        and(
+          sql`${tasks.assigneeId} is not null`,
+          eq(tasks.status, "done"),
+          sql`${tasks.completedAt} >= ${start30d.toISOString()}`,
+        ),
+      )
+      .groupBy(tasks.assigneeId),
+    db
+      .select({
+        authorId: taskComments.authorId,
+        n: sql<number>`count(*)::int`.as("n"),
+      })
+      .from(taskComments)
+      .where(sql`${taskComments.createdAt} >= ${start7d.toISOString()}`)
+      .groupBy(taskComments.authorId),
+  ]);
 
   const openMap = new Map<string, number>();
   const overdueMap = new Map<string, number>();

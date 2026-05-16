@@ -23,11 +23,11 @@ function dayShort(d: string): string {
 }
 
 const PRIO_COLOR: Record<string, string> = {
-  urgent: "#FCA5A5", high: "#F5B84A", med: "#9AA0B4", low: "#5A5F72",
+  urgent: "#FCA5A5", high: "#F5B84A", med: "var(--text-2)", low: "var(--text-3)",
 };
 const PRIO_BG: Record<string, string> = {
   urgent: "rgba(248,113,113,0.18)", high: "rgba(245,184,74,0.18)",
-  med: "rgba(255,255,255,0.06)", low: "rgba(255,255,255,0.04)",
+  med: "var(--accent-wash)", low: "var(--border)",
 };
 
 export function DeptBento({ stats }: { stats: DeptDashStats }) {

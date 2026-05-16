@@ -146,9 +146,19 @@ export default async function HomePage({ searchParams }: PageProps) {
         .from(users)
         .where(eq(users.id, me.id));
 
-  // ---------- tasks completed in window, grouped by assignee ----------
-  const completed = await db
-    .select({
+  // ---------- All dashboard queries in parallel ----------
+  const reviewScope = canSeeAll
+    ? sql`1=1`
+    : deptScope
+      ? sql`${tasks.assigneeId} in (select id from users where department_id = ${deptScope})`
+      : sql`(${tasks.assigneeId} = ${me.id} or ${tasks.createdById} = ${me.id})`;
+
+  const mondayStr = shiftDate(today, -(new Date(`${today}T12:00:00+05:30`).getDay() || 7) + 1);
+  const weekStart = new Date(`${mondayStr}T00:00:00+05:30`);
+
+  const [completed, created, comments, openLoad, reviewTasks, dueTodayArr, inProgressArr, weekCompArr, overdueArr] = await Promise.all([
+    // tasks completed in window
+    db.select({
       id: tasks.id,
       title: tasks.title,
       status: tasks.status,
@@ -158,18 +168,11 @@ export default async function HomePage({ searchParams }: PageProps) {
     })
     .from(tasks)
     .innerJoin(projects, eq(tasks.projectId, projects.id))
-    .where(
-      and(
-        eq(tasks.status, "done"),
-        gte(tasks.completedAt, dayStart),
-        lte(tasks.completedAt, dayEnd),
-      ),
-    )
-    .orderBy(desc(tasks.completedAt));
+    .where(and(eq(tasks.status, "done"), gte(tasks.completedAt, dayStart), lte(tasks.completedAt, dayEnd)))
+    .orderBy(desc(tasks.completedAt)),
 
-  // ---------- tasks created in window, grouped by creator ----------
-  const created = await db
-    .select({
+    // tasks created in window
+    db.select({
       id: tasks.id,
       title: tasks.title,
       createdById: tasks.createdById,
@@ -179,11 +182,10 @@ export default async function HomePage({ searchParams }: PageProps) {
     .from(tasks)
     .innerJoin(projects, eq(tasks.projectId, projects.id))
     .where(and(gte(tasks.createdAt, dayStart), lte(tasks.createdAt, dayEnd)))
-    .orderBy(desc(tasks.createdAt));
+    .orderBy(desc(tasks.createdAt)),
 
-  // ---------- comments in window, grouped by author ----------
-  const comments = await db
-    .select({
+    // comments in window
+    db.select({
       id: taskComments.id,
       body: taskComments.body,
       authorId: taskComments.authorId,
@@ -194,49 +196,56 @@ export default async function HomePage({ searchParams }: PageProps) {
     .from(taskComments)
     .leftJoin(tasks, eq(taskComments.taskId, tasks.id))
     .where(and(gte(taskComments.createdAt, dayStart), lte(taskComments.createdAt, dayEnd)))
-    .orderBy(desc(taskComments.createdAt));
+    .orderBy(desc(taskComments.createdAt)),
 
-  // ---------- current open load per assignee ----------
-  const openLoad = await db
-    .select({
+    // open load per assignee
+    db.select({
       assigneeId: tasks.assigneeId,
       n: sql<number>`count(*)::int`.as("n"),
     })
     .from(tasks)
-    .where(and(sql`${tasks.assigneeId} is not null`, sql`${tasks.status} not in ('done','cancelled')`))
-    .groupBy(tasks.assigneeId);
+    .where(and(sql`${tasks.assigneeId} is not null`, sql`${tasks.status} not in ('done'::task_status,'cancelled'::task_status)`))
+    .groupBy(tasks.assigneeId),
+
+    // tasks awaiting review
+    db.select({
+      id: tasks.id,
+      title: tasks.title,
+      assigneeId: tasks.assigneeId,
+      assigneeName: users.name,
+      dueDate: tasks.dueDate,
+      project: { slug: projects.slug, name: projects.name },
+    })
+    .from(tasks)
+    .innerJoin(projects, eq(tasks.projectId, projects.id))
+    .leftJoin(users, eq(tasks.assigneeId, users.id))
+    .where(and(sql`${tasks.status} = 'review'::task_status`, reviewScope))
+    .orderBy(desc(tasks.updatedAt)),
+
+    // hero stats: due today
+    db.select({ n: sql<number>`count(*)::int` }).from(tasks)
+      .where(and(eq(tasks.dueDate, date), sql`${tasks.status} not in ('done'::task_status,'cancelled'::task_status)`)),
+
+    // hero stats: in progress
+    db.select({ n: sql<number>`count(*)::int` }).from(tasks)
+      .where(sql`${tasks.status} = 'in_progress'::task_status`),
+
+    // hero stats: week completed
+    db.select({ n: sql<number>`count(*)::int` }).from(tasks)
+      .where(and(eq(tasks.status, "done"), sql`${tasks.completedAt} >= ${weekStart.toISOString()}`)),
+
+    // hero stats: overdue
+    db.select({ n: sql<number>`count(*)::int` }).from(tasks)
+      .where(and(sql`${tasks.status} not in ('done'::task_status,'cancelled'::task_status)`, sql`${tasks.dueDate} < ${date}`)),
+  ]);
 
   const openMap = new Map<string, number>();
   for (const r of openLoad) if (r.assigneeId) openMap.set(r.assigneeId, r.n);
 
-  // ---------- hero stat cards data ----------
-  const [dueTodayRow] = await db
-    .select({ n: sql<number>`count(*)::int` })
-    .from(tasks)
-    .where(and(eq(tasks.dueDate, date), sql`${tasks.status} not in ('done','cancelled')`));
-  const dueToday = dueTodayRow?.n ?? 0;
-
-  const [inProgressRow] = await db
-    .select({ n: sql<number>`count(*)::int` })
-    .from(tasks)
-    .where(and(sql`${tasks.status} = 'in_progress'`));
-  const inProgress = inProgressRow?.n ?? 0;
-
-  // Week completed (Mon-Sun window)
-  const mondayStr = shiftDate(today, -(new Date(`${today}T12:00:00+05:30`).getDay() || 7) + 1);
-  const weekStart = new Date(`${mondayStr}T00:00:00+05:30`);
-  const [weekCompRow] = await db
-    .select({ n: sql<number>`count(*)::int` })
-    .from(tasks)
-    .where(and(eq(tasks.status, "done"), sql`${tasks.completedAt} >= ${weekStart.toISOString()}`));
-  const weekCompleted = weekCompRow?.n ?? 0;
-
-  // Focus score: completed / (completed + overdue open) as percentage
-  const [overdueRow] = await db
-    .select({ n: sql<number>`count(*)::int` })
-    .from(tasks)
-    .where(and(sql`${tasks.status} not in ('done','cancelled')`, sql`${tasks.dueDate} < ${date}`));
-  const overdueTasks = overdueRow?.n ?? 0;
+  const dueToday = dueTodayArr[0]?.n ?? 0;
+  const inProgress = inProgressArr[0]?.n ?? 0;
+  const weekCompleted = weekCompArr[0]?.n ?? 0;
+  const overdueTasks = overdueArr[0]?.n ?? 0;
   const focusScore = weekCompleted + overdueTasks > 0
     ? Math.round((weekCompleted / (weekCompleted + overdueTasks)) * 100)
     : 100;
@@ -263,7 +272,7 @@ export default async function HomePage({ searchParams }: PageProps) {
     const av = a.completed.length + a.created.length + a.comments.length;
     const bv = b.completed.length + b.created.length + b.comments.length;
     if (av !== bv) return bv - av;
-    return a.user.name.localeCompare(b.user.name);
+    return (a.user.name ?? "").localeCompare(b.user.name ?? "");
   });
 
   const totals = {
@@ -366,6 +375,30 @@ export default async function HomePage({ searchParams }: PageProps) {
           </div>
         </div>
       </div>
+
+      {/* Tasks awaiting review — prominent placement so managers see them */}
+      {reviewTasks.length > 0 ? (
+        <div className="review-tasks-banner">
+          <div className="review-tasks-head">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="16" height="16">
+              <circle cx="12" cy="12" r="10" />
+              <path d="M12 6v6l4 2" />
+            </svg>
+            <span>Awaiting Review</span>
+            <span className="review-tasks-count">{reviewTasks.length}</span>
+          </div>
+          <div className="review-tasks-list">
+            {reviewTasks.map((t) => (
+              <Link key={t.id} href={`/tasks?task=${t.id}`} className="review-task-row" scroll={false}>
+                <span className="review-task-title">{t.title}</span>
+                <span className="review-task-meta">
+                  {t.assigneeName ?? "Unassigned"} · {t.project.name}
+                </span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       <Suspense fallback={null}>
         <ReviewCard />

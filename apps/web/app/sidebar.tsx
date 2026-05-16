@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useRef, useEffect } from "react";
+import { useTheme } from "./theme-provider";
 
 interface SidebarProps {
-  user: { name: string; email: string; avatarUrl: string | null } | null;
+  user: { name: string; email: string; avatarUrl: string | null; role?: string } | null;
   unreadCount?: number;
   chatUnreadCount?: number;
   orgName?: string;
@@ -13,14 +14,34 @@ interface SidebarProps {
   isPrivileged?: boolean;
 }
 
+/** Fetch badge counts client-side so the layout doesn't block on these queries. */
+function useBadgeCounts() {
+  const [unread, setUnread] = useState(0);
+  const [chatUnread, setChatUnread] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/sidebar-badges")
+      .then((r) => r.json())
+      .then((d: { unread?: number; chatUnread?: number }) => {
+        if (cancelled) return;
+        setUnread(d.unread ?? 0);
+        setChatUnread(d.chatUnread ?? 0);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+  return { unread, chatUnread };
+}
+
 export default function Sidebar({
   user,
-  unreadCount = 0,
-  chatUnreadCount = 0,
+  unreadCount: _legacyUnread = 0,
+  chatUnreadCount: _legacyChatUnread = 0,
   orgName = "SeekPeek",
   orgMembersLine = "Truestock · daily work tracker",
   isPrivileged = false,
 }: SidebarProps) {
+  const { unread: unreadCount, chatUnread: chatUnreadCount } = useBadgeCounts();
   const rawPath = usePathname() ?? "/";
   const [mobileOpen, setMobileOpen] = useState(false);
   // Welcome page is a full-bleed landing for unauthenticated visitors — no app shell.
@@ -65,7 +86,7 @@ export default function Sidebar({
       <aside
         className={`sidebar-aside ${mobileOpen ? "is-open" : ""}`}
         style={{
-          background: "linear-gradient(180deg, #0B0D12, #0A0B10)",
+          background: "linear-gradient(180deg, var(--bg-2), var(--bg))",
         }}
       >
       {/* brand — clicks to home (today summary) */}
@@ -108,6 +129,9 @@ export default function Sidebar({
             Team
           </NavLink>
         )}
+        <NavLink href="/reviews" active={isActive("/reviews")} icon={<IcReview />}>
+          Reviews
+        </NavLink>
         <NavLink href="/chat" active={isActive("/chat")} icon={<IcChat />}>
           <span className="flex-1">Chat</span>
           {chatUnreadCount > 0 ? (
@@ -128,13 +152,16 @@ export default function Sidebar({
 
       <div className="flex-1" />
 
+      {/* theme toggle */}
+      <ThemeToggle />
+
       {/* org card */}
       <div className="mt-2.5 p-2.5 border border-border rounded-[10px] bg-panel flex items-center gap-2.5">
         <div
           className="w-7 h-7 rounded-[7px] flex items-center justify-center font-semibold text-[12px] shrink-0"
           style={{
             background: "linear-gradient(135deg,#7B5CFF,#22D3EE)",
-            color: "#0B0D12",
+            color: "var(--avatar-contrast)",
           }}
         >
           {orgName.slice(0, 1).toUpperCase()}
@@ -250,6 +277,32 @@ function UserMenu({ user }: { user: { name: string; email: string; avatarUrl: st
   );
 }
 
+/* ---------- theme toggle ---------- */
+function ThemeToggle() {
+  const { theme, toggle } = useTheme();
+  const isDark = theme === "dark";
+  return (
+    <button
+      onClick={toggle}
+      className="theme-toggle-btn"
+      aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
+      title={isDark ? "Switch to light mode" : "Switch to dark mode"}
+    >
+      {isDark ? (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="16" height="16">
+          <circle cx="12" cy="12" r="5" />
+          <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+        </svg>
+      ) : (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="16" height="16">
+          <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />
+        </svg>
+      )}
+      <span>{isDark ? "Light mode" : "Dark mode"}</span>
+    </button>
+  );
+}
+
 /* ---------- icons ---------- */
 function IcToday() {
   return (
@@ -325,6 +378,15 @@ function IcSpark() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="18" height="18">
       <path d="M5 3v4M3 5h4M12 4v6M9 7h6M19 14v6M16 17h6M14 11l-5 8" />
+    </svg>
+  );
+}
+function IcReview() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="18" height="18">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <path d="M14 2v6h6" />
+      <path d="M9 15l2 2 4-4" />
     </svg>
   );
 }

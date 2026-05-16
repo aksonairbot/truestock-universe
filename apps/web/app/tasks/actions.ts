@@ -3,14 +3,31 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getDb, tasks, projects, taskComments, eq } from "@tu/db";
-import { getCurrentUserId } from "@/lib/auth";
+import { getCurrentUserId, getCurrentUser } from "@/lib/auth";
 import { log } from "@/lib/log";
-import { notifyAssigned, notifyTaskCompleted, notifyCommentOnAssigned, notifyMentions, notifyReviewRequested } from "@/lib/notify";
+import { notifyAssigned, notifyTaskCompleted, notifyCommentOnAssigned, notifyMentions, notifyReviewRequested, notifyReviewOutcome } from "@/lib/notify";
 import { offsetToDeadline, deadlineToDateStr } from "@/lib/worktime";
 import { checkAndAwardBadges } from "@/lib/badges";
 
 const TASK_STATUSES = ["backlog", "todo", "in_progress", "review", "done", "cancelled"] as const;
 const TASK_PRIORITIES = ["low", "med", "high", "urgent"] as const;
+const HOURS_PER_DAY = 9; // 9 AM – 6 PM
+const MAX_DUE_DAYS = 10;
+const MAX_DUE_HOURS = MAX_DUE_DAYS * HOURS_PER_DAY; // 90 working hours
+
+/** Parse a due-date input string and return total working hours. */
+function parseDueInput(input: string): { totalHours: number } {
+  let totalHours = 0;
+  const dayMatch = input.match(/(\d+)\s*d(?:ays?)?/i);
+  const hourMatch = input.match(/(\d+)\s*h(?:ours?|rs?)?/i);
+  if (dayMatch) totalHours += Number(dayMatch[1]) * HOURS_PER_DAY;
+  if (hourMatch) totalHours += Number(hourMatch[1]);
+  if (!dayMatch && !hourMatch) {
+    const n = Number(input);
+    if (!isNaN(n) && n > 0) totalHours = n * HOURS_PER_DAY;
+  }
+  return { totalHours: totalHours || HOURS_PER_DAY };
+}
 type TaskStatus = (typeof TASK_STATUSES)[number];
 type TaskPriority = (typeof TASK_PRIORITIES)[number];
 
@@ -24,7 +41,7 @@ function isTaskPriority(v: string): v is TaskPriority {
 // ---------------------------------------------------------------------------
 // createTask — bound to /tasks/new form
 // ---------------------------------------------------------------------------
-export async function createTask(formData: FormData): Promise<void> {
+export async function createTask(formData: FormData): Promise<string> {
   const title = ((formData.get("title") as string) ?? "").trim();
   const description = ((formData.get("description") as string) ?? "").trim() || null;
   const projectSlug = ((formData.get("projectSlug") as string) ?? "").trim();
@@ -45,6 +62,10 @@ export async function createTask(formData: FormData): Promise<void> {
     if (/^\d{4}-\d{2}-\d{2}$/.test(dueDateInput)) {
       dueDate = dueDateInput; // legacy date format
     } else {
+      const parsed = parseDueInput(dueDateInput);
+      if (parsed.totalHours > MAX_DUE_HOURS) {
+        throw new Error(`Due date cannot exceed ${MAX_DUE_DAYS} working days. You entered ~${Math.ceil(parsed.totalHours / HOURS_PER_DAY)}d.`);
+      }
       dueDate = deadlineToDateStr(offsetToDeadline(dueDateInput));
     }
   }
@@ -57,7 +78,15 @@ export async function createTask(formData: FormData): Promise<void> {
     .limit(1);
   if (!project) throw new Error(`project not found`);
 
-  const userId = await getCurrentUserId();
+  const me = await getCurrentUser();
+  const userId = me.id;
+
+  // Permission: members can only create tasks for themselves.
+  // Managers and admins can assign to anyone.
+  const assigneeId = assigneeIdRaw ?? userId;
+  if (me.role === "member" && assigneeId !== userId) {
+    throw new Error("Members can only create tasks assigned to themselves.");
+  }
 
   const [created] = await db
     .insert(tasks)
@@ -68,24 +97,26 @@ export async function createTask(formData: FormData): Promise<void> {
       status,
       priority,
       dueDate,
-      assigneeId: assigneeIdRaw,
+      assigneeId,
       createdById: userId,
     })
     .returning({ id: tasks.id });
 
   if (!created) throw new Error("insert returned no row");
-  log.info("task.created", { taskId: created.id, projectSlug, status, priority });
-  if (assigneeIdRaw && assigneeIdRaw !== userId) {
-    await notifyAssigned({ assigneeId: assigneeIdRaw, actorId: userId, taskId: created.id, taskTitle: title });
+  log.info("task.created", { taskId: created.id, projectSlug, status, priority, assigneeId });
+  if (assigneeId && assigneeId !== userId) {
+    await notifyAssigned({ assigneeId, actorId: userId, taskId: created.id, taskTitle: title });
   }
   revalidatePath("/tasks");
-  redirect("/tasks");
+  revalidatePath("/projects");
+  return created.id;
 }
 
 // ---------------------------------------------------------------------------
 // updateTaskStatus — bound to inline status select on the list view
 // ---------------------------------------------------------------------------
 export async function updateTaskStatus(formData: FormData): Promise<void> {
+  const me = await getCurrentUserId();
   const taskId = ((formData.get("taskId") as string) ?? "").trim();
   const statusRaw = ((formData.get("status") as string) ?? "").trim();
   if (!taskId) throw new Error("taskId is required");
@@ -105,7 +136,6 @@ export async function updateTaskStatus(formData: FormData): Promise<void> {
     .where(eq(tasks.id, taskId));
 
   log.info("task.status_changed", { taskId, status: statusRaw });
-  const me = await getCurrentUserId();
   if (statusRaw === "done") {
     const [t] = await db
       .select({ creatorId: tasks.createdById, title: tasks.title, projectId: tasks.projectId })
@@ -141,15 +171,19 @@ export async function assignTask(formData: FormData): Promise<void> {
   const assigneeId = ((formData.get("assigneeId") as string) ?? "").trim() || null;
   if (!taskId) throw new Error("taskId is required");
 
+  const me = await getCurrentUser();
+
+  // Permission: members can only assign tasks to themselves
+  if (me.role === "member" && assigneeId && assigneeId !== me.id) {
+    throw new Error("Members can only assign tasks to themselves.");
+  }
+
   const db = getDb();
   await db.update(tasks).set({ assigneeId, updatedAt: new Date() }).where(eq(tasks.id, taskId));
   log.info("task.assigned", { taskId, assigneeId });
-  if (assigneeId) {
-    const me = await getCurrentUserId();
-    if (assigneeId !== me) {
-      const [t] = await db.select({ title: tasks.title }).from(tasks).where(eq(tasks.id, taskId)).limit(1);
-      if (t) await notifyAssigned({ assigneeId, actorId: me, taskId, taskTitle: t.title });
-    }
+  if (assigneeId && assigneeId !== me.id) {
+    const [t] = await db.select({ title: tasks.title }).from(tasks).where(eq(tasks.id, taskId)).limit(1);
+    if (t) await notifyAssigned({ assigneeId, actorId: me.id, taskId, taskTitle: t.title });
   }
   revalidatePath("/tasks");
 }
@@ -196,18 +230,104 @@ export async function addComment(formData: FormData): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// reviewTask — manager approves or requests revision on a task in "review"
+// ---------------------------------------------------------------------------
+export async function reviewTask(formData: FormData): Promise<void> {
+  const me = await getCurrentUser();
+  if (me.role !== "admin" && me.role !== "manager") {
+    throw new Error("Only managers and admins can review tasks.");
+  }
+
+  const taskId = ((formData.get("taskId") as string) ?? "").trim();
+  const verdict = ((formData.get("verdict") as string) ?? "").trim(); // "approve" | "revise"
+  const feedback = ((formData.get("feedback") as string) ?? "").trim();
+
+  if (!taskId) throw new Error("taskId is required");
+  if (verdict !== "approve" && verdict !== "revise") throw new Error("verdict must be approve or revise");
+  if (!feedback) throw new Error("Feedback is required.");
+
+  const db = getDb();
+
+  // Verify task exists and is in review status
+  const [task] = await db
+    .select({ status: tasks.status, assigneeId: tasks.assigneeId, title: tasks.title })
+    .from(tasks)
+    .where(eq(tasks.id, taskId))
+    .limit(1);
+  if (!task) throw new Error("Task not found.");
+  if (task.status !== "review") throw new Error("Task is not in review status.");
+
+  const now = new Date();
+  const newStatus = verdict === "approve" ? "done" : "in_progress";
+  const commentKind = verdict === "approve" ? "review_approve" : "review_revise";
+
+  // Update task status
+  await db
+    .update(tasks)
+    .set({
+      status: newStatus,
+      ...(verdict === "approve" ? { completedAt: now } : {}),
+      updatedAt: now,
+    })
+    .where(eq(tasks.id, taskId));
+
+  // Post feedback as a special review comment
+  await db.insert(taskComments).values({
+    taskId,
+    authorId: me.id,
+    body: feedback,
+    kind: commentKind,
+  });
+
+  // Notify assignee
+  if (task.assigneeId && task.assigneeId !== me.id) {
+    await notifyReviewOutcome({
+      assigneeId: task.assigneeId,
+      actorId: me.id,
+      taskId,
+      taskTitle: task.title,
+      verdict,
+    });
+  }
+
+  // Award badges on approval (fire-and-forget)
+  if (verdict === "approve") {
+    checkAndAwardBadges(task.assigneeId ?? me.id, "task_completed", { taskId }).catch((e) => {
+      log.error("badge.check_failed", { taskId, error: (e as Error).message });
+    });
+  }
+
+  log.info("task.reviewed", { taskId, verdict, reviewerId: me.id });
+  revalidatePath("/tasks");
+  revalidatePath(`/tasks/${taskId}`);
+}
+
+// ---------------------------------------------------------------------------
 // cancelTask — soft retire. Sets status=cancelled. Always allowed.
 // ---------------------------------------------------------------------------
 export async function cancelTask(formData: FormData): Promise<void> {
+  const me = await getCurrentUser();
   const taskId = ((formData.get("taskId") as string) ?? "").trim();
   if (!taskId) throw new Error("taskId is required");
 
   const db = getDb();
+
+  // Verify task exists and user has permission (creator, assignee, or admin/manager)
+  const [task] = await db
+    .select({ assigneeId: tasks.assigneeId, createdById: tasks.createdById })
+    .from(tasks)
+    .where(eq(tasks.id, taskId))
+    .limit(1);
+  if (!task) throw new Error("task not found");
+  if (me.role === "member" && task.assigneeId !== me.id && task.createdById !== me.id) {
+    throw new Error("You can only cancel tasks you created or are assigned to.");
+  }
+
   await db
     .update(tasks)
     .set({ status: "cancelled", updatedAt: new Date() })
     .where(eq(tasks.id, taskId));
-  log.info("task.cancelled", { taskId });
+  log.info("task.cancelled", { taskId, actorId: me.id });
   revalidatePath("/tasks");
   revalidatePath(`/tasks/${taskId}`);
   redirect("/tasks");
@@ -218,13 +338,14 @@ export async function cancelTask(formData: FormData): Promise<void> {
 // to be cancelled instead so the audit trail survives.
 // ---------------------------------------------------------------------------
 export async function deleteTask(formData: FormData): Promise<void> {
+  const me = await getCurrentUser();
   const taskId = ((formData.get("taskId") as string) ?? "").trim();
   if (!taskId) throw new Error("taskId is required");
 
   const db = getDb();
   // Re-check assignee server-side; never trust the client to enforce this.
   const [row] = await db
-    .select({ assigneeId: tasks.assigneeId, title: tasks.title })
+    .select({ assigneeId: tasks.assigneeId, createdById: tasks.createdById, title: tasks.title })
     .from(tasks)
     .where(eq(tasks.id, taskId))
     .limit(1);
@@ -234,9 +355,13 @@ export async function deleteTask(formData: FormData): Promise<void> {
       "this task has an assignee and cannot be deleted — use Cancel instead so the activity stays in the history",
     );
   }
+  // Only creator or admin/manager can delete
+  if (me.role === "member" && row.createdById !== me.id) {
+    throw new Error("You can only delete tasks you created.");
+  }
 
   await db.delete(tasks).where(eq(tasks.id, taskId));
-  log.info("task.deleted", { taskId, title: row.title });
+  log.info("task.deleted", { taskId, title: row.title, actorId: me.id });
   revalidatePath("/tasks");
   redirect("/tasks");
 }
@@ -258,6 +383,13 @@ export async function updateTaskMeta(formData: FormData): Promise<void> {
 
   const db = getDb();
 
+  // Guard: closed tasks cannot be edited
+  const [existing] = await db.select({ status: tasks.status }).from(tasks).where(eq(tasks.id, taskId)).limit(1);
+  if (!existing) throw new Error("task not found");
+  if (existing.status === "done" || existing.status === "cancelled") {
+    throw new Error("Closed tasks cannot be edited. Reopen the task first.");
+  }
+
   // Build the update set. Due date: if provided, parse & update; if the form
   // field was present but empty, the user cleared it — block that. If the
   // field wasn't in the form at all (e.g. PrioritySelect), preserve the
@@ -268,6 +400,11 @@ export async function updateTaskMeta(formData: FormData): Promise<void> {
     if (/^\d{4}-\d{2}-\d{2}$/.test(dueDateInput)) {
       set.dueDate = dueDateInput;
     } else {
+      // Validate max 10 working days
+      const parsed = parseDueInput(dueDateInput);
+      if (parsed.totalHours > MAX_DUE_HOURS) {
+        throw new Error(`Due date cannot exceed 10 working days. You entered ~${Math.ceil(parsed.totalHours / 9)}d.`);
+      }
       set.dueDate = deadlineToDateStr(offsetToDeadline(dueDateInput));
     }
   } else if (formData.has("dueDate")) {
@@ -291,6 +428,8 @@ export async function addSubtask(formData: FormData): Promise<void> {
   const parentId = ((formData.get("parentId") as string) ?? "").trim();
   const title = ((formData.get("title") as string) ?? "").trim();
   const assigneeIdRaw = ((formData.get("assigneeId") as string) ?? "").trim() || null;
+  const dueDateInput = ((formData.get("dueDate") as string) ?? "").trim() || null;
+  const dueTimeInput = ((formData.get("dueTime") as string) ?? "").trim() || null;
   if (!parentId) throw new Error("parentId is required");
   if (!title) throw new Error("title is required");
 
@@ -305,8 +444,17 @@ export async function addSubtask(formData: FormData): Promise<void> {
   // Use explicit assignee if provided, otherwise inherit from parent
   const assigneeId = assigneeIdRaw ?? parent.assigneeId;
 
-  // Due date: inherit from parent, or default to 3 days from now
-  let dueDate: string | null = parent.dueDate;
+  // Due date: use form input, else inherit from parent, else default 3 days
+  let dueDate: string | null = null;
+  if (dueDateInput && !/^\d{4}-\d{2}-\d{2}$/.test(dueDateInput)) {
+    const parsed = parseDueInput(dueDateInput);
+    if (parsed.totalHours > MAX_DUE_HOURS) {
+      throw new Error(`Subtask due date cannot exceed ${MAX_DUE_DAYS} working days.`);
+    }
+    dueDate = deadlineToDateStr(offsetToDeadline(dueDateInput));
+  } else {
+    dueDate = dueDateInput ?? parent.dueDate;
+  }
   if (!dueDate) {
     const d = new Date();
     d.setDate(d.getDate() + 3);
@@ -324,11 +472,12 @@ export async function addSubtask(formData: FormData): Promise<void> {
       status: "todo",
       priority: "med",
       dueDate,
+      dueTime: dueTimeInput,
       parentTaskId: parentId,
     })
     .returning({ id: tasks.id, assigneeId: tasks.assigneeId });
   if (!created) throw new Error("insert returned no row");
-  log.info("subtask.created", { parentId, taskId: created.id, assigneeId });
+  log.info("subtask.created", { parentId, taskId: created.id, assigneeId, dueDate, dueTime: dueTimeInput });
 
   if (assigneeId && assigneeId !== userId) {
     await notifyAssigned({ assigneeId, actorId: userId, taskId: created.id, taskTitle: title });
@@ -341,6 +490,7 @@ export async function addSubtask(formData: FormData): Promise<void> {
 // updateTaskTitle — quick inline rename. Used by the editable subtask title.
 // ---------------------------------------------------------------------------
 export async function updateTaskTitle(formData: FormData): Promise<void> {
+  await getCurrentUser(); // auth gate
   const taskId = ((formData.get("taskId") as string) ?? "").trim();
   const title = ((formData.get("title") as string) ?? "").trim();
   if (!taskId) throw new Error("taskId is required");

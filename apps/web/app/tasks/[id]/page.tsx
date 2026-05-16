@@ -6,6 +6,7 @@ import {
   projects,
   users,
   taskComments,
+  taskAttachments,
   eq,
   asc,
   sql,
@@ -19,6 +20,8 @@ import {
 import { addComment, updateTaskMeta, cancelTask, deleteTask } from "../actions";
 import { fmtDueCountdown } from "@/lib/worktime";
 import { SubtaskList } from "../subtask-list";
+import { TaskAttachments } from "../task-attachments";
+import { ReviewActions } from "../review-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -89,6 +92,7 @@ export default async function TaskDetailPage({ params }: PageProps) {
     .select({
       id: taskComments.id,
       body: taskComments.body,
+      kind: taskComments.kind,
       createdAt: taskComments.createdAt,
       author: { id: users.id, name: users.name, email: users.email },
     })
@@ -105,11 +109,25 @@ export default async function TaskDetailPage({ params }: PageProps) {
       status: tasks.status,
       assigneeName: users.name,
       assigneeId: tasks.assigneeId,
+      dueDate: tasks.dueDate,
+      dueTime: tasks.dueTime,
     })
     .from(tasks)
     .leftJoin(users, eq(tasks.assigneeId, users.id))
     .where(sql`${tasks.parentTaskId} = ${task.id}`)
     .orderBy(asc(tasks.createdAt));
+
+  // attachments
+  const attachmentRows = await db
+    .select({
+      id: taskAttachments.id,
+      filename: taskAttachments.filename,
+      mime: taskAttachments.mime,
+      sizeBytes: taskAttachments.sizeBytes,
+    })
+    .from(taskAttachments)
+    .where(eq(taskAttachments.taskId, task.id))
+    .orderBy(asc(taskAttachments.createdAt));
 
   return (
     <div className="min-h-screen px-6 md:px-8 py-6 max-w-[1100px] mx-auto">
@@ -137,12 +155,9 @@ export default async function TaskDetailPage({ params }: PageProps) {
             <div className="text-text-3 italic text-sm mb-4">No description</div>
           )}
 
-          {/* edit metadata (collapsed) */}
-          <details className="mb-6">
-            <summary className="text-sm text-text-2 hover:text-text cursor-pointer">
-              Edit title, description, due date
-            </summary>
-            <form action={updateTaskMeta} className="card mt-2 grid grid-cols-1 gap-3">
+          {/* edit metadata — visible for open tasks, hidden for done/cancelled */}
+          {task.status !== "done" && task.status !== "cancelled" ? (
+            <form action={updateTaskMeta} className="card mb-6 grid grid-cols-1 gap-3">
               <input type="hidden" name="taskId" value={task.id} />
               <input type="hidden" name="priority" value={task.priority} />
               <label className="flex flex-col gap-1">
@@ -171,10 +186,10 @@ export default async function TaskDetailPage({ params }: PageProps) {
                   type="text"
                   required
                   defaultValue={task.dueDate ?? ""}
-                  placeholder="e.g. 3d, 8h, 2d 4h"
+                  placeholder="e.g. 3d, 8h, 2d 4h (max 10d)"
                   className="bg-panel-2 border border-border-2 rounded-md px-3 py-2 text-sm w-44"
                 />
-                <span className="text-[10px] text-text-4">Working hours: Mon–Fri, 9–6 PM</span>
+                <span className="text-[10px] text-text-4">Working hours: Mon–Fri, 9–6 PM · max 10 working days</span>
               </label>
               <div className="flex justify-end">
                 <button
@@ -185,7 +200,7 @@ export default async function TaskDetailPage({ params }: PageProps) {
                 </button>
               </div>
             </form>
-          </details>
+          ) : null}
 
           {/* subtasks */}
           <SubtaskList
@@ -196,9 +211,29 @@ export default async function TaskDetailPage({ params }: PageProps) {
               status: s.status,
               assigneeName: s.assigneeName,
               assigneeId: s.assigneeId,
+              dueDate: s.dueDate,
+              dueTime: s.dueTime,
             }))}
             users={allUsers}
           />
+
+          {/* attachments */}
+          <TaskAttachments
+            taskId={task.id}
+            attachments={attachmentRows.map((a) => ({
+              id: a.id,
+              filename: a.filename,
+              mime: a.mime,
+              sizeBytes: Number(a.sizeBytes),
+              url: `/api/attachments/${a.id}`,
+            }))}
+            disabled={task.status === "done" || task.status === "cancelled"}
+          />
+
+          {/* Review actions — visible only for managers/admins when task is in review */}
+          {task.status === "review" && (me.role === "admin" || me.role === "manager") && (
+            <ReviewActions taskId={task.id} />
+          )}
 
           {/* comments */}
           <h2 className="text-base font-semibold mb-3">
@@ -213,6 +248,12 @@ export default async function TaskDetailPage({ params }: PageProps) {
                   <div className="flex items-center justify-between mb-2">
                     <div className="text-sm font-medium">
                       {c.author?.name ?? "(unknown)"}
+                      {c.kind === "review_approve" && (
+                        <span className="comment-review-badge approved">✓ Approved</span>
+                      )}
+                      {c.kind === "review_revise" && (
+                        <span className="comment-review-badge revision">↩ Revision</span>
+                      )}
                       <span className="text-text-3 font-normal ml-2">
                         {fmtTime(c.createdAt)}
                       </span>

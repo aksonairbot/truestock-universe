@@ -9,10 +9,12 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition } from "react";
 import { createTask } from "./actions";
 import { suggestTaskMeta, type TriageSuggestion } from "./triage-action";
 import { checkTaskClarity } from "./clarity-action";
+import { AttachmentUpload, type PendingFile } from "./attachment-upload";
 
 type Project = { slug: string; name: string };
 type User = { id: string; email: string; name: string };
@@ -36,7 +38,10 @@ function dueDateFromOffset(offset: number | null): string {
   return `${offset}d`;
 }
 
-export function NewTaskForm({ projects, users, currentUserId }: { projects: Project[]; users: User[]; currentUserId: string }) {
+export function NewTaskForm({ projects, users, currentUserId, userRole }: { projects: Project[]; users: User[]; currentUserId: string; userRole: string }) {
+  const router = useRouter();
+  // Members can only assign tasks to themselves
+  const canAssignOthers = userRole === "admin" || userRole === "manager";
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [projectSlug, setProjectSlug] = useState(projects.find((p) => p.slug === "skynet-platform")?.slug ?? projects[0]?.slug ?? "");
@@ -44,6 +49,7 @@ export function NewTaskForm({ projects, users, currentUserId }: { projects: Proj
   const [status, setStatus] = useState("todo");
   const [priority, setPriority] = useState("med");
   const [dueDate, setDueDate] = useState("");
+  const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
 
   const [suggestPending, startSuggest] = useTransition();
   const [submitPending, startSubmit] = useTransition();
@@ -108,7 +114,23 @@ export function NewTaskForm({ projects, users, currentUserId }: { projects: Proj
     fd.set("description", finalDesc);
 
     startSubmit(async () => {
-      await createTask(fd);
+      const taskId = await createTask(fd);
+
+      // Upload pending attachments if any
+      if (pendingFiles.length > 0) {
+        const uploadFd = new FormData();
+        pendingFiles.forEach((p) => uploadFd.append("files", p.file));
+        try {
+          await fetch(`/api/tasks/${taskId}/attachments`, {
+            method: "POST",
+            body: uploadFd,
+          });
+        } catch {
+          // Non-blocking — task is created; files just didn't attach
+        }
+      }
+
+      router.push("/tasks");
     });
   }
 
@@ -274,17 +296,26 @@ export function NewTaskForm({ projects, users, currentUserId }: { projects: Proj
 
       <label className="flex flex-col gap-1.5">
         <span className="text-[11px] text-text-3 uppercase tracking-wider font-medium">Assignee <span className="text-danger">*</span></span>
-        <select
-          name="assigneeId"
-          required
-          value={assigneeId}
-          onChange={(e) => setAssigneeId(e.target.value)}
-          className="bg-panel-2 border border-border-2 rounded-md px-2 py-1.5 text-[13px] w-full"
-        >
-          {users.map((u) => (
-            <option key={u.id} value={u.id}>{u.name}</option>
-          ))}
-        </select>
+        {canAssignOthers ? (
+          <select
+            name="assigneeId"
+            required
+            value={assigneeId}
+            onChange={(e) => setAssigneeId(e.target.value)}
+            className="bg-panel-2 border border-border-2 rounded-md px-2 py-1.5 text-[13px] w-full"
+          >
+            {users.map((u) => (
+              <option key={u.id} value={u.id}>{u.name}</option>
+            ))}
+          </select>
+        ) : (
+          <>
+            <input type="hidden" name="assigneeId" value={currentUserId} />
+            <div className="bg-panel-2 border border-border-2 rounded-md px-2 py-1.5 text-[13px] text-text-2">
+              {users.find((u) => u.id === currentUserId)?.name ?? "You"}
+            </div>
+          </>
+        )}
       </label>
 
       <label className="flex flex-col gap-1.5">
@@ -319,11 +350,22 @@ export function NewTaskForm({ projects, users, currentUserId }: { projects: Proj
           required
           value={dueDate}
           onChange={(e) => setDueDate(e.target.value)}
-          placeholder="e.g. 3d, 8h, 2d 4h"
+          placeholder="e.g. 3d, 8h, 2d 4h (max 10d)"
           className="bg-panel-2 border border-border-2 rounded-md px-2 py-1.5 text-[13px] w-44"
         />
-        <span className="text-[10px] text-text-4">Working hours: Mon–Fri, 9 AM – 6 PM</span>
+        <span className="text-[10px] text-text-4">Working hours: Mon–Fri, 9 AM – 6 PM · max 10 working days</span>
       </label>
+
+      {/* Attachments */}
+      <div className="md:col-span-2">
+        <span className="text-[11px] text-text-3 uppercase tracking-wider font-medium block mb-1.5">
+          Attachments <span className="normal-case text-text-4">(optional, max 3)</span>
+        </span>
+        <AttachmentUpload
+          pendingFiles={pendingFiles}
+          onPendingChange={setPendingFiles}
+        />
+      </div>
 
       {/* AI Clarity Questions Panel */}
       {showClarityPanel ? (

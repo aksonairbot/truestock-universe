@@ -22,8 +22,8 @@ export default async function ProjectsPage() {
       product: { slug: products.slug, name: products.name },
       owner: { id: users.id, name: users.name },
       total: sql<number>`count(${tasks.id})::int`,
-      done: sql<number>`count(*) filter (where ${tasks.status} = 'done')::int`,
-      open: sql<number>`count(*) filter (where ${tasks.status} not in ('done', 'cancelled'))::int`,
+      done: sql<number>`count(*) filter (where ${tasks.status} = 'done'::task_status)::int`,
+      open: sql<number>`count(*) filter (where ${tasks.status} not in ('done'::task_status, 'cancelled'::task_status))::int`,
     })
     .from(projects)
     .leftJoin(products, eq(projects.productId, products.id))

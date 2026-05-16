@@ -120,7 +120,7 @@ async function gatherStats(): Promise<PersonStats[]> {
       .where(
         and(
           eq(tasks.assigneeId, u.id),
-          sql`${tasks.status} not in ('done','cancelled')`,
+          sql`${tasks.status} not in ('done'::task_status,'cancelled'::task_status)`,
         ),
       );
 
@@ -130,7 +130,7 @@ async function gatherStats(): Promise<PersonStats[]> {
       .where(
         and(
           eq(tasks.assigneeId, u.id),
-          sql`${tasks.status} not in ('done','cancelled')`,
+          sql`${tasks.status} not in ('done'::task_status,'cancelled'::task_status)`,
           sql`${tasks.dueDate} < (now() at time zone 'Asia/Kolkata')::date`,
         ),
       );

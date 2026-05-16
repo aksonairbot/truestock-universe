@@ -16,7 +16,7 @@ const RECENT_WINDOW_MS = 60_000;
 
 async function insertWithDedupe(opts: {
   userId: string;
-  kind: "mention" | "assigned" | "task_completed" | "comment_on_assigned" | "review_requested";
+  kind: "mention" | "assigned" | "task_completed" | "comment_on_assigned" | "review_requested" | "review_approved" | "review_revision";
   taskId?: string | null;
   actorId?: string | null;
   body: string;
@@ -168,7 +168,7 @@ export async function notifyReviewRequested(opts: {
     .from(users)
     .where(
       and(
-        sql`${users.role} in ('admin', 'manager')`,
+        sql`${users.role} in ('admin'::user_role, 'manager'::user_role)`,
         eq(users.isActive, true),
       ),
     );
@@ -182,6 +182,25 @@ export async function notifyReviewRequested(opts: {
       body: `requested review on "${opts.taskTitle}"`,
     });
   }
+}
+
+/** Notify the assignee when a manager approves or requests revision on their task. */
+export async function notifyReviewOutcome(opts: {
+  assigneeId: string;
+  actorId: string;
+  taskId: string;
+  taskTitle: string;
+  verdict: "approve" | "revise";
+}) {
+  const kind = opts.verdict === "approve" ? "review_approved" : "review_revision";
+  const verb = opts.verdict === "approve" ? "approved" : "requested revision on";
+  await insertWithDedupe({
+    userId: opts.assigneeId,
+    actorId: opts.actorId,
+    kind,
+    taskId: opts.taskId,
+    body: `${verb} "${opts.taskTitle}"`,
+  });
 }
 
 // ---------------------------------------------------------------------------
