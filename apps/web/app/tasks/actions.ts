@@ -204,22 +204,27 @@ export async function addComment(formData: FormData): Promise<void> {
   log.info("task.comment_added", { taskId });
 
   // notifications: pull task meta once, fire @mentions + assignee notice
-  const [taskRow] = await db
-    .select({ title: tasks.title, assigneeId: tasks.assigneeId })
-    .from(tasks)
-    .where(eq(tasks.id, taskId))
-    .limit(1);
-  if (taskRow) {
-    await notifyMentions({ body, actorId: userId, taskId, taskTitle: taskRow.title });
-    if (taskRow.assigneeId && taskRow.assigneeId !== userId) {
-      await notifyCommentOnAssigned({
-        assigneeId: taskRow.assigneeId,
-        actorId: userId,
-        taskId,
-        taskTitle: taskRow.title,
-        preview: body,
-      });
+  // Wrapped in try-catch so notification failures never crash the comment action
+  try {
+    const [taskRow] = await db
+      .select({ title: tasks.title, assigneeId: tasks.assigneeId })
+      .from(tasks)
+      .where(eq(tasks.id, taskId))
+      .limit(1);
+    if (taskRow) {
+      await notifyMentions({ body, actorId: userId, taskId, taskTitle: taskRow.title });
+      if (taskRow.assigneeId && taskRow.assigneeId !== userId) {
+        await notifyCommentOnAssigned({
+          assigneeId: taskRow.assigneeId,
+          actorId: userId,
+          taskId,
+          taskTitle: taskRow.title,
+          preview: body,
+        });
+      }
     }
+  } catch (e) {
+    log.error("comment.notify_failed", { taskId, error: (e as Error).message, stack: (e as Error).stack });
   }
   // Award badges for commenting (fire-and-forget)
   checkAndAwardBadges(userId, "comment_posted", { taskId }).catch((e) => {
