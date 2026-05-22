@@ -1,5 +1,6 @@
 "use server";
 
+import { getCurrentUser } from "@/lib/auth";
 import { llm } from "@/lib/llm";
 import { log } from "@/lib/log";
 import { getDigestContext } from "@/lib/knowledge-digest";
@@ -23,6 +24,9 @@ export async function checkTaskClarity(input: {
   title: string;
   description?: string;
 }): Promise<ClarityResult> {
+  // Auth gate — see triage-action.ts.
+  await getCurrentUser();
+
   const title = input.title.trim();
   if (!title) return { ok: false, clear: false, error: "title is empty" };
 

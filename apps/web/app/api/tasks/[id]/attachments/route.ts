@@ -17,6 +17,51 @@ const MAX_ATTACHMENTS_PER_TASK = 3;
 const UPLOADS_DIR = process.env.UPLOADS_DIR || "/opt/truestock-universe/uploads";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// Whitelist parallels the reviews route. Without this, a user can upload
+// `evil.html` with `Content-Type: text/html` and the /api/attachments/[id]
+// download endpoint serves it back in the SeekPeak origin — stored XSS.
+// SVG is deliberately excluded: SVGs can contain inline <script> and the
+// browser executes them when served as image/svg+xml.
+const ALLOWED_MIMES = new Set([
+  "application/pdf",
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "text/plain",
+]);
+const ALLOWED_EXTENSIONS = new Set([
+  "pdf", "ppt", "pptx", "doc", "docx", "xls", "xlsx", "png", "jpg", "jpeg", "webp", "txt",
+]);
+const SAFE_EXT_RE = /^\.[A-Za-z0-9]{1,10}$/;
+
+function safeExtensionFor(file: File): string {
+  // We only honour the extension when it matches the allow-list. The DB
+  // stores the original filename and the actual MIME, so the on-disk name
+  // doesn't need to look anything like the upload — using a fixed UUID
+  // sidesteps the `file.name = "x.png/../../boom.html"` path-traversal trick.
+  const dotIdx = file.name.lastIndexOf(".");
+  if (dotIdx < 0) return "";
+  const ext = file.name.slice(dotIdx).toLowerCase();
+  if (!SAFE_EXT_RE.test(ext)) return "";
+  if (!ALLOWED_EXTENSIONS.has(ext.slice(1))) return "";
+  return ext;
+}
+
+function isAllowed(file: File): boolean {
+  if (file.type && ALLOWED_MIMES.has(file.type)) return true;
+  // Fall back to extension when the browser didn't sniff a MIME.
+  const dotIdx = file.name.lastIndexOf(".");
+  if (dotIdx < 0) return false;
+  const ext = file.name.slice(dotIdx + 1).toLowerCase();
+  return ALLOWED_EXTENSIONS.has(ext);
+}
+
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -118,8 +163,20 @@ export async function POST(
           { status: 400 },
         );
       }
+      if (!isAllowed(file)) {
+        return NextResponse.json(
+          { error: `File "${file.name}" is not an allowed type. Upload PDFs, Office docs, or images.` },
+          { status: 400 },
+        );
+      }
 
-      const ext = file.name.includes(".") ? "." + file.name.split(".").pop() : "";
+      // Drop the original extension unless it matches a small whitelist.
+      // This neutralises `legit.png/../../boom.html`-style path-traversal
+      // tricks: `file.name.split('.').pop()` on that produces
+      // `.png/../../boom.html`, which when joined with the upload dir
+      // escapes the task subdir. We store the binary; the original name
+      // already lives in the DB (`filename` column).
+      const ext = safeExtensionFor(file);
       const storedName = `${randomUUID()}${ext}`;
       const spacesKey = `${taskId}/${storedName}`;
       const filePath = join(UPLOADS_DIR, spacesKey);

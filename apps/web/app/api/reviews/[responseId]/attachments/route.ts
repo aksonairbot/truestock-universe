@@ -157,7 +157,18 @@ export async function POST(
         );
       }
 
-      const ext = file.name.includes(".") ? "." + file.name.split(".").pop() : "";
+      // Drop the original extension unless it matches a small whitelist.
+      // Without this, `file.name = "evil.png/../../boom.html"` produces
+      // `ext = ".png/../../boom.html"` and the resulting `storedName`
+      // escapes the response subdir on join(). The DB still preserves the
+      // original filename so display isn't affected.
+      const dotIdx = file.name.lastIndexOf(".");
+      const rawExt = dotIdx >= 0 ? file.name.slice(dotIdx).toLowerCase() : "";
+      const ext =
+        /^\.[A-Za-z0-9]{1,10}$/.test(rawExt) &&
+        ALLOWED_EXTENSIONS.has(rawExt.slice(1))
+          ? rawExt
+          : "";
       const storedName = `${randomUUID()}${ext}`;
       const spacesKey = `reviews/${responseId}/${storedName}`;
       const filePath = join(UPLOADS_DIR, spacesKey);

@@ -668,6 +668,19 @@ export interface DeptDashResult {
 }
 
 export async function getDeptDashboard(deptId: string, period: Period): Promise<DeptDashResult> {
+  // Authorisation: admin can see any department; manager can only see
+  // their own. Members are blocked outright — until 2026-05-22 this action
+  // had no auth check at all and exposed per-person task counts + comment
+  // volume + project mix to any signed-in user via /me/week/dept/<uuid>.
+  const me = await getCurrentUser();
+  if (me.role !== "admin") {
+    if (me.role !== "manager" || me.departmentId !== deptId) {
+      return { ok: false, error: "Not authorised" };
+    }
+  }
+  if (typeof deptId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(deptId)) {
+    return { ok: false, error: "Invalid department id" };
+  }
   const db = getDb();
   const now = new Date();
   const todayIST = istDayString(now);

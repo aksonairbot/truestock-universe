@@ -14,6 +14,7 @@
 "use server";
 
 import { getDb, projects, isNull, sql } from "@tu/db";
+import { getCurrentUser } from "@/lib/auth";
 import { llm } from "@/lib/llm";
 import { log } from "@/lib/log";
 import { getDigestContext } from "@/lib/knowledge-digest";
@@ -46,6 +47,11 @@ export async function suggestTaskMeta(input: {
   title: string;
   description?: string;
 }): Promise<TriageResult> {
+  // Auth gate. Server actions are routable endpoints — without this any
+  // unauthenticated POST could spin up the LLM and drain budget.
+  // `getCurrentUser` throws "Not signed in." when the session is missing.
+  await getCurrentUser();
+
   const title = input.title.trim();
   if (!title) return { ok: false, error: "title is empty" };
 

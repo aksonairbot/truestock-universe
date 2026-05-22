@@ -65,13 +65,32 @@ export const log = {
   info: (msg: string, fields?: Fields) => emit("info", msg, fields),
   warn: (msg: string, fields?: Fields) => emit("warn", msg, fields),
   error: (msg: string, err?: unknown, fields?: Fields) => {
-    const errorFields: Fields =
-      err instanceof Error
+    // Many callsites in this codebase pass a Fields object as the 2nd arg
+    // (e.g. `log.error("breakdown.failed", { error: e.message })`). Before
+    // this branch existed, `String({error: "..."})` produced the literal
+    // string "[object Object]" and the real context was silently lost.
+    // Detect that shape and route it to the fields branch.
+    const looksLikeFields =
+      err != null &&
+      typeof err === "object" &&
+      !(err instanceof Error) &&
+      // Heuristic: plain object whose constructor is Object (or unset),
+      // not an Error subclass, not an Array.
+      !Array.isArray(err) &&
+      (Object.getPrototypeOf(err) === Object.prototype ||
+        Object.getPrototypeOf(err) === null);
+
+    const errorFields: Fields = looksLikeFields
+      ? { ...(err as Fields), ...(fields ?? {}) }
+      : err instanceof Error
         ? { error: err.message, stack: err.stack, name: err.name, ...(fields ?? {}) }
         : err != null
           ? { error: String(err), ...(fields ?? {}) }
           : (fields ?? {});
     emit("error", msg, errorFields);
-    if (sentryCapture) sentryCapture(err ?? new Error(msg), fields);
+    if (sentryCapture) {
+      const sentryErr = err instanceof Error ? err : new Error(msg);
+      sentryCapture(sentryErr, looksLikeFields ? (err as Fields) : fields);
+    }
   },
 };

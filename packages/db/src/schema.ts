@@ -18,14 +18,12 @@ import { relations, sql } from "drizzle-orm";
 
 // ---------- enums ----------
 
-export const productSlugEnum = pgEnum("product_slug", [
-  "stock_bee",
-  "high",
-  "axe_cap",
-  "bloom",
-  "universe", // internal (for cross-cutting work tagging, not sold)
-  "unknown", // unmapped — shows up in dashboards as a bucket to investigate
-]);
+// productSlugEnum and the products/product_price_mappings/metrics_daily
+// tables were removed 2026-05-22 when SeekPeak's scope narrowed to pure
+// task management. The remaining razorpay-adjacent tables (customers,
+// subscriptions, payments, razorpay_events) are kept and will be
+// reframed as SaaS subscription billing for SeekPeak tenants when the
+// billing flow is wired in. See migration 0019_drop_mis.sql.
 
 export const planIntervalEnum = pgEnum("plan_interval", [
   "monthly",
@@ -61,60 +59,6 @@ export const eventProcessingStatusEnum = pgEnum("event_processing_status", [
   "skipped",
 ]);
 
-// ---------- products ----------
-
-export const products = pgTable(
-  "products",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    slug: productSlugEnum("slug").notNull().unique(),
-    name: text("name").notNull(),
-    tagline: text("tagline"),
-    color: text("color"), // hex, e.g. #F5B84A
-    isActive: boolean("is_active").notNull().default(true),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-  },
-);
-
-// Product mappings.
-//
-// TWO lookup paths, in order of preference:
-//   1. `plan_name_match` — exact Razorpay plan name (case-insensitive). Comes
-//      from `subscription.plan.item.name` on subscription events. This is the
-//      authoritative signal when present — plan names like
-//      "FinX Bloom Rise(Monthly)" map unambiguously to a product even when
-//      two products share an amount.
-//   2. `amount_paise` — expected payment amount in paise (₹299 → 29900).
-//      Fallback for one-off payments or older events that don't carry plan
-//      context. ±tolerance covers GST rounding.
-//
-// A single mapping row can carry both signals (preferred), or just one.
-export const productPriceMappings = pgTable(
-  "product_price_mappings",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    productId: uuid("product_id")
-      .notNull()
-      .references(() => products.id, { onDelete: "cascade" }),
-    /** Razorpay plan name, exact string from subscription.plan.item.name.
-     *  Compared case-insensitively. Nullable — some rows are amount-only. */
-    planNameMatch: text("plan_name_match"),
-    amountPaise: bigint("amount_paise", { mode: "bigint" }).notNull(),
-    interval: planIntervalEnum("interval").notNull(),
-    tolerancePaise: integer("tolerance_paise").notNull().default(100),
-    notes: text("notes"),
-    isActive: boolean("is_active").notNull().default(true),
-    effectiveFrom: timestamp("effective_from", { withTimezone: true }).defaultNow().notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-  },
-  (t) => ({
-    byAmount: index("price_map_amount_idx").on(t.amountPaise, t.isActive),
-    byProduct: index("price_map_product_idx").on(t.productId),
-    byPlanName: index("price_map_plan_name_idx").on(t.planNameMatch, t.isActive),
-  }),
-);
-
 // ---------- razorpay events (raw audit log) ----------
 
 export const razorpayEvents = pgTable(
@@ -149,8 +93,6 @@ export const customers = pgTable(
     email: text("email"),
     phone: text("phone"),
     name: text("name"),
-    // primary product — set to first product they paid for, updatable
-    primaryProductId: uuid("primary_product_id").references(() => products.id),
     firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).defaultNow().notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
@@ -172,7 +114,6 @@ export const subscriptions = pgTable(
     customerId: uuid("customer_id")
       .notNull()
       .references(() => customers.id, { onDelete: "cascade" }),
-    productId: uuid("product_id").references(() => products.id),
     status: subscriptionStatusEnum("status").notNull(),
     planAmountPaise: bigint("plan_amount_paise", { mode: "bigint" }).notNull(),
     interval: planIntervalEnum("interval"),
@@ -185,7 +126,6 @@ export const subscriptions = pgTable(
   },
   (t) => ({
     byCustomer: index("subs_customer_idx").on(t.customerId),
-    byProduct: index("subs_product_idx").on(t.productId, t.status),
     byStatus: index("subs_status_idx").on(t.status),
   }),
 );
@@ -201,7 +141,6 @@ export const payments = pgTable(
     razorpaySubscriptionId: text("razorpay_subscription_id"),
     customerId: uuid("customer_id").references(() => customers.id),
     subscriptionId: uuid("subscription_id").references(() => subscriptions.id),
-    productId: uuid("product_id").references(() => products.id),
     amountPaise: bigint("amount_paise", { mode: "bigint" }).notNull(),
     feePaise: bigint("fee_paise", { mode: "bigint" }),
     taxPaise: bigint("tax_paise", { mode: "bigint" }),
@@ -231,42 +170,16 @@ export const payments = pgTable(
   },
   (t) => ({
     byCaptured: index("payments_captured_idx").on(t.capturedAt),
-    byProductCaptured: index("payments_product_captured_idx").on(t.productId, t.capturedAt),
     byCustomer: index("payments_customer_idx").on(t.customerId),
     byStatus: index("payments_status_idx").on(t.status),
     bySource: index("payments_source_idx").on(t.source),
   }),
 );
 
-// ---------- metrics_daily (narrow fact table) ----------
-
-// One row per (date, product_id or null for "all", metric_key).
-// Feeds all MIS charts. Metric keys examples:
-//   revenue_net_paise, revenue_gross_paise, refunds_paise,
-//   new_subs, active_subs, cancelled_subs, payments_count, unique_customers
-export const metricsDaily = pgTable(
-  "metrics_daily",
-  {
-    date: date("date").notNull(),
-    productId: uuid("product_id").references(() => products.id),
-    metric: text("metric").notNull(),
-    valueNumeric: numeric("value_numeric", { precision: 20, scale: 2 }),
-    valueBigint: bigint("value_bigint", { mode: "bigint" }),
-    computedAt: timestamp("computed_at", { withTimezone: true }).defaultNow().notNull(),
-  },
-  (t) => ({
-    pk: primaryKey({ columns: [t.date, t.productId, t.metric] }),
-    byMetricDate: index("metrics_metric_date_idx").on(t.metric, t.date),
-    byProductDate: index("metrics_product_date_idx").on(t.productId, t.date),
-  }),
-);
-
 // ============================================================================
-// Tasks module (Asana-side) + Activity tracking (DeskTime-side)
-//
-// Lives in same Postgres as MIS so cross-module queries (revenue → task,
-// campaign → task) are joinable without a service hop. Per project policy:
-// every project carries product_id (nullable for "internal cross-cutting").
+// Tasks module — the primary SeekPeak product surface.
+// Activity tracking (DeskTime-side) lives in the same Postgres so cross-
+// module queries (time → task) are joinable without a service hop.
 // ============================================================================
 
 // ---------- enums (tasks + activity) ----------
@@ -400,7 +313,6 @@ export const projects = pgTable(
     slug: text("slug").notNull().unique(),
     name: text("name").notNull(),
     description: text("description"),
-    productId: uuid("product_id").references(() => products.id),
     ownerId: uuid("owner_id")
       .notNull()
       .references(() => users.id),
@@ -413,7 +325,6 @@ export const projects = pgTable(
   },
   (t) => ({
     bySlug: uniqueIndex("projects_slug_uq").on(t.slug),
-    byProduct: index("projects_product_idx").on(t.productId),
     byOwner: index("projects_owner_idx").on(t.ownerId),
     byArchived: index("projects_archived_idx").on(t.archivedAt),
   }),
@@ -642,24 +553,7 @@ export const agentDevices = pgTable(
 
 // ---------- relations ----------
 
-export const productsRelations = relations(products, ({ many }) => ({
-  priceMappings: many(productPriceMappings),
-  subscriptions: many(subscriptions),
-  payments: many(payments),
-}));
-
-export const priceMappingsRelations = relations(productPriceMappings, ({ one }) => ({
-  product: one(products, {
-    fields: [productPriceMappings.productId],
-    references: [products.id],
-  }),
-}));
-
-export const customersRelations = relations(customers, ({ one, many }) => ({
-  primaryProduct: one(products, {
-    fields: [customers.primaryProductId],
-    references: [products.id],
-  }),
+export const customersRelations = relations(customers, ({ many }) => ({
   subscriptions: many(subscriptions),
   payments: many(payments),
 }));
@@ -668,10 +562,6 @@ export const subscriptionsRelations = relations(subscriptions, ({ one, many }) =
   customer: one(customers, {
     fields: [subscriptions.customerId],
     references: [customers.id],
-  }),
-  product: one(products, {
-    fields: [subscriptions.productId],
-    references: [products.id],
   }),
   payments: many(payments),
 }));
@@ -684,10 +574,6 @@ export const paymentsRelations = relations(payments, ({ one }) => ({
   subscription: one(subscriptions, {
     fields: [payments.subscriptionId],
     references: [subscriptions.id],
-  }),
-  product: one(products, {
-    fields: [payments.productId],
-    references: [products.id],
   }),
 }));
 
@@ -726,10 +612,6 @@ export const usersRelations = relations(users, ({ one, many }) => ({
 }));
 
 export const projectsRelations = relations(projects, ({ one, many }) => ({
-  product: one(products, {
-    fields: [projects.productId],
-    references: [products.id],
-  }),
   owner: one(users, {
     fields: [projects.ownerId],
     references: [users.id],
@@ -1051,18 +933,12 @@ export const userBadgesRelations = relations(userBadges, ({ one }) => ({
 
 // ---------- types ----------
 
-export type Product = typeof products.$inferSelect;
-export type NewProduct = typeof products.$inferInsert;
-export type PriceMapping = typeof productPriceMappings.$inferSelect;
-export type NewPriceMapping = typeof productPriceMappings.$inferInsert;
 export type Customer = typeof customers.$inferSelect;
 export type NewCustomer = typeof customers.$inferInsert;
 export type Subscription = typeof subscriptions.$inferSelect;
 export type NewSubscription = typeof subscriptions.$inferInsert;
 export type Payment = typeof payments.$inferSelect;
 export type NewPayment = typeof payments.$inferInsert;
-export type MetricDaily = typeof metricsDaily.$inferSelect;
-export type NewMetricDaily = typeof metricsDaily.$inferInsert;
 export type RazorpayEvent = typeof razorpayEvents.$inferSelect;
 export type NewRazorpayEvent = typeof razorpayEvents.$inferInsert;
 

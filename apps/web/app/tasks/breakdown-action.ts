@@ -7,6 +7,7 @@
 "use server";
 
 import { getDb, tasks, projects, eq } from "@tu/db";
+import { getCurrentUser } from "@/lib/auth";
 import { llm } from "@/lib/llm";
 import { log } from "@/lib/log";
 
@@ -21,6 +22,8 @@ export interface BreakdownResult {
 
 export async function breakDownTask(taskId: string): Promise<BreakdownResult> {
   if (!taskId) return { ok: false, error: "no taskId" };
+  // Auth gate — see triage-action.ts for context. LLM calls cost money.
+  await getCurrentUser();
 
   const db = getDb();
   const [t] = await db

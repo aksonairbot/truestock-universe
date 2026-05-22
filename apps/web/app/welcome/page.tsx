@@ -1,14 +1,21 @@
 // apps/web/app/welcome/page.tsx
 //
 // SeekPeak marketing landing page — full sections with motion.
+//
+// Marketing copy only — no DB reads, no user-specific state. We render
+// statically so crawlers + CDN warm-ups don't hit the database. The
+// sign-in CTA is a client component so the auth state is evaluated at
+// the edge / on click rather than at SSR.
 
 import { SignInButton } from "./sign-in-button";
 import { Marquee } from "./marquee";
 
-export const dynamic = "force-dynamic";
+// AUTH_SECRET is build-time-constant (NextAuth requires it set before the
+// build runs). Evaluating once at module load is safe and lets the page
+// stay statically rendered.
+const authEnabled = !!process.env.AUTH_SECRET;
 
 export default function WelcomePage() {
-  const authEnabled = !!process.env.AUTH_SECRET;
 
   return (
     <div className="lp">

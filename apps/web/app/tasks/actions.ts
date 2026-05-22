@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getDb, tasks, projects, taskComments, eq } from "@tu/db";
 import { getCurrentUserId, getCurrentUser } from "@/lib/auth";
-import { isPrivileged } from "@/lib/access";
+import { isPrivileged, requireTaskAccess } from "@/lib/access";
 import { log } from "@/lib/log";
 import { notifyAssigned, notifyTaskCompleted, notifyCommentOnAssigned, notifyMentions, notifyReviewRequested, notifyReviewOutcome } from "@/lib/notify";
 import { offsetToDeadline, deadlineToDateStr } from "@/lib/worktime";
@@ -144,11 +144,13 @@ export async function createTask(formData: FormData): Promise<string> {
 // updateTaskStatus — bound to inline status select on the list view
 // ---------------------------------------------------------------------------
 export async function updateTaskStatus(formData: FormData): Promise<void> {
-  const me = await getCurrentUserId();
+  const meUser = await getCurrentUser();
+  const me = meUser.id;
   const taskId = ((formData.get("taskId") as string) ?? "").trim();
   const statusRaw = ((formData.get("status") as string) ?? "").trim();
   if (!taskId) throw new Error("taskId is required");
   if (!isTaskStatus(statusRaw)) throw new Error(`invalid status: ${statusRaw}`);
+  await requireTaskAccess(taskId, meUser);
 
   const db = getDb();
   const now = new Date();
@@ -191,8 +193,25 @@ export async function updateTaskStatus(formData: FormData): Promise<void> {
     // row pointing at the just-completed one via recurrence_parent_id, so
     // the audit trail (comments, completion times, assignee history) on
     // every cycle stays intact.
+    //
+    // Idempotency guard: a user toggling done → todo → done (very common —
+    // "I checked the wrong one, undo, re-check") would otherwise spawn a
+    // fresh child every transition. Skip if we already spawned one for
+    // this parent.
     if (t && t.recurrence && t.recurrence !== "none" && isTaskRecurrence(t.recurrence)) {
       try {
+        const [existingChild] = await db
+          .select({ id: tasks.id })
+          .from(tasks)
+          .where(eq(tasks.recurrenceParentId, taskId))
+          .limit(1);
+        if (existingChild) {
+          // Already spawned this cycle — skip the insert. Don't return here:
+          // there's still revalidatePath + review-notify work outside this
+          // block that must run.
+          log.info("task.recurrence_skip_dup", { parentTaskId: taskId, childTaskId: existingChild.id });
+          throw new Error("__SKIP_SPAWN__");
+        }
         const nextDue = bumpDueDate(t.dueDate, t.recurrence);
         const [spawned] = await db
           .insert(tasks)
@@ -222,10 +241,14 @@ export async function updateTaskStatus(formData: FormData): Promise<void> {
           });
         }
       } catch (e) {
-        log.error("task.recurrence_spawn_failed", {
-          taskId, recurrence: t.recurrence,
-          error: (e as Error).message,
-        });
+        if ((e as Error).message === "__SKIP_SPAWN__") {
+          // Idempotency skip — already logged inside the try block.
+        } else {
+          log.error("task.recurrence_spawn_failed", {
+            taskId, recurrence: t.recurrence,
+            error: (e as Error).message,
+          });
+        }
       }
     }
   }
@@ -251,6 +274,7 @@ export async function assignTask(formData: FormData): Promise<void> {
   if (!taskId) throw new Error("taskId is required");
 
   const me = await getCurrentUser();
+  await requireTaskAccess(taskId, me);
 
   // Permission: only admins and managers can reassign a task to someone else.
   if (!isPrivileged(me) && assigneeId && assigneeId !== me.id) {
@@ -277,8 +301,10 @@ export async function addComment(formData: FormData): Promise<void> {
   if (!taskId) throw new Error("taskId is required");
   if (!body) throw new Error("comment body is required");
 
+  const me = await getCurrentUser();
+  await requireTaskAccess(taskId, me);
+  const userId = me.id;
   const db = getDb();
-  const userId = await getCurrentUserId();
   await db.insert(taskComments).values({ taskId, authorId: userId, body });
   log.info("task.comment_added", { taskId });
 
@@ -330,16 +356,11 @@ export async function reviewTask(formData: FormData): Promise<void> {
   if (verdict !== "approve" && verdict !== "revise") throw new Error("verdict must be approve or revise");
   if (!feedback) throw new Error("Feedback is required.");
 
-  const db = getDb();
-
-  // Verify task exists and is in review status
-  const [task] = await db
-    .select({ status: tasks.status, assigneeId: tasks.assigneeId, title: tasks.title })
-    .from(tasks)
-    .where(eq(tasks.id, taskId))
-    .limit(1);
-  if (!task) throw new Error("Task not found.");
+  // requireTaskAccess applies the dept-scope rule for managers — admins pass through.
+  const task = await requireTaskAccess(taskId, me);
   if (task.status !== "review") throw new Error("Task is not in review status.");
+
+  const db = getDb();
 
   const now = new Date();
   const newStatus = verdict === "approve" ? "done" : "in_progress";
@@ -394,18 +415,10 @@ export async function cancelTask(formData: FormData): Promise<void> {
   const taskId = ((formData.get("taskId") as string) ?? "").trim();
   if (!taskId) throw new Error("taskId is required");
 
-  const db = getDb();
+  // requireTaskAccess enforces: admin OK, manager dept-scoped, member creator-or-assignee.
+  await requireTaskAccess(taskId, me);
 
-  // Verify task exists and user has permission (creator, assignee, or admin/manager)
-  const [task] = await db
-    .select({ assigneeId: tasks.assigneeId, createdById: tasks.createdById })
-    .from(tasks)
-    .where(eq(tasks.id, taskId))
-    .limit(1);
-  if (!task) throw new Error("task not found");
-  if (me.role === "member" && task.assigneeId !== me.id && task.createdById !== me.id) {
-    throw new Error("You can only cancel tasks you created or are assigned to.");
-  }
+  const db = getDb();
 
   await db
     .update(tasks)
@@ -426,24 +439,21 @@ export async function deleteTask(formData: FormData): Promise<void> {
   const taskId = ((formData.get("taskId") as string) ?? "").trim();
   if (!taskId) throw new Error("taskId is required");
 
-  const db = getDb();
-  // Re-check assignee server-side; never trust the client to enforce this.
-  const [row] = await db
-    .select({ assigneeId: tasks.assigneeId, createdById: tasks.createdById, title: tasks.title })
-    .from(tasks)
-    .where(eq(tasks.id, taskId))
-    .limit(1);
-  if (!row) throw new Error("task not found");
+  // requireTaskAccess enforces the dept/creator/assignee rules. Additional
+  // delete-specific guards below: cannot delete tasks with an assignee.
+  const row = await requireTaskAccess(taskId, me);
   if (row.assigneeId) {
     throw new Error(
       "this task has an assignee and cannot be deleted — use Cancel instead so the activity stays in the history",
     );
   }
-  // Only creator or admin/manager can delete
+  // Members can only delete tasks they created (requireTaskAccess already
+  // allows assignee-or-creator; tighten to creator-only for delete).
   if (me.role === "member" && row.createdById !== me.id) {
     throw new Error("You can only delete tasks you created.");
   }
 
+  const db = getDb();
   await db.delete(tasks).where(eq(tasks.id, taskId));
   log.info("task.deleted", { taskId, title: row.title, actorId: me.id });
   revalidatePath("/tasks");
@@ -465,14 +475,13 @@ export async function updateTaskMeta(formData: FormData): Promise<void> {
   if (!title) throw new Error("title cannot be empty");
   const priority = isTaskPriority(priorityRaw) ? priorityRaw : "med";
 
-  const db = getDb();
-
-  // Guard: closed tasks cannot be edited
-  const [existing] = await db.select({ status: tasks.status }).from(tasks).where(eq(tasks.id, taskId)).limit(1);
-  if (!existing) throw new Error("task not found");
+  const meMeta = await getCurrentUser();
+  const existing = await requireTaskAccess(taskId, meMeta);
   if (existing.status === "done" || existing.status === "cancelled") {
     throw new Error("Closed tasks cannot be edited. Reopen the task first.");
   }
+
+  const db = getDb();
 
   // Build the update set. Due date: if provided, parse & update; if the form
   // field was present but empty, the user cleared it — block that. If the
@@ -517,13 +526,10 @@ export async function addSubtask(formData: FormData): Promise<void> {
   if (!parentId) throw new Error("parentId is required");
   if (!title) throw new Error("title is required");
 
-  const db = getDb();
-  const [parent] = await db
-    .select({ projectId: tasks.projectId, assigneeId: tasks.assigneeId, dueDate: tasks.dueDate })
-    .from(tasks)
-    .where(eq(tasks.id, parentId))
-    .limit(1);
-  if (!parent) throw new Error("parent task not found");
+  // Enforce access on the PARENT task first — you can only attach subtasks
+  // to tasks you would already be allowed to mutate.
+  const meForSubtask = await getCurrentUser();
+  const parent = await requireTaskAccess(parentId, meForSubtask);
 
   // Use explicit assignee if provided, otherwise inherit from parent
   const assigneeId = assigneeIdRaw ?? parent.assigneeId;
@@ -532,10 +538,11 @@ export async function addSubtask(formData: FormData): Promise<void> {
   // (Catches the case where the parent task is owned by someone else — a member
   // trying to add a subtask there would otherwise quietly assign it to the
   // parent's owner via the inherit fallback.)
-  const meForSubtask = await getCurrentUser();
   if (!isPrivileged(meForSubtask) && assigneeId && assigneeId !== meForSubtask.id) {
     throw new Error("Only admins and managers can assign tasks to other people.");
   }
+
+  const db = getDb();
 
   // Due date: use form input, else inherit from parent, else default 3 days
   let dueDate: string | null = null;
@@ -585,18 +592,18 @@ export async function addSubtask(formData: FormData): Promise<void> {
 // when someone bumps priority from the sidebar.
 // ---------------------------------------------------------------------------
 export async function updateTaskPriority(formData: FormData): Promise<void> {
-  await getCurrentUser(); // auth gate
+  const mePri = await getCurrentUser();
   const taskId = ((formData.get("taskId") as string) ?? "").trim();
   const priorityRaw = ((formData.get("priority") as string) ?? "").trim();
   if (!taskId) throw new Error("taskId is required");
   if (!isTaskPriority(priorityRaw)) throw new Error(`invalid priority: ${priorityRaw}`);
 
-  const db = getDb();
-  const [existing] = await db.select({ status: tasks.status }).from(tasks).where(eq(tasks.id, taskId)).limit(1);
-  if (!existing) throw new Error("task not found");
+  const existing = await requireTaskAccess(taskId, mePri);
   if (existing.status === "done" || existing.status === "cancelled") {
     throw new Error("Closed tasks cannot be edited. Reopen the task first.");
   }
+
+  const db = getDb();
 
   await db
     .update(tasks)
@@ -613,11 +620,13 @@ export async function updateTaskPriority(formData: FormData): Promise<void> {
 // touching anything else. Used by the inline sidebar select.
 // ---------------------------------------------------------------------------
 export async function updateTaskRecurrence(formData: FormData): Promise<void> {
-  await getCurrentUser(); // auth gate
+  const meRec = await getCurrentUser();
   const taskId = ((formData.get("taskId") as string) ?? "").trim();
   const recurrenceRaw = ((formData.get("recurrence") as string) ?? "").trim();
   if (!taskId) throw new Error("taskId is required");
   if (!isTaskRecurrence(recurrenceRaw)) throw new Error(`invalid recurrence: ${recurrenceRaw}`);
+
+  await requireTaskAccess(taskId, meRec);
 
   const db = getDb();
   await db
@@ -633,11 +642,12 @@ export async function updateTaskRecurrence(formData: FormData): Promise<void> {
 // updateTaskTitle — quick inline rename. Used by the editable subtask title.
 // ---------------------------------------------------------------------------
 export async function updateTaskTitle(formData: FormData): Promise<void> {
-  await getCurrentUser(); // auth gate
+  const meTit = await getCurrentUser();
   const taskId = ((formData.get("taskId") as string) ?? "").trim();
   const title = ((formData.get("title") as string) ?? "").trim();
   if (!taskId) throw new Error("taskId is required");
   if (!title) throw new Error("title cannot be empty");
+  await requireTaskAccess(taskId, meTit);
   const db = getDb();
   await db.update(tasks).set({ title, updatedAt: new Date() }).where(eq(tasks.id, taskId));
   log.info("task.title_updated", { taskId });

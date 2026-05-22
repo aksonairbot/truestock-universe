@@ -77,10 +77,21 @@ export async function GET(
     }
 
     const buffer = await readFile(filePath);
-    const contentType = attachment.mime || "application/octet-stream";
+    const storedType = attachment.mime || "application/octet-stream";
 
-    // Images and PDFs: display inline. Everything else: download.
-    const isInline = contentType.startsWith("image/") || contentType === "application/pdf";
+    // SVGs can carry inline <script> and would execute in the SeekPeak
+    // origin if served as image/svg+xml. Force a download in that case.
+    // text/html and anything ambiguous also gets `attachment` disposition.
+    const safeForInline =
+      storedType.startsWith("image/") && storedType !== "image/svg+xml";
+    const isPdf = storedType === "application/pdf";
+    const isInline = safeForInline || isPdf;
+
+    // Re-write Content-Type for anything we won't render inline. Stops
+    // attacker-uploaded "text/html" from being treated as a renderable
+    // document; the browser sees octet-stream + attachment disposition.
+    const contentType = isInline ? storedType : "application/octet-stream";
+
     const safeName = sanitizeFilename(attachment.filename);
     const disposition = isInline
       ? `inline; filename="${safeName}"`
@@ -93,6 +104,8 @@ export async function GET(
         "Content-Disposition": disposition,
         "Content-Length": String(buffer.length),
         "Cache-Control": "private, max-age=86400",
+        // Belt-and-braces against MIME sniffing.
+        "X-Content-Type-Options": "nosniff",
       },
     });
   } catch (e: any) {

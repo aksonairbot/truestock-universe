@@ -1,8 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { getDb, razorpayEvents, eq } from "@tu/db";
+import { getDb, razorpayEvents } from "@tu/db";
 import {
   verifyWebhookSignature,
-  processEvent,
   type RazorpayWebhookEvent,
 } from "@tu/razorpay";
 import { log } from "@/lib/log";
@@ -13,17 +12,20 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * Razorpay webhook receiver.
+ * Razorpay webhook receiver — audit-log only.
  *
  * 1. Read raw body (REQUIRED for signature verification)
  * 2. Verify HMAC-SHA256 signature against RAZORPAY_WEBHOOK_SECRET
  * 3. Persist raw event to razorpay_events (audit log)
- * 4. Process event into customers / subscriptions / payments
- * 5. Return 200 quickly — Razorpay retries on non-2xx
+ * 4. ACK 200 — no fan-out into business tables.
  *
- * Important: we ack with 200 even when *processing* fails (so Razorpay
- * doesn't retry indefinitely) — failed events are visible in
- * razorpay_events.processing_status='failed' for manual replay.
+ * Background: until 2026-05-22 this route called `processEvent()` from
+ * `@tu/razorpay` to ingest B2C product purchases into Truestock's MIS
+ * (customers/subscriptions/payments). That product line was shelved and
+ * SeekPeak is now pure task management. The route is kept so the webhook
+ * URL stays valid (Razorpay account configured against it) and so the
+ * audit log is preserved for any in-flight events. When SaaS tenant
+ * subscription billing is wired in, a new processor will live alongside.
  */
 export async function POST(req: NextRequest) {
   const rawBody = await req.text(); // raw, untouched body
@@ -57,7 +59,6 @@ export async function POST(req: NextRequest) {
   const razorpayEventId =
     req.headers.get("x-razorpay-event-id") ?? extractEventIdFromPayload(event);
 
-  let storedRowId: string;
   try {
     const [row] = await db
       .insert(razorpayEvents)
@@ -75,7 +76,6 @@ export async function POST(req: NextRequest) {
       log.info("razorpay.webhook.deduped", { eventType: event.event, razorpayEventId });
       return NextResponse.json({ ok: true, deduped: true });
     }
-    storedRowId = row.id;
   } catch (e) {
     log.error("razorpay.webhook.store_failed", e, { eventType: event.event });
     return NextResponse.json({ ok: false, error: "store_failed" }, { status: 500 });
@@ -83,26 +83,11 @@ export async function POST(req: NextRequest) {
 
   log.info("razorpay.webhook.received", { eventType: event.event, razorpayEventId });
 
-  // Process — but always 200 back to Razorpay (failures live in DB)
-  const result = await processEvent(db, event);
-  if (!result.ok) {
-    log.error("razorpay.webhook.process_failed", null, {
-      eventType: event.event,
-      razorpayEventId,
-      error: result.error,
-    });
-  }
-
-  await db
-    .update(razorpayEvents)
-    .set({
-      processingStatus: result.ok ? "processed" : "failed",
-      processedAt: new Date(),
-      processingError: result.ok ? null : result.error,
-    })
-    .where(eq(razorpayEvents.id, storedRowId));
-
-  return NextResponse.json({ ok: true, processed: result.ok });
+  // SaaS scope: audit-log only, no business-table fan-out. The row's
+  // processingStatus stays at its default so when we wire a subscription
+  // processor in we can replay everything since the cutover by selecting
+  // WHERE processing_status != 'processed'.
+  return NextResponse.json({ ok: true, audited: true });
 }
 
 function extractEventIdFromPayload(e: RazorpayWebhookEvent): string | null {

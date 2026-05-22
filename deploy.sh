@@ -98,15 +98,26 @@ else
     echo "[1/6] ✓ Working tree clean"
 fi
 
-# Step 3: Upload to server
-echo "[2/6] Uploading to server..."
-scp -r apps/web/app "$SERVER:$REMOTE/apps/web/"
-scp -r apps/web/src "$SERVER:$REMOTE/apps/web/" 2>/dev/null || true
-scp -r apps/web/public "$SERVER:$REMOTE/apps/web/"
-scp -r packages "$SERVER:$REMOTE/"
-scp apps/web/package.json "$SERVER:$REMOTE/apps/web/"
-scp apps/web/next.config.mjs "$SERVER:$REMOTE/apps/web/" 2>/dev/null || true
-scp package.json pnpm-workspace.yaml "$SERVER:$REMOTE/" 2>/dev/null || true
+# Step 3: Upload to server via rsync.
+#   - excludes node_modules + .next so we never re-upload deps (this was the
+#     source of the 2026-05-22 stall — scp -r dragged packages/db/node_modules
+#     across the wire and macOS scp timed out)
+#   - --delete on apps/web/app and packages/ so files we deleted locally
+#     (e.g. apps/web/app/mis, packages/razorpay/src/process-event.ts) also
+#     disappear from the server. Without --delete, removed routes would
+#     still serve from the old .next bundle.
+echo "[2/6] Uploading to server (rsync, excluding node_modules)..."
+RSYNC_FLAGS="-az --delete --exclude=node_modules --exclude=.next --exclude=.turbo --exclude=tsconfig.tsbuildinfo --exclude=.git"
+rsync $RSYNC_FLAGS apps/web/app/        "$SERVER:$REMOTE/apps/web/app/"
+rsync $RSYNC_FLAGS apps/web/public/     "$SERVER:$REMOTE/apps/web/public/"
+rsync -az --exclude=node_modules apps/web/lib/        "$SERVER:$REMOTE/apps/web/lib/" 2>/dev/null || true
+rsync -az apps/web/auth.ts apps/web/middleware.ts apps/web/next.config.mjs \
+  apps/web/package.json apps/web/server.js apps/web/tailwind.config.ts \
+  apps/web/postcss.config.mjs apps/web/tsconfig.json \
+  "$SERVER:$REMOTE/apps/web/"
+rsync $RSYNC_FLAGS packages/             "$SERVER:$REMOTE/packages/"
+rsync -az package.json pnpm-workspace.yaml turbo.json tsconfig.base.json \
+  "$SERVER:$REMOTE/"
 
 # Step 4: Run any new migrations
 echo "[3/6] Running migrations..."

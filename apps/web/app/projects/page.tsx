@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getDb, projects, products, tasks, users, eq, asc, isNull, sql } from "@tu/db";
+import { getDb, projects, tasks, users, eq, asc, isNull, sql } from "@tu/db";
 import { getCurrentUser } from "@/lib/auth";
 import { createProject } from "./actions";
 import { ProjectBanner } from "./project-banner";
@@ -19,24 +19,17 @@ export default async function ProjectsPage() {
       color: projects.color,
       iconUrl: projects.iconUrl,
       bannerUrl: projects.bannerUrl,
-      product: { slug: products.slug, name: products.name },
       owner: { id: users.id, name: users.name },
       total: sql<number>`count(${tasks.id})::int`,
       done: sql<number>`count(*) filter (where ${tasks.status} = 'done'::task_status)::int`,
       open: sql<number>`count(*) filter (where ${tasks.status} not in ('done'::task_status, 'cancelled'::task_status))::int`,
     })
     .from(projects)
-    .leftJoin(products, eq(projects.productId, products.id))
     .leftJoin(users, eq(projects.ownerId, users.id))
     .leftJoin(tasks, eq(tasks.projectId, projects.id))
     .where(isNull(projects.archivedAt))
-    .groupBy(projects.id, products.slug, products.name, users.id, users.name)
+    .groupBy(projects.id, users.id, users.name)
     .orderBy(asc(projects.name));
-
-  const productList = await db
-    .select({ slug: products.slug, name: products.name })
-    .from(products)
-    .orderBy(asc(products.name));
 
   return (
     <div className="page-content">
@@ -61,7 +54,7 @@ export default async function ProjectsPage() {
               <ProjectBanner
                 slug={p.slug}
                 title={p.name}
-                productLabel={p.product?.slug ?? null}
+                productLabel={null}
                 color={p.color}
                 bannerUrl={p.bannerUrl}
                 description={null}
@@ -80,9 +73,6 @@ export default async function ProjectsPage() {
                     )}
                     <div className="font-semibold text-[14px] truncate group-hover:text-accent-2">{p.name}</div>
                   </div>
-                  {p.product?.slug ? (
-                    <span className={`pchip ${p.product.slug}`}>{p.product.slug}</span>
-                  ) : null}
                 </div>
                 {p.description ? (
                   <div className="text-[13px] text-text-2 line-clamp-2 mb-3">{p.description}</div>
@@ -128,19 +118,6 @@ export default async function ProjectsPage() {
               placeholder="auto from name"
               className="bg-panel-2 border border-border-2 rounded-md px-3 py-2 text-[13px] w-full mono"
             />
-          </label>
-          <label className="flex flex-col gap-1.5">
-            <span className="text-[11px] text-text-3 uppercase tracking-wider font-medium">Product (optional)</span>
-            <select
-              name="productSlug"
-              defaultValue=""
-              className="bg-panel-2 border border-border-2 rounded-md px-2 py-1.5 text-[13px] w-full"
-            >
-              <option value="">— internal/cross-cutting</option>
-              {productList.map((p) => (
-                <option key={p.slug} value={p.slug}>{p.name}</option>
-              ))}
-            </select>
           </label>
           <label className="flex flex-col gap-1.5 md:col-span-2">
             <span className="text-[11px] text-text-3 uppercase tracking-wider font-medium">Description</span>

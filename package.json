@@ -2,7 +2,7 @@
   "name": "truestock-universe",
   "version": "0.1.0",
   "private": true,
-  "description": "Truestock Universe — internal MIS, marketing engine, and task manager",
+  "description": "SeekPeak — task management SaaS (formerly Truestock Universe, MIS shelved 2026-05-22)",
   "packageManager": "pnpm@9.12.0",
   "scripts": {
     "build": "turbo build",
@@ -16,8 +16,7 @@
     "db:migrate": "pnpm --filter @tu/db migrate",
     "db:seed": "pnpm --filter @tu/db seed",
     "db:seed-demo": "pnpm --filter @tu/db seed-demo",
-    "db:studio": "pnpm --filter @tu/db drizzle:studio",
-    "razorpay:backfill": "pnpm --filter web exec tsx scripts/backfill-razorpay.ts"
+    "db:studio": "pnpm --filter @tu/db drizzle:studio"
   },
   "devDependencies": {
     "turbo": "^2.1.3",

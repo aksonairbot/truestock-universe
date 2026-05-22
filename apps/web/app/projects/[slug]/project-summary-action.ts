@@ -7,6 +7,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getDb, projects, tasks, users, projectSummaries, eq, and, sql } from "@tu/db";
+import { getCurrentUser } from "@/lib/auth";
 import { llm } from "@/lib/llm";
 import { log } from "@/lib/log";
 
@@ -29,6 +30,12 @@ export async function getOrGenerateProjectSummary(
   projectId: string,
   opts?: { force?: boolean },
 ): Promise<ProjectSummaryResult> {
+  // Auth gate — without this any signed-in user could trigger LLM
+  // regeneration on any project by enumerating UUIDs. The project page
+  // already required auth to render the summary, but the server action
+  // POST endpoint was its own (open) surface.
+  await getCurrentUser();
+
   const today = istDayString(new Date());
   const db = getDb();
 

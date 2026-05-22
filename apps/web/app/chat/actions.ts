@@ -18,6 +18,31 @@ import {
 } from "@tu/db";
 import { getCurrentUserId } from "@/lib/auth";
 
+/**
+ * Throw if the user isn't a member of the channel. The fast path is one
+ * indexed lookup. Used to gate `getMessages` / `sendMessage` /
+ * `markChannelRead` — until 2026-05-22 those functions trusted any
+ * channelId from the caller, which made every DM in the company
+ * cross-readable to any signed-in user.
+ */
+async function requireChannelMembership(channelId: string, userId: string): Promise<void> {
+  if (typeof channelId !== "string" || channelId.length === 0) {
+    throw new Error("invalid channel");
+  }
+  const db = getDb();
+  const [m] = await db
+    .select({ id: chatChannelMembers.userId })
+    .from(chatChannelMembers)
+    .where(
+      and(
+        eq(chatChannelMembers.channelId, channelId),
+        eq(chatChannelMembers.userId, userId),
+      ),
+    )
+    .limit(1);
+  if (!m) throw new Error("Not a member of this channel");
+}
+
 // ---------- channels ----------
 
 export interface ChannelRow {
@@ -88,6 +113,8 @@ export interface MessageRow {
 }
 
 export async function getMessages(channelId: string, before?: string): Promise<MessageRow[]> {
+  const userId = await getCurrentUserId();
+  await requireChannelMembership(channelId, userId);
   const db = getDb();
   const limit = 50;
 
@@ -115,6 +142,7 @@ export async function getMessages(channelId: string, before?: string): Promise<M
 
 export async function sendMessage(channelId: string, body: string): Promise<MessageRow> {
   const userId = await getCurrentUserId();
+  await requireChannelMembership(channelId, userId);
   const db = getDb();
 
   const rows = await db
@@ -146,6 +174,10 @@ export async function sendMessage(channelId: string, body: string): Promise<Mess
 
 export async function markChannelRead(channelId: string): Promise<void> {
   const userId = await getCurrentUserId();
+  // markChannelRead is already self-scoped (WHERE user_id = me) so it
+  // can't read other people's rows — but a defensive membership check
+  // keeps callers from quietly no-op'ing against random channelIds.
+  await requireChannelMembership(channelId, userId);
   const db = getDb();
   await db
     .update(chatChannelMembers)

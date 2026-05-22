@@ -10,11 +10,21 @@ import { getDb, users, eq, sql } from "@tu/db";
 
 const ALLOWED_DOMAIN = "truestock.in";
 
-export const authEnabled = !!process.env.AUTH_SECRET;
+// Fail loudly if AUTH_SECRET is missing. Without this the fallback
+// `"dev-secret-do-not-use-in-prod"` would let anyone who reads the
+// public source forge a valid session for any user. The build error
+// here is strictly preferable to silently shipping the dev secret.
+if (!process.env.AUTH_SECRET) {
+  throw new Error(
+    "AUTH_SECRET is required. Set it in .env (or /etc/truestock/env on the server) before starting the app.",
+  );
+}
+
+export const authEnabled = true;
 
 const nextAuth = NextAuth({
   trustHost: true,
-  secret: process.env.AUTH_SECRET ?? "dev-secret-do-not-use-in-prod",
+  secret: process.env.AUTH_SECRET,
   session: { strategy: "jwt" },
   providers: [
     Google({

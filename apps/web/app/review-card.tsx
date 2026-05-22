@@ -17,9 +17,19 @@ export async function ReviewCard() {
   // Nothing generated yet — don't render anything
   if (!personal && !team) return null;
 
-  // Simple markdown-ish rendering: **bold** → <strong>, _italic_ → <em>
+  // Simple markdown-ish rendering: **bold** → <strong>, _italic_ → <em>.
+  // CRITICAL: HTML-escape first. The text is LLM-generated but the model
+  // is fed user-supplied task titles, descriptions, and comments — a user
+  // writing a task titled
+  //   Fix login</strong><img src=x onerror=alert(1)>
+  // can cause the model to echo the payload into the daily review, which
+  // (without escaping) executes on every admin's Today page.
   function renderMarkdown(text: string) {
-    const html = text
+    const ESC: Record<string, string> = {
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+    };
+    const escaped = text.replace(/[&<>"']/g, (c) => ESC[c]!);
+    const html = escaped
       .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
       .replace(/\*(.+?)\*/g, "<strong>$1</strong>")
       .replace(/_(.+?)_/g, "<em>$1</em>")

@@ -15,6 +15,17 @@ import { getToken } from "next-auth/jwt";
 
 const PUBLIC_PATHS = ["/welcome", "/api/auth", "/favicon.ico", "/banners", "/hero", "/celebrate", "/_next", "/icon", "/manifest"];
 
+// Edge runtime — `process.env.AUTH_SECRET` is inlined at build time. If
+// it wasn't set when the build ran, the middleware will throw on first
+// request (which fails closed to a 500). That's what we want — there's
+// no scenario where defaulting to a publicly-known secret here is OK.
+const AUTH_SECRET = process.env.AUTH_SECRET;
+if (!AUTH_SECRET) {
+  throw new Error(
+    "AUTH_SECRET is required for the middleware. Set it in .env (or /etc/truestock/env on the server) before building.",
+  );
+}
+
 function isPublic(pathname: string): boolean {
   return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }
@@ -26,7 +37,7 @@ export async function middleware(req: NextRequest) {
   // NextAuth v5 cookie names: prefixed with __Secure- when HTTPS.
   const token = await getToken({
     req,
-    secret: process.env.AUTH_SECRET ?? "dev-secret-do-not-use-in-prod",
+    secret: AUTH_SECRET,
     cookieName: req.nextUrl.protocol === "https:"
       ? "__Secure-authjs.session-token"
       : "authjs.session-token",

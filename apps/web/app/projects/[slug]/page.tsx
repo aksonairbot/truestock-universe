@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getDb, projects, products, tasks, users, eq, and, or, asc, desc, inArray, sql, } from "@tu/db";
+import { getDb, projects, tasks, users, eq, and, or, asc, desc, inArray, sql, } from "@tu/db";
 import { getCurrentUser } from "@/lib/auth";
 import { isAdmin, getDepartmentScope } from "@/lib/access";
 import { createTask as _createTask } from "../../tasks/actions";
@@ -39,11 +39,9 @@ export default async function ProjectDetailPage({ params }: PageProps) {
       color: projects.color,
       iconUrl: projects.iconUrl,
       bannerUrl: projects.bannerUrl,
-      productSlug: products.slug,
       ownerName: users.name,
     })
     .from(projects)
-    .leftJoin(products, eq(projects.productId, products.id))
     .leftJoin(users, eq(projects.ownerId, users.id))
     .where(eq(projects.slug, slug))
     .limit(1);
@@ -103,7 +101,7 @@ export default async function ProjectDetailPage({ params }: PageProps) {
       <ProjectBanner
         slug={project.slug}
         title={project.name}
-        productLabel={project.productSlug ?? null}
+        productLabel={null}
         color={project.color}
         bannerUrl={project.bannerUrl}
         description={project.description}
@@ -128,9 +126,6 @@ export default async function ProjectDetailPage({ params }: PageProps) {
             )}
             <div className="page-title truncate">{project.name}</div>
             {canSeeAll ? <ProjectIconUpload slug={project.slug} currentIcon={project.iconUrl} /> : null}
-            {project.productSlug ? (
-              <span className={`pchip ${project.productSlug}`}>{project.productSlug}</span>
-            ) : null}
           </div>
           <div className="page-sub flex items-center gap-2 flex-wrap">
             <Link href="/projects" className="hover:text-text">Projects</Link>
