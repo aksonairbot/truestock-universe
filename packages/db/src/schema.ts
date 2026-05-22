@@ -444,6 +444,14 @@ export const tasks = pgTable(
     estimatedMinutes: integer("estimated_minutes"),
     parentTaskId: uuid("parent_task_id"),
     orderIndex: integer("order_index").notNull().default(1000),
+    // Recurrence — see migration 0018. 'none' for one-off tasks (the
+    // default); 'daily'/'weekly'/'monthly' for repeats. When a recurring
+    // task is marked done, the server action spawns the next cycle and
+    // links it back via recurrenceParentId so the audit trail survives.
+    recurrence: text("recurrence", { enum: ["none", "daily", "weekly", "monthly"] })
+      .notNull()
+      .default("none"),
+    recurrenceParentId: uuid("recurrence_parent_id"),
     createdById: uuid("created_by_id")
       .notNull()
       .references(() => users.id),

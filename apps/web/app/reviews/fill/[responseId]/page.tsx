@@ -108,7 +108,7 @@ export default async function FillReviewPage({ params }: PageProps) {
         </div>
       )}
 
-      <form className="mt-6 flex flex-col gap-6">
+      <form action={saveReviewResponse} className="mt-6 flex flex-col gap-6">
         <input type="hidden" name="responseId" value={responseId} />
 
         {questions.map((q, i) => {
@@ -215,14 +215,13 @@ export default async function FillReviewPage({ params }: PageProps) {
         <div className="flex items-center gap-3 pt-2 pb-8 border-t border-border mt-2">
           <button
             type="submit"
-            formAction={saveReviewResponse}
             name="action"
             value="save"
             className="btn btn-sm"
           >
             Save Draft
           </button>
-          <SubmitButton formAction={saveReviewResponse} />
+          <SubmitButton />
           <span className="text-[11px] text-text-3 ml-2">
             You can save and come back later. Once submitted, answers are final.
           </span>

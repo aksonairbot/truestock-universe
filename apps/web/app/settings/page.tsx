@@ -5,7 +5,7 @@ import AppearanceSection from "./appearance-section";
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "Settings · SeekPeek",
+  title: "Settings · SeekPeak",
   description: "User and workspace settings",
 };
 

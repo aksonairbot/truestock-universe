@@ -5,15 +5,15 @@ import { ThemeProvider, themeInitScript } from "./theme-provider";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "SeekPeek · Truestock",
-  description: "SeekPeek — internal task management for Truestock",
+  title: "SeekPeak · Truestock",
+  description: "SeekPeak — internal task management for Truestock",
   icons: {
-    icon: [
-      { url: "/favicon.ico", sizes: "any" },
-      { url: "/favicon-32.png", type: "image/png", sizes: "32x32" },
-    ],
-    apple: "/apple-icon.png",
-    shortcut: "/favicon.ico",
+    // The legacy PNG/ICO icons were generated with a "SeekPeak" wordmark
+    // rasterised in. The SVG below is a typo-proof abstract mark (gradient
+    // square + peeking eye glyph) and scales to every tab/PWA surface.
+    icon: [{ url: "/favicon.svg", type: "image/svg+xml" }],
+    shortcut: "/favicon.svg",
+    apple: "/favicon.svg",
   },
   manifest: "/manifest.json",
 };

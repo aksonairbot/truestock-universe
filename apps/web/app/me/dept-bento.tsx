@@ -95,18 +95,24 @@ export function DeptBento({ stats }: { stats: DeptDashStats }) {
             <thead>
               <tr>
                 <th>Member</th>
-                <th className="num">Closed</th>
-                <th className="num">Open</th>
-                <th className="num">Created</th>
-                <th className="num">Comments</th>
+                <th className="num" title="Currently in To Do">To Do</th>
+                <th className="num" title="Currently In Progress">Doing</th>
+                <th className="num" title="Currently in Review">Review</th>
+                <th className="num" title="Tasks completed">Done</th>
+                <th className="num" title="Sum of all assigned tasks (todo + doing + review + done + cancelled)">Total</th>
+                <th className="num" title={`Tasks the member created in this ${stats.period}`}>Created</th>
+                <th className="num" title={`Comments authored in this ${stats.period}`}>Comments</th>
               </tr>
             </thead>
             <tbody>
               {stats.members.map((m) => (
                 <tr key={m.id}>
                   <td><Link href={`/members/${m.id}`}>{m.name}</Link></td>
-                  <td className="num mono">{m.closed}</td>
-                  <td className="num mono">{m.open}</td>
+                  <td className="num mono">{m.todo}</td>
+                  <td className="num mono">{m.doing}</td>
+                  <td className="num mono">{m.review}</td>
+                  <td className="num mono">{m.done}</td>
+                  <td className="num mono" style={{ fontWeight: 600 }}>{m.total}</td>
                   <td className="num mono">{m.created}</td>
                   <td className="num mono">{m.comments}</td>
                 </tr>

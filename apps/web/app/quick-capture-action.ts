@@ -73,15 +73,9 @@ export async function quickCapture(text: string): Promise<QuickCaptureResult> {
   }
 
   // ---- resolve assignee ----
-  let assigneeId: string = meId;
-  if (sug?.assigneeEmail) {
-    const [u] = await db
-      .select({ id: users.id })
-      .from(users)
-      .where(eq(users.email, sug.assigneeEmail))
-      .limit(1);
-    if (u) assigneeId = u.id;
-  }
+  // AI no longer suggests assignees — quick capture always assigns to the
+  // current user. Admins/managers can reassign from the task page afterwards.
+  const assigneeId: string = meId;
   const [assigneeRow] = await db.select({ name: users.name }).from(users).where(eq(users.id, assigneeId)).limit(1);
 
   // ---- priority + due ----

@@ -24,7 +24,7 @@ export const dynamic = "force-dynamic";
 const TZ = "Asia/Kolkata";
 
 export const metadata = {
-  title: "Team Week · SeekPeek",
+  title: "Team Week · SeekPeak",
   description: "Weekly team activity summary",
 };
 

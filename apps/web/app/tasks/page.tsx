@@ -18,7 +18,7 @@ import { Suspense } from "react";
 import { getDb, tasks, projects, users, eq, desc, or, and, ilike, inArray, sql } from "@tu/db";
 import { getCurrentUser } from "@/lib/auth";
 import { getActiveUsers } from "@/lib/cached-queries";
-import { isAdmin, getDepartmentScope } from "@/lib/access";
+import { isAdmin, isPrivileged, getDepartmentScope } from "@/lib/access";
 import { fmtDueCountdown, dueStatus } from "@/lib/worktime";
 import { StatusSelect, AssigneeSelect } from "./inline-controls";
 import { updateTaskStatus } from "./actions";
@@ -163,6 +163,7 @@ export default async function TasksPage({ searchParams }: PageProps) {
   const me = await getCurrentUser();
   const tAuth1 = Date.now();
   const canSeeAll = isAdmin(me);
+  const canAssignOthers = isPrivileged(me);
   const deptScope = getDepartmentScope(me);
   const db = getDb();
 
@@ -210,6 +211,7 @@ export default async function TasksPage({ searchParams }: PageProps) {
         priority: tasks.priority,
         dueDate: tasks.dueDate,
         createdAt: tasks.createdAt,
+        recurrence: tasks.recurrence,
         project: { slug: projects.slug, name: projects.name, color: projects.color, iconUrl: projects.iconUrl },
         assignee: { id: users.id, name: users.name },
       })
@@ -383,7 +385,7 @@ export default async function TasksPage({ searchParams }: PageProps) {
             {q ? <>No tasks match <span className="mono">"{q}"</span>.</> : "Clean slate. What's the next thing?"}
           </div>
           <div className="text-text-3 text-[12px] mb-3">
-            {q ? "Try a different search or clear it to see everything." : "Type the first task — SeekPeek will pick the project, assignee, and priority."}
+            {q ? "Try a different search or clear it to see everything." : "Type the first task — SeekPeak will pick the project, assignee, and priority."}
           </div>
           <Link href="/tasks/new" className="btn btn-primary btn-sm">
             {q ? "Clear search" : "✨ Capture a task"}
@@ -392,7 +394,7 @@ export default async function TasksPage({ searchParams }: PageProps) {
       ) : isBoard ? (
         <BoardView rows={rows} users={allUsers} rowHref={rowHrefForTask} />
       ) : (
-        <ListView rows={rows} users={allUsers} group={group} rowHref={rowHrefForTask} />
+        <ListView rows={rows} users={allUsers} group={group} rowHref={rowHrefForTask} canAssignOthers={canAssignOthers} />
       )}
 
       {/* ------------------------- pagination ------------------------- */}
@@ -472,11 +474,13 @@ function ListView({
   users,
   group,
   rowHref,
+  canAssignOthers,
 }: {
   rows: any[];
   users: Array<{ id: string; name: string }>;
   group: GroupKey;
   rowHref: (id: string) => string;
+  canAssignOthers: boolean;
 }) {
   // Group rows by the chosen dimension and produce ordered sections.
   type Section = { key: string; label: string; tone: string; items: any[] };
@@ -566,7 +570,7 @@ function ListView({
           {sec.items.length === 0 ? (
             <div className="asec-empty">Drop a task here · or click below to add one</div>
           ) : (
-            sec.items.map((t) => <TaskRow key={t.id} t={t} users={users} rowHref={rowHref} />)
+            sec.items.map((t) => <TaskRow key={t.id} t={t} users={users} rowHref={rowHref} canAssignOthers={canAssignOthers} />)
           )}
 
           <Link href="/tasks/new" className="asec-add">
@@ -585,10 +589,12 @@ function TaskRow({
   t,
   users,
   rowHref,
+  canAssignOthers,
 }: {
   t: any;
   users: Array<{ id: string; name: string }>;
   rowHref: (id: string) => string;
+  canAssignOthers: boolean;
 }) {
   const overdue = isOverdue(t);
   const done = t.status === "done";
@@ -620,6 +626,16 @@ function TaskRow({
         <Link href={rowHref(t.id)} className="atitle" scroll={false}>
           {t.title}
         </Link>
+        {t.recurrence && t.recurrence !== "none" ? (
+          <span
+            className="ml-2 inline-flex items-center gap-1 text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded"
+            style={{ background: "var(--accent-wash)", color: "var(--accent-2)" }}
+            title={`Recurring task — repeats ${t.recurrence}`}
+          >
+            <span aria-hidden="true">↻</span>
+            {t.recurrence}
+          </span>
+        ) : null}
       </div>
 
       <div className="alist-cell-project">
@@ -633,10 +649,10 @@ function TaskRow({
         {t.assignee?.name ? (
           <span className="aassignee">
             <span className={`tava ${avaClass(t.assignee.name)}`}>{avaInitial(t.assignee.name)}</span>
-            <AssigneeSelect taskId={t.id} assigneeId={t.assignee?.id ?? null} users={users} />
+            <AssigneeSelect taskId={t.id} assigneeId={t.assignee?.id ?? null} users={users} canAssignOthers={canAssignOthers} />
           </span>
         ) : (
-          <AssigneeSelect taskId={t.id} assigneeId={null} users={users} />
+          <AssigneeSelect taskId={t.id} assigneeId={null} users={users} canAssignOthers={canAssignOthers} />
         )}
       </div>
 
@@ -646,7 +662,13 @@ function TaskRow({
 
       <div className={`alist-cell-due ${overdue ? "is-overdue" : ""}`}>
         {t.dueDate ? (
-          <span title={fmtDate(t.dueDate)}>{fmtDueCountdown(t.dueDate)}</span>
+          // For closed tasks, show the static due date — the live countdown
+          // would say "overdue 4h" on a task that was already done on time.
+          done || cancelled ? (
+            <span className="text-text-3" title={fmtDate(t.dueDate)}>{fmtDate(t.dueDate)}</span>
+          ) : (
+            <span title={fmtDate(t.dueDate)}>{fmtDueCountdown(t.dueDate)}</span>
+          )
         ) : (
           <span className="text-text-4">—</span>
         )}
@@ -721,13 +743,17 @@ function BoardView({
                     )}
                     <span
                       className={`tdue ${
-                        t.dueDate && new Date(t.dueDate) < startOfToday() && t.status !== "done"
+                        t.dueDate && new Date(t.dueDate) < startOfToday() && t.status !== "done" && t.status !== "cancelled"
                           ? "red"
                           : ""
                       }`}
                       title={t.dueDate ? fmtDate(t.dueDate) : ""}
                     >
-                      {t.dueDate ? fmtDueCountdown(t.dueDate) : ""}
+                      {t.dueDate
+                        ? (t.status === "done" || t.status === "cancelled"
+                            ? fmtDate(t.dueDate)
+                            : fmtDueCountdown(t.dueDate))
+                        : ""}
                     </span>
                   </div>
                 </Link>

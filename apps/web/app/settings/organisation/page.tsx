@@ -6,7 +6,7 @@ import { OrgSettingsForm } from "./org-settings-form";
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "Organisation Settings · SeekPeek",
+  title: "Organisation Settings · SeekPeak",
   description: "Manage your workspace settings",
 };
 
@@ -21,7 +21,7 @@ export default async function OrgSettingsPage() {
     // Auto-seed if missing
     const [created] = await db
       .insert(orgSettings)
-      .values({ companyName: "SeekPeek" })
+      .values({ companyName: "SeekPeak" })
       .returning();
     row = created!;
   }

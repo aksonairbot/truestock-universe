@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getDb, tasks, projects, taskComments, eq } from "@tu/db";
 import { getCurrentUserId, getCurrentUser } from "@/lib/auth";
+import { isPrivileged } from "@/lib/access";
 import { log } from "@/lib/log";
 import { notifyAssigned, notifyTaskCompleted, notifyCommentOnAssigned, notifyMentions, notifyReviewRequested, notifyReviewOutcome } from "@/lib/notify";
 import { offsetToDeadline, deadlineToDateStr } from "@/lib/worktime";
@@ -11,9 +12,33 @@ import { checkAndAwardBadges } from "@/lib/badges";
 
 const TASK_STATUSES = ["backlog", "todo", "in_progress", "review", "done", "cancelled"] as const;
 const TASK_PRIORITIES = ["low", "med", "high", "urgent"] as const;
+const TASK_RECURRENCES = ["none", "daily", "weekly", "monthly"] as const;
 const HOURS_PER_DAY = 9; // 9 AM – 6 PM
 const MAX_DUE_DAYS = 10;
 const MAX_DUE_HOURS = MAX_DUE_DAYS * HOURS_PER_DAY; // 90 working hours
+
+type TaskRecurrence = (typeof TASK_RECURRENCES)[number];
+
+function isTaskRecurrence(v: string): v is TaskRecurrence {
+  return (TASK_RECURRENCES as readonly string[]).includes(v);
+}
+
+/** Add the recurrence interval to a YYYY-MM-DD date, return YYYY-MM-DD. */
+function bumpDueDate(dueDate: string | null, recurrence: TaskRecurrence): string {
+  // If the recurring task had no due date, base the next one on today.
+  const base = dueDate ? new Date(`${dueDate}T12:00:00+05:30`) : new Date();
+  switch (recurrence) {
+    case "daily":   base.setDate(base.getDate() + 1); break;
+    case "weekly":  base.setDate(base.getDate() + 7); break;
+    case "monthly": base.setMonth(base.getMonth() + 1); break;
+    default: /* none — caller should never get here */ break;
+  }
+  // Pin to IST date string regardless of host timezone.
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit",
+  });
+  return fmt.format(base);
+}
 
 /** Parse a due-date input string and return total working hours. */
 function parseDueInput(input: string): { totalHours: number } {
@@ -49,12 +74,14 @@ export async function createTask(formData: FormData): Promise<string> {
   const priorityRaw = ((formData.get("priority") as string) ?? "med").trim();
   const dueDateInput = ((formData.get("dueDate") as string) ?? "").trim() || null;
   const assigneeIdRaw = ((formData.get("assigneeId") as string) ?? "").trim() || null;
+  const recurrenceRaw = ((formData.get("recurrence") as string) ?? "none").trim();
 
   if (!title) throw new Error("title is required");
   if (!projectSlug) throw new Error("project is required");
   if (!dueDateInput) throw new Error("due date is required");
   const status = isTaskStatus(statusRaw) ? statusRaw : "todo";
   const priority = isTaskPriority(priorityRaw) ? priorityRaw : "med";
+  const recurrence: TaskRecurrence = isTaskRecurrence(recurrenceRaw) ? recurrenceRaw : "none";
 
   // Convert due input: accept "3d", "8h", "2d 4h" or legacy YYYY-MM-DD
   let dueDate: string | null = null;
@@ -81,11 +108,11 @@ export async function createTask(formData: FormData): Promise<string> {
   const me = await getCurrentUser();
   const userId = me.id;
 
-  // Permission: members can only create tasks for themselves.
-  // Managers and admins can assign to anyone.
+  // Permission: only admins and managers can assign tasks to other people.
+  // Everyone else (member / viewer / agent) is locked to self-assignment.
   const assigneeId = assigneeIdRaw ?? userId;
-  if (me.role === "member" && assigneeId !== userId) {
-    throw new Error("Members can only create tasks assigned to themselves.");
+  if (!isPrivileged(me) && assigneeId !== userId) {
+    throw new Error("Only admins and managers can assign tasks to other people.");
   }
 
   const [created] = await db
@@ -98,12 +125,13 @@ export async function createTask(formData: FormData): Promise<string> {
       priority,
       dueDate,
       assigneeId,
+      recurrence,
       createdById: userId,
     })
     .returning({ id: tasks.id });
 
   if (!created) throw new Error("insert returned no row");
-  log.info("task.created", { taskId: created.id, projectSlug, status, priority, assigneeId });
+  log.info("task.created", { taskId: created.id, projectSlug, status, priority, assigneeId, recurrence });
   if (assigneeId && assigneeId !== userId) {
     await notifyAssigned({ assigneeId, actorId: userId, taskId: created.id, taskTitle: title });
   }
@@ -138,7 +166,16 @@ export async function updateTaskStatus(formData: FormData): Promise<void> {
   log.info("task.status_changed", { taskId, status: statusRaw });
   if (statusRaw === "done") {
     const [t] = await db
-      .select({ creatorId: tasks.createdById, title: tasks.title, projectId: tasks.projectId })
+      .select({
+        creatorId: tasks.createdById,
+        title: tasks.title,
+        description: tasks.description,
+        projectId: tasks.projectId,
+        priority: tasks.priority,
+        assigneeId: tasks.assigneeId,
+        dueDate: tasks.dueDate,
+        recurrence: tasks.recurrence,
+      })
       .from(tasks)
       .where(eq(tasks.id, taskId))
       .limit(1);
@@ -149,6 +186,48 @@ export async function updateTaskStatus(formData: FormData): Promise<void> {
     checkAndAwardBadges(me, "task_completed", { taskId, projectId: t?.projectId }).catch((e) => {
       log.error("badge.check_failed", { userId: me, taskId, error: (e as Error).message, stack: (e as Error).stack });
     });
+
+    // Spawn the next cycle for recurring tasks. Each instance is its own
+    // row pointing at the just-completed one via recurrence_parent_id, so
+    // the audit trail (comments, completion times, assignee history) on
+    // every cycle stays intact.
+    if (t && t.recurrence && t.recurrence !== "none" && isTaskRecurrence(t.recurrence)) {
+      try {
+        const nextDue = bumpDueDate(t.dueDate, t.recurrence);
+        const [spawned] = await db
+          .insert(tasks)
+          .values({
+            projectId: t.projectId,
+            title: t.title,
+            description: t.description,
+            status: "todo",
+            priority: t.priority,
+            dueDate: nextDue,
+            assigneeId: t.assigneeId,
+            recurrence: t.recurrence,
+            recurrenceParentId: taskId,
+            createdById: me,
+          })
+          .returning({ id: tasks.id });
+        log.info("task.recurrence_spawned", {
+          parentTaskId: taskId, spawnedTaskId: spawned?.id,
+          recurrence: t.recurrence, nextDue,
+        });
+        // Let the assignee know there's a fresh copy on their queue, but
+        // only if it's not the same person who just closed it.
+        if (spawned && t.assigneeId && t.assigneeId !== me) {
+          await notifyAssigned({
+            assigneeId: t.assigneeId, actorId: me,
+            taskId: spawned.id, taskTitle: t.title,
+          });
+        }
+      } catch (e) {
+        log.error("task.recurrence_spawn_failed", {
+          taskId, recurrence: t.recurrence,
+          error: (e as Error).message,
+        });
+      }
+    }
   }
   if (statusRaw === "review") {
     const [t] = await db
@@ -173,9 +252,9 @@ export async function assignTask(formData: FormData): Promise<void> {
 
   const me = await getCurrentUser();
 
-  // Permission: members can only assign tasks to themselves
-  if (me.role === "member" && assigneeId && assigneeId !== me.id) {
-    throw new Error("Members can only assign tasks to themselves.");
+  // Permission: only admins and managers can reassign a task to someone else.
+  if (!isPrivileged(me) && assigneeId && assigneeId !== me.id) {
+    throw new Error("Only admins and managers can assign tasks to other people.");
   }
 
   const db = getDb();
@@ -449,6 +528,15 @@ export async function addSubtask(formData: FormData): Promise<void> {
   // Use explicit assignee if provided, otherwise inherit from parent
   const assigneeId = assigneeIdRaw ?? parent.assigneeId;
 
+  // Permission: non-admin/manager can only create subtasks assigned to themselves.
+  // (Catches the case where the parent task is owned by someone else — a member
+  // trying to add a subtask there would otherwise quietly assign it to the
+  // parent's owner via the inherit fallback.)
+  const meForSubtask = await getCurrentUser();
+  if (!isPrivileged(meForSubtask) && assigneeId && assigneeId !== meForSubtask.id) {
+    throw new Error("Only admins and managers can assign tasks to other people.");
+  }
+
   // Due date: use form input, else inherit from parent, else default 3 days
   let dueDate: string | null = null;
   if (dueDateInput && !/^\d{4}-\d{2}-\d{2}$/.test(dueDateInput)) {
@@ -466,7 +554,7 @@ export async function addSubtask(formData: FormData): Promise<void> {
     dueDate = d.toISOString().slice(0, 10);
   }
 
-  const userId = await getCurrentUserId();
+  const userId = meForSubtask.id;
   const [created] = await db
     .insert(tasks)
     .values({
@@ -489,6 +577,56 @@ export async function addSubtask(formData: FormData): Promise<void> {
   }
   revalidatePath("/tasks");
   revalidatePath(`/tasks/${parentId}`);
+}
+
+// ---------------------------------------------------------------------------
+// updateTaskPriority — inline priority change ONLY. Does not touch title,
+// description, or dueDate so a concurrent description edit can't be clobbered
+// when someone bumps priority from the sidebar.
+// ---------------------------------------------------------------------------
+export async function updateTaskPriority(formData: FormData): Promise<void> {
+  await getCurrentUser(); // auth gate
+  const taskId = ((formData.get("taskId") as string) ?? "").trim();
+  const priorityRaw = ((formData.get("priority") as string) ?? "").trim();
+  if (!taskId) throw new Error("taskId is required");
+  if (!isTaskPriority(priorityRaw)) throw new Error(`invalid priority: ${priorityRaw}`);
+
+  const db = getDb();
+  const [existing] = await db.select({ status: tasks.status }).from(tasks).where(eq(tasks.id, taskId)).limit(1);
+  if (!existing) throw new Error("task not found");
+  if (existing.status === "done" || existing.status === "cancelled") {
+    throw new Error("Closed tasks cannot be edited. Reopen the task first.");
+  }
+
+  await db
+    .update(tasks)
+    .set({ priority: priorityRaw, updatedAt: new Date() })
+    .where(eq(tasks.id, taskId));
+
+  log.info("task.priority_updated", { taskId, priority: priorityRaw });
+  revalidatePath("/tasks");
+  revalidatePath(`/tasks/${taskId}`);
+}
+
+// ---------------------------------------------------------------------------
+// updateTaskRecurrence — switch a task between one-off and recurring without
+// touching anything else. Used by the inline sidebar select.
+// ---------------------------------------------------------------------------
+export async function updateTaskRecurrence(formData: FormData): Promise<void> {
+  await getCurrentUser(); // auth gate
+  const taskId = ((formData.get("taskId") as string) ?? "").trim();
+  const recurrenceRaw = ((formData.get("recurrence") as string) ?? "").trim();
+  if (!taskId) throw new Error("taskId is required");
+  if (!isTaskRecurrence(recurrenceRaw)) throw new Error(`invalid recurrence: ${recurrenceRaw}`);
+
+  const db = getDb();
+  await db
+    .update(tasks)
+    .set({ recurrence: recurrenceRaw, updatedAt: new Date() })
+    .where(eq(tasks.id, taskId));
+  log.info("task.recurrence_updated", { taskId, recurrence: recurrenceRaw });
+  revalidatePath("/tasks");
+  revalidatePath(`/tasks/${taskId}`);
 }
 
 // ---------------------------------------------------------------------------

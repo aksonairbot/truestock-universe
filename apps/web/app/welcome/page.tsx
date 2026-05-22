@@ -1,6 +1,6 @@
 // apps/web/app/welcome/page.tsx
 //
-// SeekPeek marketing landing page — full sections with motion.
+// SeekPeak marketing landing page — full sections with motion.
 
 import { SignInButton } from "./sign-in-button";
 import { Marquee } from "./marquee";
@@ -21,7 +21,7 @@ export default function WelcomePage() {
         <div className="lp-nav-inner">
           <a href="/" className="lp-nav-brand">
             <div className="lp-brand-icon" />
-            <span>SeekPeek</span>
+            <span>SeekPeak</span>
           </a>
           <nav className="lp-nav-links">
             <a href="#features">Features</a>
@@ -158,7 +158,7 @@ export default function WelcomePage() {
           <div className="lp-mockup">
             <div className="lp-mockup-window">
               <div className="lp-mock-sidebar">
-                <div className="lp-mock-brand"><div className="lp-brand-icon" style={{ width: 18, height: 18, borderRadius: 5 }} /><span>SeekPeek</span></div>
+                <div className="lp-mock-brand"><div className="lp-brand-icon" style={{ width: 18, height: 18, borderRadius: 5 }} /><span>SeekPeak</span></div>
                 <div className="lp-mock-nav-item lp-mock-active">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="14" height="14"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg>
                   Today
@@ -202,7 +202,7 @@ export default function WelcomePage() {
                 <div className="lp-mock-banner">
                   <div className="lp-mock-banner-content">
                     <span className="lp-mock-banner-label">TODAY&apos;S VIEW</span>
-                    <span className="lp-mock-banner-title">SeekPeek</span>
+                    <span className="lp-mock-banner-title">SeekPeak</span>
                     <span className="lp-mock-banner-sub">Plan better. Prioritize smarter. Deliver more.</span>
                     <span className="lp-mock-banner-date">
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="11" height="11"><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></svg>
@@ -341,7 +341,7 @@ export default function WelcomePage() {
         <div className="lp-brand-icon lp-brand-icon-lg" style={{ marginBottom: 24 }} />
         <h2 className="lp-cta-title">Ready to ship faster?</h2>
         <p className="lp-cta-sub">
-          Join thousands of focused teams using SeekPeek to stay aligned and get more done.
+          Join thousands of focused teams using SeekPeak to stay aligned and get more done.
         </p>
         <div className="lp-cta-actions">
           {authEnabled ? (
@@ -359,7 +359,7 @@ export default function WelcomePage() {
           <div className="lp-footer-brand">
             <div className="lp-nav-brand" style={{ marginBottom: 10 }}>
               <div className="lp-brand-icon" />
-              <span>SeekPeek</span>
+              <span>SeekPeak</span>
             </div>
             <p>AI-powered task management for focused teams.</p>
           </div>
@@ -383,7 +383,7 @@ export default function WelcomePage() {
           </div>
         </div>
         <div className="lp-footer-bottom">
-          <span>&copy; 2026 SeekPeek. All rights reserved.</span>
+          <span>&copy; 2026 SeekPeak. All rights reserved.</span>
           <div className="lp-footer-legal">
             <a href="#">Terms</a>
             <a href="#">Privacy</a>

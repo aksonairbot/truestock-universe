@@ -1,7 +1,8 @@
 // apps/web/app/tasks/new-task-form.tsx
 //
 // Client form for /tasks/new. Features:
-//   • AI Suggest button — prefills project/assignee/priority/due
+//   • AI Suggest button — prefills project / priority / due (NOT assignee;
+//     assignment is a human decision and is gated to admins/managers)
 //   • AI clarity check on submit — if task is vague, shows follow-up
 //     questions before creating. User can answer or force-create.
 //   • Due date mandatory
@@ -32,6 +33,12 @@ const PRIORITIES = [
   { value: "high", label: "High" },
   { value: "urgent", label: "Urgent" },
 ];
+const RECURRENCES = [
+  { value: "none", label: "Doesn't repeat" },
+  { value: "daily", label: "Daily" },
+  { value: "weekly", label: "Weekly" },
+  { value: "monthly", label: "Monthly" },
+];
 
 function dueDateFromOffset(offset: number | null): string {
   if (offset === null) return "";
@@ -48,6 +55,7 @@ export function NewTaskForm({ projects, users, currentUserId, userRole }: { proj
   const [assigneeId, setAssigneeId] = useState(currentUserId);
   const [status, setStatus] = useState("todo");
   const [priority, setPriority] = useState("med");
+  const [recurrence, setRecurrence] = useState("none");
   const [dueDate, setDueDate] = useState("");
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
 
@@ -56,6 +64,8 @@ export function NewTaskForm({ projects, users, currentUserId, userRole }: { proj
   const [suggestion, setSuggestion] = useState<TriageSuggestion | null>(null);
   const [suggestMeta, setSuggestMeta] = useState<{ provider?: string; model?: string; durationMs?: number } | null>(null);
   const [suggestError, setSuggestError] = useState<string | null>(null);
+  // AI no longer suggests assignees — assignment is a human decision and is
+  // gated to admins/managers anyway. (See triage-action.ts.)
 
   // Clarity check state
   const [clarityQuestions, setClarityQuestions] = useState<string[]>([]);
@@ -86,10 +96,8 @@ export function NewTaskForm({ projects, users, currentUserId, userRole }: { proj
       if (s.projectSlug && projects.some((p) => p.slug === s.projectSlug)) {
         setProjectSlug(s.projectSlug);
       }
-      if (s.assigneeEmail) {
-        const u = users.find((u) => u.email === s.assigneeEmail);
-        if (u) setAssigneeId(u.id);
-      }
+      // Assignee suggestion intentionally not applied — AI does not pick
+      // assignees in this build.
       if (s.priority) setPriority(s.priority);
       if (s.dueOffsetDays !== null) setDueDate(dueDateFromOffset(s.dueOffsetDays));
     });
@@ -236,7 +244,7 @@ export function NewTaskForm({ projects, users, currentUserId, userRole }: { proj
       {/* Suggest row */}
       <div className="md:col-span-2 flex items-center justify-between gap-3 pb-1">
         <div className="text-[11px] text-text-3 leading-snug max-w-[60ch]">
-          Ask SeekPeek to pre-fill project, assignee, priority, and due date based on the title + description.
+          Ask SeekPeak to pre-fill project, priority, and due date based on the title + description. You pick the assignee.
         </div>
         <button
           type="button"
@@ -340,6 +348,23 @@ export function NewTaskForm({ projects, users, currentUserId, userRole }: { proj
         >
           {PRIORITIES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
         </select>
+      </label>
+
+      <label className="flex flex-col gap-1.5 md:col-span-2">
+        <span className="text-[11px] text-text-3 uppercase tracking-wider font-medium">Repeats</span>
+        <select
+          name="recurrence"
+          value={recurrence}
+          onChange={(e) => setRecurrence(e.target.value)}
+          className="bg-panel-2 border border-border-2 rounded-md px-2 py-1.5 text-[13px] w-44"
+        >
+          {RECURRENCES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+        </select>
+        <span className="text-[10px] text-text-4">
+          {recurrence === "none"
+            ? "One-time task."
+            : `A new copy spawns automatically when this is marked Done.`}
+        </span>
       </label>
 
       <label className="flex flex-col gap-1.5 md:col-span-2">

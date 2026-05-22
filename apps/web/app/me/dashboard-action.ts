@@ -635,13 +635,20 @@ export interface DeptDashStats {
   daysActive: number;
 
   // per-member breakdown
+  // Status counts are CURRENT (not window-scoped) so the row adds up to
+  // each person's actual assigned-task total. `created` and `comments`
+  // are window-scoped (in the selected period).
   members: Array<{
     id: string;
     name: string;
-    closed: number;
-    open: number;
-    created: number;
-    comments: number;
+    todo: number;
+    doing: number;     // in_progress
+    review: number;
+    done: number;
+    cancelled: number;
+    total: number;     // sum of the five status counts above
+    created: number;   // tasks the user created (window)
+    comments: number;  // comments authored (window)
   }>;
 
   // per-project breakdown
@@ -726,19 +733,33 @@ export async function getDeptDashboard(deptId: string, period: Period): Promise<
     `)) as unknown as Array<{ n: number }>;
 
     // Per-member breakdown
+    // Status counts (todo/doing/review/done/cancelled) are CURRENT — the
+    // five together equal the assignee's total task count, so the row adds
+    // up cleanly instead of mixing window-scoped and lifetime numbers.
+    // `created` and `comments` stay window-scoped because they're activity
+    // metrics, not workload.
     const memberStatRows = await db.execute(sql.raw(`
       select u.id, u.name,
-        coalesce(sum(case when t.status = 'done'::task_status and t.completed_at >= '${startStart.toISOString()}'
-          and t.completed_at <= '${endEnd.toISOString()}' then 1 else 0 end), 0)::int as closed,
-        coalesce(sum(case when t.status not in ('done'::task_status, 'cancelled'::task_status) then 1 else 0 end), 0)::int as open,
-        coalesce(sum(case when t.created_at >= '${startStart.toISOString()}'
-          and t.created_at <= '${endEnd.toISOString()}' then 1 else 0 end), 0)::int as created,
+        coalesce((select count(*)::int from tasks ta
+          where ta.assignee_id = u.id and ta.status = 'todo'::task_status), 0) as todo,
+        coalesce((select count(*)::int from tasks ta
+          where ta.assignee_id = u.id and ta.status = 'in_progress'::task_status), 0) as doing,
+        coalesce((select count(*)::int from tasks ta
+          where ta.assignee_id = u.id and ta.status = 'review'::task_status), 0) as review,
+        coalesce((select count(*)::int from tasks ta
+          where ta.assignee_id = u.id and ta.status = 'done'::task_status), 0) as done,
+        coalesce((select count(*)::int from tasks ta
+          where ta.assignee_id = u.id and ta.status = 'cancelled'::task_status), 0) as cancelled,
+        coalesce((select count(*)::int from tasks ta
+          where ta.created_by_id = u.id
+            and ta.created_at >= '${startStart.toISOString()}'
+            and ta.created_at <= '${endEnd.toISOString()}'), 0) as created,
         coalesce((select count(*)::int from task_comments c where c.author_id = u.id
           and c.created_at >= '${startStart.toISOString()}'
-          and c.created_at <= '${endEnd.toISOString()}'), 0)::int as comments
-      from users u left join tasks t on t.assignee_id = u.id
+          and c.created_at <= '${endEnd.toISOString()}'), 0) as comments
+      from users u
       where u.id in (${memberIdList})
-      group by u.id, u.name order by closed desc
+      order by done desc, doing desc, todo desc
     `));
 
     // Per-project breakdown
@@ -798,10 +819,25 @@ export async function getDeptDashboard(deptId: string, period: Period): Promise<
         created: Number(hl.created) || 0,
         comments: Number(commentRow?.n) || 0,
         daysActive,
-        members: (memberStatRows as unknown as Array<any>).map((r) => ({
-          id: r.id, name: r.name, closed: Number(r.closed) || 0,
-          open: Number(r.open) || 0, created: Number(r.created) || 0, comments: Number(r.comments) || 0,
-        })),
+        members: (memberStatRows as unknown as Array<any>).map((r) => {
+          const todo = Number(r.todo) || 0;
+          const doing = Number(r.doing) || 0;
+          const review = Number(r.review) || 0;
+          const done = Number(r.done) || 0;
+          const cancelled = Number(r.cancelled) || 0;
+          return {
+            id: r.id,
+            name: r.name,
+            todo,
+            doing,
+            review,
+            done,
+            cancelled,
+            total: todo + doing + review + done + cancelled,
+            created: Number(r.created) || 0,
+            comments: Number(r.comments) || 0,
+          };
+        }),
         projectMix: (projRows as unknown as Array<any>).map((r) => ({
           slug: r.slug, name: r.name, closed: Number(r.closed) || 0, open: Number(r.open) || 0,
         })),

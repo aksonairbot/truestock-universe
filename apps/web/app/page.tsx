@@ -299,7 +299,7 @@ export default async function HomePage({ searchParams }: PageProps) {
                 <span className="daily-hero-dot" />
                 Today's view
               </div>
-              <div className="daily-hero-title">SeekPeek</div>
+              <div className="daily-hero-title">SeekPeak</div>
               <div className="daily-hero-tagline">Plan better. Prioritize smarter. Deliver more.</div>
               <div className="daily-hero-date">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" /></svg>

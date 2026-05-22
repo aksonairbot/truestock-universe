@@ -176,14 +176,14 @@ Rules:
   const r = await llm.complete({
     sensitivity: "internal",
     provider: "deepseek",
-    system: "You write short, punchy review messages for a team productivity tool called SeekPeek. Keep messages concise and impactful.",
+    system: "You write short, punchy review messages for a team productivity tool called SeekPeak. Keep messages concise and impactful.",
     prompt,
     temperature: 0.8,
     maxTokens: 200,
     timeoutMs: 15_000,
   });
 
-  return r.text?.trim() ?? `Hey ${person.name}! Your daily review is brewing... check SeekPeek for details.`;
+  return r.text?.trim() ?? `Hey ${person.name}! Your daily review is brewing... check SeekPeak for details.`;
 }
 
 async function generateTeamSummary(stats: PersonStats[], tone: string, dateLabel: string): Promise<string> {
@@ -215,7 +215,7 @@ Team stats:
 Tone: ${tone}
 
 Rules:
-- Start with "**SeekPeek Daily — ${dateLabel}**" as header
+- Start with "**SeekPeak Daily — ${dateLabel}**" as header
 - Highlight top performers by first name
 - Call out zero-activity people by first name (playfully)
 - Mention overdue count if > 0
@@ -226,14 +226,14 @@ Rules:
   const r = await llm.complete({
     sensitivity: "internal",
     provider: "deepseek",
-    system: "You write team summary messages for SeekPeek, a productivity tool. Concise, punchy, team-focused.",
+    system: "You write team summary messages for SeekPeak, a productivity tool. Concise, punchy, team-focused.",
     prompt,
     temperature: 0.8,
     maxTokens: 300,
     timeoutMs: 15_000,
   });
 
-  return r.text?.trim() ?? `**SeekPeek Daily — ${dateLabel}**\n${totalCompleted} tasks closed, ${totalOverdue} overdue. Check the dashboard for details.`;
+  return r.text?.trim() ?? `**SeekPeak Daily — ${dateLabel}**\n${totalCompleted} tasks closed, ${totalOverdue} overdue. Check the dashboard for details.`;
 }
 
 /**

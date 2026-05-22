@@ -17,11 +17,13 @@ import {
   sql,
 } from "@tu/db";
 import { getCurrentUser } from "@/lib/auth";
+import { isPrivileged } from "@/lib/access";
 import { getActiveUsers } from "@/lib/cached-queries";
 import {
   StatusSelect,
   AssigneeSelect,
   PrioritySelect,
+  RecurrenceSelect,
 } from "./inline-controls";
 import { addComment, updateTaskMeta, cancelTask, deleteTask } from "./actions";
 import { fmtDueCountdown } from "@/lib/worktime";
@@ -63,6 +65,7 @@ function avaInitial(name?: string | null): string {
 
 export async function TaskPaneContent({ taskId }: { taskId: string }) {
   const me = await getCurrentUser();
+  const canAssignOthers = isPrivileged(me);
   const db = getDb();
 
   const [task] = await db
@@ -73,6 +76,7 @@ export async function TaskPaneContent({ taskId }: { taskId: string }) {
       status: tasks.status,
       priority: tasks.priority,
       dueDate: tasks.dueDate,
+      recurrence: tasks.recurrence,
       createdAt: tasks.createdAt,
       updatedAt: tasks.updatedAt,
       startedAt: tasks.startedAt,
@@ -179,10 +183,10 @@ export async function TaskPaneContent({ taskId }: { taskId: string }) {
                 <span className={`tava ${avaClass(task.assigneeName)}`}>
                   {avaInitial(task.assigneeName)}
                 </span>
-                <AssigneeSelect taskId={task.id} assigneeId={task.assigneeId} users={allUsers} />
+                <AssigneeSelect taskId={task.id} assigneeId={task.assigneeId} users={allUsers} canAssignOthers={canAssignOthers} />
               </span>
             ) : (
-              <AssigneeSelect taskId={task.id} assigneeId={null} users={allUsers} />
+              <AssigneeSelect taskId={task.id} assigneeId={null} users={allUsers} canAssignOthers={canAssignOthers} />
             )}
           </span>
         </div>
@@ -209,7 +213,17 @@ export async function TaskPaneContent({ taskId }: { taskId: string }) {
         </div>
         <div className="task-pane-meta-row">
           <span className="task-pane-meta-label">Due</span>
-          <span className="task-pane-meta-val" title={fmtDate(task.dueDate)}>{fmtDueCountdown(task.dueDate)}</span>
+          <span className="task-pane-meta-val" title={fmtDate(task.dueDate)}>
+            {task.status === "done" || task.status === "cancelled"
+              ? fmtDate(task.dueDate)
+              : fmtDueCountdown(task.dueDate)}
+          </span>
+        </div>
+        <div className="task-pane-meta-row">
+          <span className="task-pane-meta-label">Repeats</span>
+          <span className="task-pane-meta-val">
+            <RecurrenceSelect taskId={task.id} recurrence={task.recurrence} />
+          </span>
         </div>
       </div>
 
@@ -236,6 +250,7 @@ export async function TaskPaneContent({ taskId }: { taskId: string }) {
           dueTime: s.dueTime,
         }))}
         users={allUsers}
+        canAssignOthers={canAssignOthers}
       />
 
       {/* attachments */}

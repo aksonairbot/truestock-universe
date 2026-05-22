@@ -12,10 +12,12 @@ import {
   sql,
 } from "@tu/db";
 import { getCurrentUser } from "@/lib/auth";
+import { isPrivileged } from "@/lib/access";
 import {
   StatusSelect,
   AssigneeSelect,
   PrioritySelect,
+  RecurrenceSelect,
 } from "../inline-controls";
 import { addComment, updateTaskMeta, cancelTask, deleteTask } from "../actions";
 import { fmtDueCountdown } from "@/lib/worktime";
@@ -55,6 +57,7 @@ interface PageProps {
 export default async function TaskDetailPage({ params }: PageProps) {
   const { id } = await params;
   const me = await getCurrentUser();
+  const canAssignOthers = isPrivileged(me);
   const db = getDb();
 
   const [task] = await db
@@ -65,6 +68,7 @@ export default async function TaskDetailPage({ params }: PageProps) {
       status: tasks.status,
       priority: tasks.priority,
       dueDate: tasks.dueDate,
+      recurrence: tasks.recurrence,
       createdAt: tasks.createdAt,
       updatedAt: tasks.updatedAt,
       startedAt: tasks.startedAt,
@@ -215,6 +219,7 @@ export default async function TaskDetailPage({ params }: PageProps) {
               dueTime: s.dueTime,
             }))}
             users={allUsers}
+            canAssignOthers={canAssignOthers}
           />
 
           {/* attachments */}
@@ -315,7 +320,7 @@ export default async function TaskDetailPage({ params }: PageProps) {
 
           <div className="card">
             <div className="text-xs text-text-3 uppercase tracking-wider mb-1">Assignee</div>
-            <AssigneeSelect taskId={task.id} assigneeId={task.assigneeId} users={allUsers} />
+            <AssigneeSelect taskId={task.id} assigneeId={task.assigneeId} users={allUsers} canAssignOthers={canAssignOthers} />
           </div>
 
           <div className="card">
@@ -334,7 +339,16 @@ export default async function TaskDetailPage({ params }: PageProps) {
 
           <div className="card">
             <div className="text-xs text-text-3 uppercase tracking-wider mb-1">Due</div>
-            <div className="font-medium" title={fmtDate(task.dueDate)}>{fmtDueCountdown(task.dueDate)}</div>
+            <div className="font-medium" title={fmtDate(task.dueDate)}>
+              {task.status === "done" || task.status === "cancelled"
+                ? fmtDate(task.dueDate)
+                : fmtDueCountdown(task.dueDate)}
+            </div>
+          </div>
+
+          <div className="card">
+            <div className="text-xs text-text-3 uppercase tracking-wider mb-1">Repeats</div>
+            <RecurrenceSelect taskId={task.id} recurrence={task.recurrence} />
           </div>
 
           <div className="card text-text-3 text-xs">

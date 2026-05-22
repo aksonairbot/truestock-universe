@@ -37,7 +37,7 @@ export default function Sidebar({
   user,
   unreadCount: _legacyUnread = 0,
   chatUnreadCount: _legacyChatUnread = 0,
-  orgName = "SeekPeek",
+  orgName = "SeekPeak",
   orgMembersLine = "Truestock · daily work tracker",
   isPrivileged = false,
 }: SidebarProps) {

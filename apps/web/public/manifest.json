@@ -1,13 +1,12 @@
 {
-  "name": "SeekPeek",
-  "short_name": "SeekPeek",
+  "name": "SeekPeak",
+  "short_name": "SeekPeak",
   "description": "Task management for focused teams",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#06080D",
   "theme_color": "#7B5CFF",
   "icons": [
-    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" }
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
   ]
 }

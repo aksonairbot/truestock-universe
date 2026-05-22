@@ -28,7 +28,7 @@ function isDone(s: string) {
   return s === "done";
 }
 
-function SubtaskRow({ s, users }: { s: Subtask; users: UserOption[] }) {
+function SubtaskRow({ s, users, canAssignOthers }: { s: Subtask; users: UserOption[]; canAssignOthers: boolean }) {
   const [done, setDone] = useState(isDone(s.status));
   const [pending, start] = useTransition();
   const [assignPending, assignStart] = useTransition();
@@ -79,18 +79,24 @@ function SubtaskRow({ s, users }: { s: Subtask; users: UserOption[] }) {
           {s.dueTime ? ` ${s.dueTime}` : ""}
         </span>
       ) : null}
-      <select
-        className="subtask-assignee-select"
-        value={s.assigneeId ?? ""}
-        onChange={(e) => onAssigneeChange(e.target.value)}
-        disabled={assignPending}
-        title="Assign subtask"
-      >
-        <option value="">—</option>
-        {users.map((u) => (
-          <option key={u.id} value={u.id}>{u.name}</option>
-        ))}
-      </select>
+      {canAssignOthers ? (
+        <select
+          className="subtask-assignee-select"
+          value={s.assigneeId ?? ""}
+          onChange={(e) => onAssigneeChange(e.target.value)}
+          disabled={assignPending}
+          title="Assign subtask"
+        >
+          <option value="">—</option>
+          {users.map((u) => (
+            <option key={u.id} value={u.id}>{u.name}</option>
+          ))}
+        </select>
+      ) : (
+        <span className="subtask-assignee-readonly text-text-3 text-[11px]">
+          {s.assigneeName ?? "—"}
+        </span>
+      )}
     </li>
   );
 }
@@ -99,10 +105,13 @@ export function SubtaskList({
   parentId,
   initialSubtasks,
   users,
+  canAssignOthers = false,
 }: {
   parentId: string;
   initialSubtasks: Subtask[];
   users: UserOption[];
+  /** Only admins/managers can pick a different assignee for subtasks. */
+  canAssignOthers?: boolean;
 }) {
   // Sync state with server data when initialSubtasks changes after revalidation
   const [list, setList] = useState<Subtask[]>(initialSubtasks);
@@ -224,7 +233,7 @@ export function SubtaskList({
           onClick={runBreakdown}
           disabled={bdPending}
           className="break-down-btn"
-          title="Ask SeekPeek to suggest subtasks"
+          title="Ask SeekPeak to suggest subtasks"
         >
           {bdPending && !bdSuggestions ? (
             <>
@@ -278,7 +287,7 @@ export function SubtaskList({
       ) : (
         <>
           <ul className="subtask-list">
-            {view.map((s) => <SubtaskRow key={s.id} s={s} users={users} />)}
+            {view.map((s) => <SubtaskRow key={s.id} s={s} users={users} canAssignOthers={canAssignOthers} />)}
           </ul>
           <form onSubmit={onAdd} className="subtask-add-form">
             <div className="subtask-add-row">
@@ -293,18 +302,24 @@ export function SubtaskList({
               />
             </div>
             <div className="subtask-add-row" style={{ paddingTop: 0 }}>
-              <select
-                className="subtask-assignee-select"
-                value={selectedAssignee}
-                onChange={(e) => setSelectedAssignee(e.target.value)}
-                disabled={pending}
-                title="Assign to"
-              >
-                <option value="">Assign to…</option>
-                {users.map((u) => (
-                  <option key={u.id} value={u.id}>{u.name}</option>
-                ))}
-              </select>
+              {canAssignOthers ? (
+                <select
+                  className="subtask-assignee-select"
+                  value={selectedAssignee}
+                  onChange={(e) => setSelectedAssignee(e.target.value)}
+                  disabled={pending}
+                  title="Assign to"
+                >
+                  <option value="">Assign to…</option>
+                  {users.map((u) => (
+                    <option key={u.id} value={u.id}>{u.name}</option>
+                  ))}
+                </select>
+              ) : (
+                <span className="subtask-assignee-readonly text-text-3 text-[11px]" title="Subtasks are assigned to you">
+                  Assigned to you
+                </span>
+              )}
               <input
                 type="date"
                 className="subtask-due-input"

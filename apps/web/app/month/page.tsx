@@ -80,7 +80,7 @@ interface PageProps {
 }
 
 export const metadata = {
-  title: "Month · SeekPeek",
+  title: "Month · SeekPeak",
   description: "Monthly activity rollup",
 };
 
