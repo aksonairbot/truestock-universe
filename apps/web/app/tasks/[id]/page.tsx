@@ -21,6 +21,7 @@ import {
 } from "../inline-controls";
 import { addComment, updateTaskMeta, cancelTask, deleteTask } from "../actions";
 import { fmtDueCountdown } from "@/lib/worktime";
+import { Markdown } from "@/components/markdown";
 import { SubtaskList } from "../subtask-list";
 import { TaskAttachments } from "../task-attachments";
 import { ReviewActions } from "../review-actions";
@@ -48,6 +49,16 @@ function fmtTime(d: Date): string {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+/** Today (+ n days) as YYYY-MM-DD in IST — for date-input min/max. */
+function isoIST(plusDays = 0): string {
+  const today = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(new Date());
+  const d = new Date(`${today}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + plusDays);
+  return d.toISOString().slice(0, 10);
 }
 
 interface PageProps {
@@ -173,8 +184,8 @@ export default async function TaskDetailPage({ params }: PageProps) {
           <h1 className="text-2xl font-semibold tracking-tight mb-2">{task.title}</h1>
 
           {task.description ? (
-            <div className="card mb-4 whitespace-pre-wrap text-sm leading-relaxed text-text">
-              {task.description}
+            <div className="card mb-4">
+              <Markdown text={task.description} />
             </div>
           ) : (
             <div className="text-text-3 italic text-sm mb-4">No description</div>
@@ -208,13 +219,14 @@ export default async function TaskDetailPage({ params }: PageProps) {
                 <span className="text-xs text-text-3 uppercase tracking-wider">Due date <span style={{color:'var(--danger)'}}>*</span></span>
                 <input
                   name="dueDate"
-                  type="text"
+                  type="date"
                   required
                   defaultValue={task.dueDate ?? ""}
-                  placeholder="e.g. 3d, 8h, 2d 4h (max 10d)"
+                  min={isoIST(0)}
+                  max={isoIST(14)}
                   className="bg-panel-2 border border-border-2 rounded-md px-3 py-2 text-sm w-44"
                 />
-                <span className="text-[10px] text-text-4">Working hours: Mon–Fri, 9–6 PM · max 10 working days</span>
+                <span className="text-[10px] text-text-4">Up to 2 weeks out · shorthand like "3d" still works via quick capture</span>
               </label>
               <div className="flex justify-end">
                 <button
@@ -285,9 +297,7 @@ export default async function TaskDetailPage({ params }: PageProps) {
                       </span>
                     </div>
                   </div>
-                  <div className="whitespace-pre-wrap text-sm leading-relaxed text-text-2">
-                    {c.body}
-                  </div>
+                  <Markdown text={c.body} className="md-body text-sm leading-relaxed text-text-2" />
                 </div>
               ))}
             </div>
@@ -303,7 +313,7 @@ export default async function TaskDetailPage({ params }: PageProps) {
                 name="body"
                 rows={3}
                 required
-                placeholder="Markdown supported (rendered as plain text for now)"
+                placeholder="Markdown supported — **bold**, lists, links"
                 className="bg-panel-2 border border-border-2 rounded-md px-3 py-2 text-sm w-full"
               ></textarea>
             </label>

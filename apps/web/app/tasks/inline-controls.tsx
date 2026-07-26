@@ -1,6 +1,6 @@
 "use client";
 
-import { useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { updateTaskStatus, assignTask, updateTaskPriority, updateTaskRecurrence } from "./actions";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -14,20 +14,40 @@ const STATUS_LABELS: Record<string, string> = {
 const STATUSES = ["backlog", "todo", "in_progress", "review", "done", "cancelled"] as const;
 
 export function StatusSelect({ taskId, status }: { taskId: string; status: string }) {
-  const [pending, start] = useTransition();
+  // Optimistic: show the new value the instant it's picked; revert if the
+  // server action fails. Previously the select sat disabled+greyed until the
+  // full server round-trip (and revalidation) finished.
+  const [value, setValue] = useState(status);
+  const [failed, setFailed] = useState(false);
+  const [, start] = useTransition();
+
+  // Stay in sync when the server re-renders with a new status (e.g. someone
+  // else changed it, or the done-checkbox was used).
+  useEffect(() => { setValue(status); }, [status]);
+
   return (
     <select
-      defaultValue={status}
-      disabled={pending}
+      value={value}
       onChange={(e) => {
+        const next = e.target.value;
+        const prev = value;
+        setValue(next);
+        setFailed(false);
         const fd = new FormData();
         fd.set("taskId", taskId);
-        fd.set("status", e.target.value);
-        start(() => {
-          updateTaskStatus(fd);
+        fd.set("status", next);
+        start(async () => {
+          try {
+            await updateTaskStatus(fd);
+          } catch {
+            setValue(prev); // revert — server rejected the change
+            setFailed(true);
+          }
         });
       }}
-      className="bg-panel-2 border border-border-2 rounded-md px-2 py-1 text-xs cursor-pointer disabled:opacity-50"
+      className="bg-panel-2 border border-border-2 rounded-md px-2 py-1 text-xs cursor-pointer"
+      style={failed ? { borderColor: "var(--danger)" } : undefined}
+      title={failed ? "Change was rejected — reverted" : undefined}
     >
       {STATUSES.map((s) => (
         <option key={s} value={s}>

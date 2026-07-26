@@ -21,7 +21,7 @@ import { getActiveUsers } from "@/lib/cached-queries";
 import { isAdmin, isPrivileged, getDepartmentScope } from "@/lib/access";
 import { fmtDueCountdown, dueStatus } from "@/lib/worktime";
 import { StatusSelect, AssigneeSelect } from "./inline-controls";
-import { updateTaskStatus } from "./actions";
+import { updateTaskStatus, bulkSweepOverdue } from "./actions";
 import { TaskPane } from "./task-pane";
 import { TaskPaneContent } from "./task-pane-content";
 import { GroupForm } from "./group-form";
@@ -347,6 +347,45 @@ export default async function TasksPage({ searchParams }: PageProps) {
           Add task
         </Link>
         <div className="tb-divider" />
+        {overdueCount > 0 ? (
+          <details className="relative">
+            <summary
+              className="btn btn-ghost btn-sm list-none cursor-pointer select-none"
+              style={{ color: "var(--danger)" }}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="14" height="14">
+                <path d="M3 6h18M8 6V4a1 1 0 011-1h6a1 1 0 011 1v2M6 6l1 14a2 2 0 002 2h6a2 2 0 002-2l1-14" />
+              </svg>
+              Sweep overdue ({overdueCount})
+            </summary>
+            <div
+              className="absolute left-0 top-full mt-1 z-30 p-2 rounded-[10px] border border-border shadow-lg flex flex-col gap-1"
+              style={{ background: "var(--panel)", width: 280 }}
+            >
+              <div className="text-[11px] text-text-3 px-1 pb-1 leading-snug">
+                Applies to all {overdueCount} overdue task{overdueCount === 1 ? "" : "s"} you can see. Done and cancelled tasks are untouched.
+              </div>
+              <form action={bulkSweepOverdue}>
+                <input type="hidden" name="op" value="reschedule" />
+                <button type="submit" className="btn btn-ghost btn-sm w-full" style={{ justifyContent: "flex-start" }}>
+                  Reschedule all to today
+                </button>
+              </form>
+              <form action={bulkSweepOverdue}>
+                <input type="hidden" name="op" value="backlog" />
+                <button type="submit" className="btn btn-ghost btn-sm w-full" style={{ justifyContent: "flex-start" }}>
+                  Move all to Backlog (clears due date)
+                </button>
+              </form>
+              <form action={bulkSweepOverdue}>
+                <input type="hidden" name="op" value="cancel" />
+                <button type="submit" className="btn btn-ghost btn-sm w-full" style={{ justifyContent: "flex-start", color: "var(--danger)" }}>
+                  Cancel all overdue
+                </button>
+              </form>
+            </div>
+          </details>
+        ) : null}
         {!isBoard ? (
           <GroupForm view={view} group={group} q={q} />
         ) : null}

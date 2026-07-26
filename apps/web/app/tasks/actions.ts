@@ -2,9 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { getDb, tasks, projects, taskComments, eq } from "@tu/db";
+import { getDb, tasks, projects, taskComments, eq, and, sql } from "@tu/db";
 import { getCurrentUserId, getCurrentUser } from "@/lib/auth";
-import { isPrivileged, requireTaskAccess } from "@/lib/access";
+import { isPrivileged, isAdmin, getDepartmentScope, requireTaskAccess } from "@/lib/access";
 import { log } from "@/lib/log";
 import { notifyAssigned, notifyTaskCompleted, notifyCommentOnAssigned, notifyMentions, notifyReviewRequested, notifyReviewOutcome } from "@/lib/notify";
 import { offsetToDeadline, deadlineToDateStr } from "@/lib/worktime";
@@ -59,6 +59,30 @@ function bumpDueDate(dueDate: string | null, recurrence: TaskRecurrence): string
     timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit",
   });
   return fmt.format(base);
+}
+
+const MAX_DUE_CALENDAR_DAYS = 14; // ≈ 10 working days, matches the old cap
+
+/** todayIST + n days, as YYYY-MM-DD. */
+function plusDaysIST(days: number): string {
+  const d = new Date(`${todayIST()}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Validate a YYYY-MM-DD due date from the date pickers. This branch used to
+ * bypass ALL validation (no cap, past dates allowed). `allowSame` lets an
+ * edit keep a task's existing (possibly overdue) due date so saving a title
+ * change on an overdue task doesn't get rejected.
+ */
+function validateDueDateStr(dueDate: string, allowSame?: string | null): void {
+  if (allowSame && dueDate === allowSame) return;
+  const today = todayIST();
+  if (dueDate < today) throw new Error("Due date cannot be in the past.");
+  if (dueDate > plusDaysIST(MAX_DUE_CALENDAR_DAYS)) {
+    throw new Error("Due date cannot be more than 2 weeks out.");
+  }
 }
 
 /** Parse a due-date input string and return total working hours. */
@@ -182,7 +206,8 @@ export async function createTask(formData: FormData): Promise<string> {
   let dueDate: string | null = null;
   if (dueDateInput) {
     if (/^\d{4}-\d{2}-\d{2}$/.test(dueDateInput)) {
-      dueDate = dueDateInput; // legacy date format
+      validateDueDateStr(dueDateInput);
+      dueDate = dueDateInput;
     } else {
       const parsed = parseDueInput(dueDateInput);
       if (parsed.totalHours > MAX_DUE_HOURS) {
@@ -552,6 +577,7 @@ export async function updateTaskMeta(formData: FormData): Promise<void> {
 
   if (dueDateInput) {
     if (/^\d{4}-\d{2}-\d{2}$/.test(dueDateInput)) {
+      validateDueDateStr(dueDateInput, existing.dueDate);
       set.dueDate = dueDateInput;
     } else {
       // Validate max 10 working days
@@ -614,6 +640,7 @@ export async function addSubtask(formData: FormData): Promise<void> {
     }
     dueDate = deadlineToDateStr(offsetToDeadline(dueDateInput));
   } else {
+    if (dueDateInput) validateDueDateStr(dueDateInput, parent.dueDate);
     dueDate = dueDateInput ?? parent.dueDate;
   }
   if (!dueDate) {
@@ -704,6 +731,53 @@ export async function updateTaskRecurrence(formData: FormData): Promise<void> {
   log.info("task.recurrence_updated", { taskId, recurrence: recurrenceRaw });
   revalidatePath("/tasks");
   revalidatePath(`/tasks/${taskId}`);
+}
+
+// ---------------------------------------------------------------------------
+// bulkSweepOverdue — one-click sweep of ALL overdue tasks the caller can see.
+// Ops:
+//   reschedule → due_date = today (IST)
+//   backlog    → status = backlog, due_date cleared (it's parked, not late)
+//   cancel     → status = cancelled
+// Scope mirrors the /tasks data wall: admin = org-wide, manager = department
+// (assignee or creator), member = own (assignee or creator). Never touches
+// done/cancelled tasks.
+// ---------------------------------------------------------------------------
+export async function bulkSweepOverdue(formData: FormData): Promise<void> {
+  const me = await getCurrentUser();
+  const op = ((formData.get("op") as string) ?? "").trim();
+  if (op !== "reschedule" && op !== "backlog" && op !== "cancel") {
+    throw new Error(`invalid sweep op: ${op}`);
+  }
+
+  const db = getDb();
+  const today = todayIST();
+  const overdueCond = sql`${tasks.status} not in ('done'::task_status,'cancelled'::task_status) and ${tasks.dueDate} < ${today}`;
+
+  const deptScope = getDepartmentScope(me);
+  const scopeCond = isAdmin(me)
+    ? sql`1=1`
+    : deptScope
+      ? sql`(${tasks.assigneeId} in (select id from users where department_id = ${deptScope}) or ${tasks.createdById} in (select id from users where department_id = ${deptScope}))`
+      : sql`(${tasks.assigneeId} = ${me.id} or ${tasks.createdById} = ${me.id})`;
+
+  const now = new Date();
+  const set =
+    op === "reschedule"
+      ? { dueDate: today, updatedAt: now }
+      : op === "backlog"
+        ? { status: "backlog" as const, dueDate: null, updatedAt: now }
+        : { status: "cancelled" as const, updatedAt: now };
+
+  const swept = await db
+    .update(tasks)
+    .set(set)
+    .where(and(overdueCond, scopeCond))
+    .returning({ id: tasks.id });
+
+  log.info("task.bulk_sweep", { op, count: swept.length, actorId: me.id, role: me.role });
+  revalidatePath("/tasks");
+  revalidatePath("/");
 }
 
 // ---------------------------------------------------------------------------
