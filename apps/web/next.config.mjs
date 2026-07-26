@@ -15,6 +15,12 @@ const nextConfig = {
   logging: {
     fetches: { fullUrl: false },
   },
+  async redirects() {
+    return [
+      // Sidebar labels this "Inbox" — people who type /inbox got a 404.
+      { source: "/inbox", destination: "/notifications", permanent: false },
+    ];
+  },
   async headers() {
     return [
       {

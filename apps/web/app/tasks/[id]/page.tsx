@@ -12,7 +12,7 @@ import {
   sql,
 } from "@tu/db";
 import { getCurrentUser } from "@/lib/auth";
-import { isPrivileged } from "@/lib/access";
+import { isPrivileged, requireTaskAccess } from "@/lib/access";
 import {
   StatusSelect,
   AssigneeSelect,
@@ -86,52 +86,73 @@ export default async function TaskDetailPage({ params }: PageProps) {
 
   if (!task) notFound();
 
-  const [creator] = task.createdById
-    ? await db.select({ name: users.name }).from(users).where(eq(users.id, task.createdById)).limit(1)
-    : [undefined];
+  // Read-path data wall: the list page scopes what members/managers can see,
+  // but this page previously served ANY task to anyone holding its UUID.
+  // Mirror the mutation-path check; render 404 (not 403) so URLs don't leak
+  // task existence.
+  try {
+    await requireTaskAccess(task.id, me);
+  } catch {
+    // Mirror the list page's extra rule: you may view a parent task when one
+    // of its subtasks is assigned to you.
+    const [mySubtask] = await db
+      .select({ id: tasks.id })
+      .from(tasks)
+      .where(sql`${tasks.parentTaskId} = ${task.id} and ${tasks.assigneeId} = ${me.id}`)
+      .limit(1);
+    if (!mySubtask) notFound();
+  }
 
-  const allUsers = await db.select({ id: users.id, name: users.name }).from(users);
+  // Independent reads — one parallel batch instead of 5 sequential round-trips.
+  const [creatorArr, allUsers, comments, subtaskRows, attachmentRows] = await Promise.all([
+    task.createdById
+      ? db.select({ name: users.name }).from(users).where(eq(users.id, task.createdById)).limit(1)
+      : Promise.resolve([undefined] as Array<{ name: string } | undefined>),
 
-  const comments = await db
-    .select({
-      id: taskComments.id,
-      body: taskComments.body,
-      kind: taskComments.kind,
-      createdAt: taskComments.createdAt,
-      author: { id: users.id, name: users.name, email: users.email },
-    })
-    .from(taskComments)
-    .leftJoin(users, eq(taskComments.authorId, users.id))
-    .where(eq(taskComments.taskId, task.id))
-    .orderBy(asc(taskComments.createdAt));
+    db.select({ id: users.id, name: users.name }).from(users),
 
-  // subtasks
-  const subtaskRows = await db
-    .select({
-      id: tasks.id,
-      title: tasks.title,
-      status: tasks.status,
-      assigneeName: users.name,
-      assigneeId: tasks.assigneeId,
-      dueDate: tasks.dueDate,
-      dueTime: tasks.dueTime,
-    })
-    .from(tasks)
-    .leftJoin(users, eq(tasks.assigneeId, users.id))
-    .where(sql`${tasks.parentTaskId} = ${task.id}`)
-    .orderBy(asc(tasks.createdAt));
+    db
+      .select({
+        id: taskComments.id,
+        body: taskComments.body,
+        kind: taskComments.kind,
+        createdAt: taskComments.createdAt,
+        author: { id: users.id, name: users.name, email: users.email },
+      })
+      .from(taskComments)
+      .leftJoin(users, eq(taskComments.authorId, users.id))
+      .where(eq(taskComments.taskId, task.id))
+      .orderBy(asc(taskComments.createdAt)),
 
-  // attachments
-  const attachmentRows = await db
-    .select({
-      id: taskAttachments.id,
-      filename: taskAttachments.filename,
-      mime: taskAttachments.mime,
-      sizeBytes: taskAttachments.sizeBytes,
-    })
-    .from(taskAttachments)
-    .where(eq(taskAttachments.taskId, task.id))
-    .orderBy(asc(taskAttachments.createdAt));
+    // subtasks
+    db
+      .select({
+        id: tasks.id,
+        title: tasks.title,
+        status: tasks.status,
+        assigneeName: users.name,
+        assigneeId: tasks.assigneeId,
+        dueDate: tasks.dueDate,
+        dueTime: tasks.dueTime,
+      })
+      .from(tasks)
+      .leftJoin(users, eq(tasks.assigneeId, users.id))
+      .where(sql`${tasks.parentTaskId} = ${task.id}`)
+      .orderBy(asc(tasks.createdAt)),
+
+    // attachments
+    db
+      .select({
+        id: taskAttachments.id,
+        filename: taskAttachments.filename,
+        mime: taskAttachments.mime,
+        sizeBytes: taskAttachments.sizeBytes,
+      })
+      .from(taskAttachments)
+      .where(eq(taskAttachments.taskId, task.id))
+      .orderBy(asc(taskAttachments.createdAt)),
+  ]);
+  const [creator] = creatorArr;
 
   return (
     <div className="min-h-screen px-6 md:px-8 py-6 max-w-[1100px] mx-auto">

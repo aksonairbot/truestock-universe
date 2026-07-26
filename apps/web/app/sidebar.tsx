@@ -44,15 +44,19 @@ export default function Sidebar({
   const { unread: unreadCount, chatUnread: chatUnreadCount } = useBadgeCounts();
   const rawPath = usePathname() ?? "/";
   const [mobileOpen, setMobileOpen] = useState(false);
-  // Welcome page is a full-bleed landing for unauthenticated visitors — no app shell.
-  if (rawPath === "/welcome" || rawPath.startsWith("/welcome/")) return null;
   // Normalize: strip trailing slash (except root), drop any query/hash
   const pathname = rawPath !== "/" && rawPath.endsWith("/") ? rawPath.slice(0, -1) : rawPath;
   const isActive = (href: string) =>
-    pathname === href || (href !== "/" && pathname.startsWith(href + "/")) || pathname === href;
+    pathname === href || (href !== "/" && pathname.startsWith(href + "/"));
 
   // Close mobile drawer on route change
   useEffect(() => { setMobileOpen(false); }, [pathname]);
+
+  // Welcome page is a full-bleed landing for unauthenticated visitors — no app
+  // shell. NOTE: this must come AFTER every hook call — an early return before
+  // useEffect changed the hook count between renders and crashed client-side
+  // navigation to/from /welcome (Rules of Hooks).
+  if (rawPath === "/welcome" || rawPath.startsWith("/welcome/")) return null;
 
   return (
     <>
@@ -107,7 +111,7 @@ export default function Sidebar({
         <NavLink href="/" active={pathname === "/" || pathname === ""} icon={<IcToday />}>
           Today
         </NavLink>
-        <NavLink href="/me/week" active={isActive("/me")} icon={<IcSpark />}>
+        <NavLink href="/me/week" active={isActive("/me/week")} icon={<IcSpark />}>
           My week
         </NavLink>
         <NavLink href="/me/month" active={isActive("/me/month")} icon={<IcCalendar />}>

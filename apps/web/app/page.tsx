@@ -12,7 +12,6 @@
 
 import { Suspense } from "react";
 import Link from "next/link";
-import { MyDayHero } from "./my-day-hero";
 import { BriefingCard } from "./briefing-card";
 import { ReviewCard } from "./review-card";
 import { TeamVelocity } from "./team-velocity";
@@ -198,13 +197,15 @@ export default async function HomePage({ searchParams }: PageProps) {
     .where(and(gte(taskComments.createdAt, dayStart), lte(taskComments.createdAt, dayEnd)))
     .orderBy(desc(taskComments.createdAt)),
 
-    // open load per assignee
+    // open load per assignee — includes a NULL-assignee row so unassigned open
+    // tasks are counted (previously they silently vanished here, making this
+    // page's totals disagree with /tasks by exactly the unassigned count)
     db.select({
       assigneeId: tasks.assigneeId,
       n: sql<number>`count(*)::int`.as("n"),
     })
     .from(tasks)
-    .where(and(sql`${tasks.assigneeId} is not null`, sql`${tasks.status} not in ('done'::task_status,'cancelled'::task_status)`))
+    .where(sql`${tasks.status} not in ('done'::task_status,'cancelled'::task_status)`)
     .groupBy(tasks.assigneeId),
 
     // tasks awaiting review
@@ -222,33 +223,35 @@ export default async function HomePage({ searchParams }: PageProps) {
     .where(and(sql`${tasks.status} = 'review'::task_status`, reviewScope))
     .orderBy(desc(tasks.updatedAt)),
 
-    // hero stats: due today
+    // hero stats: due today (scoped to the viewer's data wall — these were
+    // previously org-wide for every member)
     db.select({ n: sql<number>`count(*)::int` }).from(tasks)
-      .where(and(eq(tasks.dueDate, date), sql`${tasks.status} not in ('done'::task_status,'cancelled'::task_status)`)),
+      .where(and(eq(tasks.dueDate, date), sql`${tasks.status} not in ('done'::task_status,'cancelled'::task_status)`, reviewScope)),
 
     // hero stats: in progress
     db.select({ n: sql<number>`count(*)::int` }).from(tasks)
-      .where(sql`${tasks.status} = 'in_progress'::task_status`),
+      .where(and(sql`${tasks.status} = 'in_progress'::task_status`, reviewScope)),
 
     // hero stats: week completed
     db.select({ n: sql<number>`count(*)::int` }).from(tasks)
-      .where(and(eq(tasks.status, "done"), sql`${tasks.completedAt} >= ${weekStart.toISOString()}`)),
+      .where(and(eq(tasks.status, "done"), sql`${tasks.completedAt} >= ${weekStart.toISOString()}`, reviewScope)),
 
     // hero stats: overdue
     db.select({ n: sql<number>`count(*)::int` }).from(tasks)
-      .where(and(sql`${tasks.status} not in ('done'::task_status,'cancelled'::task_status)`, sql`${tasks.dueDate} < ${date}`)),
+      .where(and(sql`${tasks.status} not in ('done'::task_status,'cancelled'::task_status)`, sql`${tasks.dueDate} < ${date}`, reviewScope)),
   ]);
 
   const openMap = new Map<string, number>();
-  for (const r of openLoad) if (r.assigneeId) openMap.set(r.assigneeId, r.n);
+  let unassignedOpen = 0;
+  for (const r of openLoad) {
+    if (r.assigneeId) openMap.set(r.assigneeId, r.n);
+    else unassignedOpen = r.n;
+  }
 
   const dueToday = dueTodayArr[0]?.n ?? 0;
   const inProgress = inProgressArr[0]?.n ?? 0;
   const weekCompleted = weekCompArr[0]?.n ?? 0;
   const overdueTasks = overdueArr[0]?.n ?? 0;
-  const focusScore = weekCompleted + overdueTasks > 0
-    ? Math.round((weekCompleted / (weekCompleted + overdueTasks)) * 100)
-    : 100;
 
   // ---------- bucket per user ----------
   // (Bucket type is declared at module scope so PersonTile can consume it.)
@@ -356,7 +359,7 @@ export default async function HomePage({ searchParams }: PageProps) {
                 <div className="daily-hero-stat-info">
                   <span className="daily-hero-stat-label">Completed this week</span>
                   <span className="daily-hero-stat-val">{weekCompleted}</span>
-                  <span className="daily-hero-stat-sub">Keep it up!</span>
+                  <span className="daily-hero-stat-sub">Since Monday</span>
                 </div>
               </div>
               <div className="daily-hero-stat-card">
@@ -364,10 +367,10 @@ export default async function HomePage({ searchParams }: PageProps) {
                   <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd"/></svg>
                 </div>
                 <div className="daily-hero-stat-info">
-                  <span className="daily-hero-stat-label">Focus score</span>
-                  <span className="daily-hero-stat-val">{focusScore}%</span>
-                  <span className={`daily-hero-stat-sub ${focusScore < 70 ? "warn" : ""}`}>
-                    {focusScore >= 85 ? "On track" : focusScore >= 70 ? "Good" : "Needs attention"}
+                  <span className="daily-hero-stat-label">Overdue</span>
+                  <span className="daily-hero-stat-val">{overdueTasks}</span>
+                  <span className={`daily-hero-stat-sub ${overdueTasks > 0 ? "warn" : ""}`}>
+                    {overdueTasks > 0 ? "Needs a sweep" : "All clear"}
                   </span>
                 </div>
               </div>
@@ -408,10 +411,6 @@ export default async function HomePage({ searchParams }: PageProps) {
         <BriefingCard />
       </Suspense>
 
-      <Suspense fallback={<div className="myday" style={{ minHeight: 200 }} />}>
-        <MyDayHero />
-      </Suspense>
-
       <Suspense fallback={null}>
         <TeamVelocity />
       </Suspense>
@@ -424,6 +423,7 @@ export default async function HomePage({ searchParams }: PageProps) {
             {isToday ? "" : <span className="text-text-3"> · viewing the past</span>}
             {" · "}
             {totals.completed} completed · {totals.created} new · {totals.comments} comments · {totals.activePeople} active
+            {unassignedOpen > 0 ? ` · ${unassignedOpen} unassigned open` : ""}
           </div>
         </div>
 

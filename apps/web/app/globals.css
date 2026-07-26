@@ -1057,7 +1057,7 @@ select:focus {
   border-radius: 16px;
   overflow: hidden;
   margin-bottom: 20px;
-  background-image: url(/hero/today-banner.png);
+  background-image: url(/hero/today.webp);
   background-size: cover;
   background-position: center 30%;
   animation: tu-fade-in 0.5s ease-out both;

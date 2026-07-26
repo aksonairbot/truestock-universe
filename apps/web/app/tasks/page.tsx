@@ -69,38 +69,49 @@ function fmtDate(d: string | Date | null): string {
   return date.toLocaleDateString("en-IN", { day: "2-digit", month: "short", timeZone: "Asia/Kolkata" });
 }
 
-function startOfToday(): Date {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d;
+// All bucketing below compares IST calendar-date STRINGS. The previous
+// Date-object math used the server's local midnight — on a UTC server,
+// between 00:00 and 05:30 IST every night the buckets and red highlighting
+// disagreed with the header stats (which are computed in IST SQL).
+const TZ = "Asia/Kolkata";
+
+/** Today's date in IST as YYYY-MM-DD. */
+function todayIST(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(new Date());
 }
 
-function endOfThisWeek(): Date {
-  // ISO week: Monday=0, Sunday=6 — but Asana commonly uses Sunday end of week.
-  // We use "next Sunday 23:59:59.999" to feel familiar.
-  const d = startOfToday();
-  const day = d.getDay(); // 0=Sun..6=Sat
-  const daysUntilSunday = (7 - day) % 7; // today is Sunday → 0 (this Sunday)
-  d.setDate(d.getDate() + daysUntilSunday);
-  d.setHours(23, 59, 59, 999);
-  return d;
+/** Normalize a due value (YYYY-MM-DD string or Date) to an IST date string. */
+function dateStrOf(d: string | Date): string {
+  if (typeof d === "string") return d.slice(0, 10);
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(d);
+}
+
+/** Shift a YYYY-MM-DD calendar date by n days. */
+function shiftDateStr(date: string, days: number): string {
+  const d = new Date(`${date}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+/** This week ends next Sunday (Asana-style), as YYYY-MM-DD. */
+function endOfThisWeekStr(today: string): string {
+  const day = new Date(`${today}T12:00:00Z`).getUTCDay(); // 0=Sun..6=Sat
+  return shiftDateStr(today, (7 - day) % 7);
 }
 
 function dueBucket(due: string | Date | null, status: string): string {
   if (status === "done") return "done";
   if (status === "cancelled") return "cancelled";
   if (!due) return "no_due";
-  const dueDate = typeof due === "string" ? new Date(due) : due;
-  const today = startOfToday();
-  const weekEnd = endOfThisWeek();
-  if (dueDate < today) return "overdue";
-  // Treat dates that fall on today (any time) as Today
-  const sameDay =
-    dueDate.getFullYear() === today.getFullYear() &&
-    dueDate.getMonth() === today.getMonth() &&
-    dueDate.getDate() === today.getDate();
-  if (sameDay) return "today";
-  if (dueDate <= weekEnd) return "this_week";
+  const dueStr = dateStrOf(due);
+  const today = todayIST();
+  if (dueStr < today) return "overdue";
+  if (dueStr === today) return "today";
+  if (dueStr <= endOfThisWeekStr(today)) return "this_week";
   return "later";
 }
 
@@ -137,8 +148,7 @@ function avaInitial(name?: string | null): string {
 
 function isOverdue(t: { dueDate: string | Date | null; status: string }): boolean {
   if (!t.dueDate || t.status === "done" || t.status === "cancelled") return false;
-  const d = typeof t.dueDate === "string" ? new Date(t.dueDate) : t.dueDate;
-  return d < startOfToday();
+  return dateStrOf(t.dueDate) < todayIST();
 }
 
 // ---------------------------------------------------------------------------
@@ -219,10 +229,25 @@ export default async function TasksPage({ searchParams }: PageProps) {
       .innerJoin(projects, eq(tasks.projectId, projects.id))
       .leftJoin(users, eq(tasks.assigneeId, users.id))
       .where(where)
-      .orderBy(desc(tasks.createdAt))
+      // In the due-grouped list view, open tasks sort by earliest due first so
+      // every overdue task is on page 1 (previously createdAt-desc paging could
+      // say "12 overdue" in the header while the Overdue section showed 2 —
+      // the rest were on later pages). Closed tasks sink to the bottom.
+      .orderBy(
+        ...(!isBoard && group === "due"
+          ? [
+              sql`case when ${tasks.status} in ('done'::task_status,'cancelled'::task_status) then 1 else 0 end asc`,
+              sql`${tasks.dueDate} asc nulls last`,
+            ]
+          : []),
+        desc(tasks.createdAt),
+      )
       .limit(PAGE_SIZE)
       .offset(offset),
-    // One query, three stats via FILTER — single table scan instead of three
+    // One query, three stats via FILTER — single table scan instead of three.
+    // No projects join: the filters never reference projects, and the join
+    // silently dropped tasks whose project row was missing, making this page's
+    // counts disagree with the Today page.
     db
       .select({
         total: sql<number>`count(*)::int`,
@@ -230,7 +255,6 @@ export default async function TasksPage({ searchParams }: PageProps) {
         overdue: sql<number>`count(*) filter (where status not in ('done','cancelled') and due_date < (now() at time zone 'Asia/Kolkata')::date)::int`,
       })
       .from(tasks)
-      .innerJoin(projects, eq(tasks.projectId, projects.id))
       .where(where),
     // Cached per-request — shared with TaskPaneContent if panel is open
     getActiveUsers(),
@@ -286,8 +310,6 @@ export default async function TasksPage({ searchParams }: PageProps) {
               </>
             ) : null}
             {totalPages > 1 ? ` · page ${page} of ${totalPages}` : null}
-            {" · signed in as "}
-            <span className="mono">{me.email}</span>
           </div>
         </div>
       </div>
@@ -314,26 +336,6 @@ export default async function TasksPage({ searchParams }: PageProps) {
           </svg>
           Board
         </Link>
-        <span className="view-tab disabled" title="Soon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="14" height="14">
-            <rect x="3" y="5" width="18" height="16" rx="2" />
-            <path d="M3 10h18M8 3v4M16 3v4" />
-          </svg>
-          Calendar
-        </span>
-        <span className="view-tab disabled" title="Soon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="14" height="14">
-            <path d="M3 6h18M3 12h12M3 18h6" />
-          </svg>
-          Timeline
-        </span>
-        <span className="view-tab disabled" title="Soon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="14" height="14">
-            <path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
-            <path d="M14 3v6h6" />
-          </svg>
-          Files
-        </span>
       </div>
 
       {/* ------------------------- toolbar ------------------------- */}
@@ -345,18 +347,6 @@ export default async function TasksPage({ searchParams }: PageProps) {
           Add task
         </Link>
         <div className="tb-divider" />
-        <button type="button" className="btn btn-ghost btn-sm" disabled title="Filters land in v2">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="14" height="14">
-            <path d="M3 5h18M6 12h12M10 19h4" />
-          </svg>
-          Filter
-        </button>
-        <button type="button" className="btn btn-ghost btn-sm" disabled title="Sort lands in v2">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="14" height="14">
-            <path d="M7 4v16M3 8l4-4 4 4M17 4v16M13 16l4 4 4-4" />
-          </svg>
-          Sort
-        </button>
         {!isBoard ? (
           <GroupForm view={view} group={group} q={q} />
         ) : null}
@@ -602,24 +592,35 @@ function TaskRow({
 
   return (
     <div className={`arow ${done ? "is-done" : ""} ${cancelled ? "is-cancelled" : ""}`}>
-      {/* completion check — server form, no JS needed */}
+      {/* completion check — server form, no JS needed. Cancelled tasks get a
+          static box: the old form posted status="done" unconditionally, so one
+          stray click resurrected a cancelled task as completed. */}
       <div className="alist-cell-check">
-        <form action={updateTaskStatus}>
-          <input type="hidden" name="taskId" value={t.id} />
-          <input type="hidden" name="status" value={done ? "todo" : "done"} />
-          <button
-            type="submit"
-            aria-label={done ? "Mark as to do" : "Mark as done"}
-            className={`acheck ${done ? "is-done" : ""}`}
-            title={done ? "Mark as to do" : "Mark as done"}
-          >
-            {done ? (
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="11" height="11">
-                <path d="m5 12 5 5L20 7" />
-              </svg>
-            ) : null}
-          </button>
-        </form>
+        {cancelled ? (
+          <span
+            className="acheck"
+            style={{ opacity: 0.35, cursor: "not-allowed" }}
+            title="Cancelled — reopen it from the task page first"
+            aria-label="Cancelled task"
+          />
+        ) : (
+          <form action={updateTaskStatus}>
+            <input type="hidden" name="taskId" value={t.id} />
+            <input type="hidden" name="status" value={done ? "todo" : "done"} />
+            <button
+              type="submit"
+              aria-label={done ? "Mark as to do" : "Mark as done"}
+              className={`acheck ${done ? "is-done" : ""}`}
+              title={done ? "Mark as to do" : "Mark as done"}
+            >
+              {done ? (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="11" height="11">
+                  <path d="m5 12 5 5L20 7" />
+                </svg>
+              ) : null}
+            </button>
+          </form>
+        )}
       </div>
 
       <div className="alist-cell-title">
@@ -742,11 +743,7 @@ function BoardView({
                       <span className="text-text-3 italic">unassigned</span>
                     )}
                     <span
-                      className={`tdue ${
-                        t.dueDate && new Date(t.dueDate) < startOfToday() && t.status !== "done" && t.status !== "cancelled"
-                          ? "red"
-                          : ""
-                      }`}
+                      className={`tdue ${isOverdue(t) ? "red" : ""}`}
                       title={t.dueDate ? fmtDate(t.dueDate) : ""}
                     >
                       {t.dueDate

@@ -8,7 +8,6 @@ import { isPrivileged, requireTaskAccess } from "@/lib/access";
 import { log } from "@/lib/log";
 import { notifyAssigned, notifyTaskCompleted, notifyCommentOnAssigned, notifyMentions, notifyReviewRequested, notifyReviewOutcome } from "@/lib/notify";
 import { offsetToDeadline, deadlineToDateStr } from "@/lib/worktime";
-import { checkAndAwardBadges } from "@/lib/badges";
 
 const TASK_STATUSES = ["backlog", "todo", "in_progress", "review", "done", "cancelled"] as const;
 const TASK_PRIORITIES = ["low", "med", "high", "urgent"] as const;
@@ -19,14 +18,36 @@ const MAX_DUE_HOURS = MAX_DUE_DAYS * HOURS_PER_DAY; // 90 working hours
 
 type TaskRecurrence = (typeof TASK_RECURRENCES)[number];
 
+/**
+ * Run a notification out of the request's critical path. Notifications can
+ * involve external HTTP (WhatsApp) — awaiting them made every status change /
+ * assign / comment hang until the provider responded. DB writes inside notify
+ * still happen; failures are logged, never surfaced to the user.
+ */
+function notifyInBackground(p: Promise<unknown>, event: string, ctx: Record<string, unknown>): void {
+  p.catch((e) => log.error(event, { ...ctx, error: (e as Error).message, stack: (e as Error).stack }));
+}
+
 function isTaskRecurrence(v: string): v is TaskRecurrence {
   return (TASK_RECURRENCES as readonly string[]).includes(v);
 }
 
+/** Today's date in IST as YYYY-MM-DD. */
+function todayIST(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(new Date());
+}
+
 /** Add the recurrence interval to a YYYY-MM-DD date, return YYYY-MM-DD. */
 function bumpDueDate(dueDate: string | null, recurrence: TaskRecurrence): string {
-  // If the recurring task had no due date, base the next one on today.
-  const base = dueDate ? new Date(`${dueDate}T12:00:00+05:30`) : new Date();
+  // Roll-forward: if the instance being closed is already overdue (or has no
+  // due date), base the next cycle on TODAY instead of the stale due date.
+  // Otherwise a daily task completed 24 days late would spawn a child that is
+  // born 23 days overdue and the chain never recovers.
+  const today = todayIST();
+  const effectiveDue = dueDate && dueDate >= today ? dueDate : today;
+  const base = new Date(`${effectiveDue}T12:00:00+05:30`);
   switch (recurrence) {
     case "daily":   base.setDate(base.getDate() + 1); break;
     case "weekly":  base.setDate(base.getDate() + 7); break;
@@ -51,7 +72,12 @@ function parseDueInput(input: string): { totalHours: number } {
     const n = Number(input);
     if (!isNaN(n) && n > 0) totalHours = n * HOURS_PER_DAY;
   }
-  return { totalHours: totalHours || HOURS_PER_DAY };
+  if (totalHours <= 0) {
+    // Previously unparseable input (e.g. "tomorrow") silently became 1 working
+    // day — a due date the user never chose. Reject instead.
+    throw new Error(`Could not understand due date "${input}". Use formats like "3d", "8h", "2d 4h", or a date (YYYY-MM-DD).`);
+  }
+  return { totalHours };
 }
 type TaskStatus = (typeof TASK_STATUSES)[number];
 type TaskPriority = (typeof TASK_PRIORITIES)[number];
@@ -61,6 +87,75 @@ function isTaskStatus(v: string): v is TaskStatus {
 }
 function isTaskPriority(v: string): v is TaskPriority {
   return (TASK_PRIORITIES as readonly string[]).includes(v);
+}
+
+/**
+ * Spawn the next cycle for a recurring task that was just closed. Each
+ * instance is its own row pointing at the completed one via
+ * recurrence_parent_id, so the audit trail on every cycle stays intact.
+ *
+ * Idempotency: toggling done → todo → done (or a review-approve after a
+ * direct done) would otherwise spawn a fresh child every transition — skip
+ * if a child already exists for this parent. Never throws.
+ */
+async function spawnRecurrenceCycle(db: ReturnType<typeof getDb>, taskId: string, actorId: string): Promise<void> {
+  try {
+    const [t] = await db
+      .select({
+        title: tasks.title,
+        description: tasks.description,
+        projectId: tasks.projectId,
+        priority: tasks.priority,
+        assigneeId: tasks.assigneeId,
+        dueDate: tasks.dueDate,
+        recurrence: tasks.recurrence,
+      })
+      .from(tasks)
+      .where(eq(tasks.id, taskId))
+      .limit(1);
+    if (!t || !t.recurrence || t.recurrence === "none" || !isTaskRecurrence(t.recurrence)) return;
+
+    const [existingChild] = await db
+      .select({ id: tasks.id })
+      .from(tasks)
+      .where(eq(tasks.recurrenceParentId, taskId))
+      .limit(1);
+    if (existingChild) {
+      log.info("task.recurrence_skip_dup", { parentTaskId: taskId, childTaskId: existingChild.id });
+      return;
+    }
+
+    const nextDue = bumpDueDate(t.dueDate, t.recurrence);
+    const [spawned] = await db
+      .insert(tasks)
+      .values({
+        projectId: t.projectId,
+        title: t.title,
+        description: t.description,
+        status: "todo",
+        priority: t.priority,
+        dueDate: nextDue,
+        assigneeId: t.assigneeId,
+        recurrence: t.recurrence,
+        recurrenceParentId: taskId,
+        createdById: actorId,
+      })
+      .returning({ id: tasks.id });
+    log.info("task.recurrence_spawned", {
+      parentTaskId: taskId, spawnedTaskId: spawned?.id,
+      recurrence: t.recurrence, nextDue,
+    });
+    // Let the assignee know there's a fresh copy on their queue, but only if
+    // it's not the same person who just closed it.
+    if (spawned && t.assigneeId && t.assigneeId !== actorId) {
+      notifyInBackground(
+        notifyAssigned({ assigneeId: t.assigneeId, actorId, taskId: spawned.id, taskTitle: t.title }),
+        "notify.assigned_failed", { taskId: spawned.id },
+      );
+    }
+  } catch (e) {
+    log.error("task.recurrence_spawn_failed", { taskId, error: (e as Error).message });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -133,7 +228,10 @@ export async function createTask(formData: FormData): Promise<string> {
   if (!created) throw new Error("insert returned no row");
   log.info("task.created", { taskId: created.id, projectSlug, status, priority, assigneeId, recurrence });
   if (assigneeId && assigneeId !== userId) {
-    await notifyAssigned({ assigneeId, actorId: userId, taskId: created.id, taskTitle: title });
+    notifyInBackground(
+      notifyAssigned({ assigneeId, actorId: userId, taskId: created.id, taskTitle: title }),
+      "notify.assigned_failed", { taskId: created.id },
+    );
   }
   revalidatePath("/tasks");
   revalidatePath("/projects");
@@ -161,6 +259,11 @@ export async function updateTaskStatus(formData: FormData): Promise<void> {
       // stamp transition timestamps so we can compute cycle time later
       ...(statusRaw === "in_progress" ? { startedAt: now } : {}),
       ...(statusRaw === "done" ? { completedAt: now } : {}),
+      // reopening a task must clear the stale completion stamp, otherwise
+      // week/cycle-time metrics keep counting it as done
+      ...(statusRaw === "todo" || statusRaw === "backlog" || statusRaw === "in_progress" || statusRaw === "review"
+        ? { completedAt: null }
+        : {}),
       updatedAt: now,
     })
     .where(eq(tasks.id, taskId));
@@ -182,14 +285,12 @@ export async function updateTaskStatus(formData: FormData): Promise<void> {
       .where(eq(tasks.id, taskId))
       .limit(1);
     if (t && t.creatorId !== me) {
-      await notifyTaskCompleted({ creatorId: t.creatorId, actorId: me, taskId, taskTitle: t.title });
+      notifyInBackground(
+        notifyTaskCompleted({ creatorId: t.creatorId, actorId: me, taskId, taskTitle: t.title }),
+        "notify.completed_failed", { taskId },
+      );
     }
-    // Award badges (fire-and-forget — don't block the UI)
-    checkAndAwardBadges(me, "task_completed", { taskId, projectId: t?.projectId }).catch((e) => {
-      log.error("badge.check_failed", { userId: me, taskId, error: (e as Error).message, stack: (e as Error).stack });
-    });
-
-    // Spawn the next cycle for recurring tasks. Each instance is its own
+// Spawn the next cycle for recurring tasks. Each instance is its own
     // row pointing at the just-completed one via recurrence_parent_id, so
     // the audit trail (comments, completion times, assignee history) on
     // every cycle stays intact.
@@ -198,59 +299,7 @@ export async function updateTaskStatus(formData: FormData): Promise<void> {
     // "I checked the wrong one, undo, re-check") would otherwise spawn a
     // fresh child every transition. Skip if we already spawned one for
     // this parent.
-    if (t && t.recurrence && t.recurrence !== "none" && isTaskRecurrence(t.recurrence)) {
-      try {
-        const [existingChild] = await db
-          .select({ id: tasks.id })
-          .from(tasks)
-          .where(eq(tasks.recurrenceParentId, taskId))
-          .limit(1);
-        if (existingChild) {
-          // Already spawned this cycle — skip the insert. Don't return here:
-          // there's still revalidatePath + review-notify work outside this
-          // block that must run.
-          log.info("task.recurrence_skip_dup", { parentTaskId: taskId, childTaskId: existingChild.id });
-          throw new Error("__SKIP_SPAWN__");
-        }
-        const nextDue = bumpDueDate(t.dueDate, t.recurrence);
-        const [spawned] = await db
-          .insert(tasks)
-          .values({
-            projectId: t.projectId,
-            title: t.title,
-            description: t.description,
-            status: "todo",
-            priority: t.priority,
-            dueDate: nextDue,
-            assigneeId: t.assigneeId,
-            recurrence: t.recurrence,
-            recurrenceParentId: taskId,
-            createdById: me,
-          })
-          .returning({ id: tasks.id });
-        log.info("task.recurrence_spawned", {
-          parentTaskId: taskId, spawnedTaskId: spawned?.id,
-          recurrence: t.recurrence, nextDue,
-        });
-        // Let the assignee know there's a fresh copy on their queue, but
-        // only if it's not the same person who just closed it.
-        if (spawned && t.assigneeId && t.assigneeId !== me) {
-          await notifyAssigned({
-            assigneeId: t.assigneeId, actorId: me,
-            taskId: spawned.id, taskTitle: t.title,
-          });
-        }
-      } catch (e) {
-        if ((e as Error).message === "__SKIP_SPAWN__") {
-          // Idempotency skip — already logged inside the try block.
-        } else {
-          log.error("task.recurrence_spawn_failed", {
-            taskId, recurrence: t.recurrence,
-            error: (e as Error).message,
-          });
-        }
-      }
-    }
+    await spawnRecurrenceCycle(db, taskId, me);
   }
   if (statusRaw === "review") {
     const [t] = await db
@@ -259,7 +308,10 @@ export async function updateTaskStatus(formData: FormData): Promise<void> {
       .where(eq(tasks.id, taskId))
       .limit(1);
     if (t) {
-      await notifyReviewRequested({ actorId: me, taskId, taskTitle: t.title });
+      notifyInBackground(
+        notifyReviewRequested({ actorId: me, taskId, taskTitle: t.title }),
+        "notify.review_requested_failed", { taskId },
+      );
     }
   }
   revalidatePath("/tasks");
@@ -286,7 +338,12 @@ export async function assignTask(formData: FormData): Promise<void> {
   log.info("task.assigned", { taskId, assigneeId });
   if (assigneeId && assigneeId !== me.id) {
     const [t] = await db.select({ title: tasks.title }).from(tasks).where(eq(tasks.id, taskId)).limit(1);
-    if (t) await notifyAssigned({ assigneeId, actorId: me.id, taskId, taskTitle: t.title });
+    if (t) {
+      notifyInBackground(
+        notifyAssigned({ assigneeId, actorId: me.id, taskId, taskTitle: t.title }),
+        "notify.assigned_failed", { taskId },
+      );
+    }
   }
   revalidatePath("/tasks");
 }
@@ -317,25 +374,26 @@ export async function addComment(formData: FormData): Promise<void> {
       .where(eq(tasks.id, taskId))
       .limit(1);
     if (taskRow) {
-      await notifyMentions({ body, actorId: userId, taskId, taskTitle: taskRow.title });
+      notifyInBackground(
+        notifyMentions({ body, actorId: userId, taskId, taskTitle: taskRow.title }),
+        "notify.mentions_failed", { taskId },
+      );
       if (taskRow.assigneeId && taskRow.assigneeId !== userId) {
-        await notifyCommentOnAssigned({
-          assigneeId: taskRow.assigneeId,
-          actorId: userId,
-          taskId,
-          taskTitle: taskRow.title,
-          preview: body,
-        });
+        notifyInBackground(
+          notifyCommentOnAssigned({
+            assigneeId: taskRow.assigneeId,
+            actorId: userId,
+            taskId,
+            taskTitle: taskRow.title,
+            preview: body,
+          }),
+          "notify.comment_failed", { taskId },
+        );
       }
     }
   } catch (e) {
     log.error("comment.notify_failed", { taskId, error: (e as Error).message, stack: (e as Error).stack });
   }
-  // Award badges for commenting (fire-and-forget)
-  checkAndAwardBadges(userId, "comment_posted", { taskId }).catch((e) => {
-    log.error("badge.check_failed", { userId, taskId, error: (e as Error).message, stack: (e as Error).stack });
-  });
-
   revalidatePath(`/tasks/${taskId}`);
 }
 
@@ -384,22 +442,25 @@ export async function reviewTask(formData: FormData): Promise<void> {
     kind: commentKind,
   });
 
-  // Notify assignee
-  if (task.assigneeId && task.assigneeId !== me.id) {
-    await notifyReviewOutcome({
-      assigneeId: task.assigneeId,
-      actorId: me.id,
-      taskId,
-      taskTitle: task.title,
-      verdict,
-    });
+  // Approving a recurring task closes it — spawn the next cycle exactly like
+  // a direct "done" would. (Previously review-approve silently killed the
+  // recurrence chain.)
+  if (verdict === "approve") {
+    await spawnRecurrenceCycle(db, taskId, me.id);
   }
 
-  // Award badges on approval (fire-and-forget)
-  if (verdict === "approve") {
-    checkAndAwardBadges(task.assigneeId ?? me.id, "task_completed", { taskId }).catch((e) => {
-      log.error("badge.check_failed", { taskId, error: (e as Error).message });
-    });
+  // Notify assignee
+  if (task.assigneeId && task.assigneeId !== me.id) {
+    notifyInBackground(
+      notifyReviewOutcome({
+        assigneeId: task.assigneeId,
+        actorId: me.id,
+        taskId,
+        taskTitle: task.title,
+        verdict,
+      }),
+      "notify.review_outcome_failed", { taskId },
+    );
   }
 
   log.info("task.reviewed", { taskId, verdict, reviewerId: me.id });
@@ -556,9 +617,13 @@ export async function addSubtask(formData: FormData): Promise<void> {
     dueDate = dueDateInput ?? parent.dueDate;
   }
   if (!dueDate) {
-    const d = new Date();
+    // Default: 3 days from today, pinned to IST (toISOString() used UTC —
+    // before 05:30 IST that produced yesterday's date).
+    const d = new Date(`${todayIST()}T12:00:00+05:30`);
     d.setDate(d.getDate() + 3);
-    dueDate = d.toISOString().slice(0, 10);
+    dueDate = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit",
+    }).format(d);
   }
 
   const userId = meForSubtask.id;
@@ -580,7 +645,10 @@ export async function addSubtask(formData: FormData): Promise<void> {
   log.info("subtask.created", { parentId, taskId: created.id, assigneeId, dueDate, dueTime: dueTimeInput });
 
   if (assigneeId && assigneeId !== userId) {
-    await notifyAssigned({ assigneeId, actorId: userId, taskId: created.id, taskTitle: title });
+    notifyInBackground(
+      notifyAssigned({ assigneeId, actorId: userId, taskId: created.id, taskTitle: title }),
+      "notify.assigned_failed", { taskId: created.id },
+    );
   }
   revalidatePath("/tasks");
   revalidatePath(`/tasks/${parentId}`);
