@@ -34,9 +34,15 @@ const FALLBACK_PROJECT_SLUG = "skynet-platform";
 
 function offsetToDate(n: number | null): string | null {
   if (n === null) return null;
-  const d = new Date();
-  d.setHours(12, 0, 0, 0);
-  d.setDate(d.getDate() + n);
+  // Pin to IST calendar dates. The previous new Date()+toISOString() combo
+  // used the server's UTC clock, so between 00:00 and 05:30 IST the computed
+  // due date landed a day early. Cap at 10 days to match createTask's rule.
+  const capped = Math.min(Math.max(n, 0), 10);
+  const todayIST = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(new Date());
+  const d = new Date(`${todayIST}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + capped);
   return d.toISOString().slice(0, 10);
 }
 

@@ -15,14 +15,16 @@ export default function Loading() {
 
       <style>{`
         .sp-loader-wrap {
-          position: fixed;
-          inset: 0;
-          z-index: 9999;
+          /* In normal flow (was position:fixed inset:0 z-index:9999). The
+             fixed opaque overlay left a stale composited layer covering the
+             viewport after slow navigations — the Members page rendered
+             "blank until scroll" because the removed overlay's paint stuck
+             around until a scroll forced a recomposite. */
+          min-height: 70vh;
           display: flex;
           flex-direction: column;
           align-items: center;
           justify-content: center;
-          background: var(--bg);
           gap: 18px;
         }
 
@@ -33,7 +35,7 @@ export default function Loading() {
           border-radius: 18px;
           background: conic-gradient(from 200deg at 50% 50%, #7B5CFF, #22D3EE, #F472B6, #7B5CFF);
           position: absolute;
-          animation: sp-spin 1.8s linear infinite, sp-pulse 1.8s ease-in-out infinite;
+          animation: sp-spin 1.8s linear infinite;
           box-shadow: 0 0 40px rgba(123, 92, 255, 0.4), 0 0 80px rgba(34, 211, 238, 0.15);
         }
 

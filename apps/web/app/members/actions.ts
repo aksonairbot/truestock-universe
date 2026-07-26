@@ -33,12 +33,28 @@ export async function createMember(formData: FormData): Promise<void> {
   if (!name) throw new Error("name is required");
   if (!email) throw new Error("email is required");
   if (!email.includes("@")) throw new Error("email looks invalid");
-  const role: Role = isRole(roleRaw) ? roleRaw : "member";
+  let role: Role = isRole(roleRaw) ? roleRaw : "member";
+  let dept = departmentId;
+
+  // Managers cannot mint admins (privilege escalation: auth resolves users by
+  // email, so creating an "admin" row hands full admin to whoever owns that
+  // inbox). Managers are also locked to their own department.
+  if (me.role === "manager") {
+    if (role === "admin" || role === "manager") {
+      throw new Error("Managers can only create members, viewers, or agents — ask an admin for elevated roles.");
+    }
+    dept = me.departmentId ?? null;
+  }
 
   const db = getDb();
+
+  // Friendly duplicate check — a unique-violation 500 would eat the form.
+  const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.email, email)).limit(1);
+  if (existing) throw new Error(`A member with email ${email} already exists.`);
+
   const [created] = await db
     .insert(users)
-    .values({ name, email, role, departmentId, managerId })
+    .values({ name, email, role, departmentId: dept, managerId })
     .returning({ id: users.id });
 
   if (!created) throw new Error("insert returned no row");

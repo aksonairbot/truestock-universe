@@ -42,7 +42,9 @@ const RECURRENCES = [
 
 function dueDateFromOffset(offset: number | null): string {
   if (offset === null) return "";
-  return `${offset}d`;
+  // Server caps due dates at 10 working days — clamp AI suggestions so an
+  // enthusiastic "14d" suggestion can't make the eventual submit fail.
+  return `${Math.min(Math.max(offset, 1), 10)}d`;
 }
 
 export function NewTaskForm({ projects, users, currentUserId, userRole }: { projects: Project[]; users: User[]; currentUserId: string; userRole: string }) {
@@ -64,6 +66,7 @@ export function NewTaskForm({ projects, users, currentUserId, userRole }: { proj
   const [suggestion, setSuggestion] = useState<TriageSuggestion | null>(null);
   const [suggestMeta, setSuggestMeta] = useState<{ provider?: string; model?: string; durationMs?: number } | null>(null);
   const [suggestError, setSuggestError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   // AI no longer suggests assignees — assignment is a human decision and is
   // gated to admins/managers anyway. (See triage-action.ts.)
 
@@ -122,7 +125,17 @@ export function NewTaskForm({ projects, users, currentUserId, userRole }: { proj
     fd.set("description", finalDesc);
 
     startSubmit(async () => {
-      const taskId = await createTask(fd);
+      // Catch validation throws (bad due-date syntax, >10 working days, missing
+      // fields) and show them inline — an uncaught rejection here escalated to
+      // the root error boundary and destroyed everything the user had typed.
+      setSubmitError(null);
+      let taskId: string;
+      try {
+        taskId = await createTask(fd);
+      } catch (err) {
+        setSubmitError(err instanceof Error ? err.message : "Could not create the task. Please check the fields and try again.");
+        return;
+      }
 
       // Upload pending attachments if any
       if (pendingFiles.length > 0) {
@@ -427,6 +440,10 @@ export function NewTaskForm({ projects, users, currentUserId, userRole }: { proj
             </button>
           </div>
         </div>
+      ) : null}
+
+      {submitError ? (
+        <div className="md:col-span-2 text-[12px] text-danger" role="alert">⚠ {submitError}</div>
       ) : null}
 
       <div className="flex items-center justify-end gap-3 md:col-span-2 pt-3 border-t border-border">

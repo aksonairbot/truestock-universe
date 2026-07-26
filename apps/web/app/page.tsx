@@ -13,6 +13,7 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { BriefingCard } from "./briefing-card";
+import { QuickCapture } from "./quick-capture";
 import { ReviewCard } from "./review-card";
 import { TeamVelocity } from "./team-velocity";
 import {
@@ -410,6 +411,10 @@ export default async function HomePage({ searchParams }: PageProps) {
       <Suspense fallback={null}>
         <BriefingCard />
       </Suspense>
+
+      {/* Quick capture — was previously mounted inside MyDayHero; kept as a
+          top-level feature after that component was removed. */}
+      <QuickCapture />
 
       <Suspense fallback={null}>
         <TeamVelocity />

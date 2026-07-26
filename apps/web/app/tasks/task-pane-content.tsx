@@ -17,7 +17,7 @@ import {
   sql,
 } from "@tu/db";
 import { getCurrentUser } from "@/lib/auth";
-import { isPrivileged } from "@/lib/access";
+import { isPrivileged, requireTaskAccess } from "@/lib/access";
 import { getActiveUsers } from "@/lib/cached-queries";
 import {
   StatusSelect,
@@ -98,6 +98,28 @@ export async function TaskPaneContent({ taskId }: { taskId: string }) {
         <div className="text-text-2">Task not found.</div>
       </div>
     );
+  }
+
+  // Read-path data wall — same rule as /tasks/[id]. Without this, any signed-in
+  // user could read any task's description/comments via /tasks?task=<uuid>,
+  // bypassing the list page's scoping. Show the same "not found" card so URLs
+  // don't leak task existence.
+  try {
+    await requireTaskAccess(task.id, me);
+  } catch {
+    // You may still view a parent task when one of its subtasks is yours.
+    const [mySubtask] = await db
+      .select({ id: tasks.id })
+      .from(tasks)
+      .where(sql`${tasks.parentTaskId} = ${task.id} and ${tasks.assigneeId} = ${me.id}`)
+      .limit(1);
+    if (!mySubtask) {
+      return (
+        <div className="card text-center py-8">
+          <div className="text-text-2">Task not found.</div>
+        </div>
+      );
+    }
   }
 
   // Parallel fetch: creator + users + comments + subtasks + attachments (no waterfall)

@@ -13,7 +13,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 
-const PUBLIC_PATHS = ["/welcome", "/api/auth", "/favicon.ico", "/banners", "/hero", "/celebrate", "/_next", "/icon", "/manifest"];
+const PUBLIC_PATHS = ["/welcome", "/api/auth", "/favicon.ico", "/favicon.svg", "/favicon-32.png", "/manifest.json", "/apple-icon.png", "/banners", "/hero", "/celebrate", "/_next", "/icon", "/manifest"];
 
 // Edge runtime — `process.env.AUTH_SECRET` is inlined at build time. If
 // it wasn't set when the build ran, the middleware will throw on first

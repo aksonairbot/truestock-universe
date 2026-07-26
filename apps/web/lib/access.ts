@@ -56,17 +56,22 @@ export async function requireTaskAccess(
   if (isAdmin(user)) return t;
 
   if (user.role === "manager") {
-    // Allow if assignee/creator is in the manager's department.
+    // Allow if assignee/creator is in the manager's department. A manager
+    // with no department falls through to the creator/assignee rule below
+    // (previously they were locked out of EVERY task, including their own).
     const dept = getDepartmentScope(user);
-    if (!dept) throw new Error("Not authorised");
-    const peers = [t.assigneeId, t.createdById].filter(Boolean) as string[];
-    if (peers.length === 0) throw new Error("Not authorised");
-    const matches = await db
-      .select({ id: users.id })
-      .from(users)
-      .where(eq(users.departmentId, dept));
-    const deptIds = new Set(matches.map((m) => m.id));
-    if (peers.some((id) => deptIds.has(id))) return t;
+    if (dept) {
+      const peers = [t.assigneeId, t.createdById].filter(Boolean) as string[];
+      if (peers.length > 0) {
+        const matches = await db
+          .select({ id: users.id })
+          .from(users)
+          .where(eq(users.departmentId, dept));
+        const deptIds = new Set(matches.map((m) => m.id));
+        if (peers.some((id) => deptIds.has(id))) return t;
+      }
+    }
+    if (t.createdById === user.id || t.assigneeId === user.id) return t;
     throw new Error("Not authorised");
   }
 
