@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { Poppins, JetBrains_Mono } from "next/font/google";
 import Sidebar from "./sidebar";
 import { CommandPalette } from "@/components/command-palette";
@@ -49,8 +50,21 @@ async function getSidebarData() {
   }
 }
 
-export default async function RootLayout({ children }: { children: React.ReactNode }) {
+// Streamed inside Suspense so the page shell (and route skeletons) paint
+// BEFORE the auth/user lookup resolves — previously the whole document
+// blocked on getCurrentUser before a single byte rendered.
+async function AppChrome() {
   const { user } = await getSidebarData();
+  const priv = user?.role === "admin" || user?.role === "manager";
+  return (
+    <>
+      <Sidebar user={user} isPrivileged={priv} />
+      {user ? <CommandPalette isPrivileged={priv} /> : null}
+    </>
+  );
+}
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" data-theme="dark" className={`${poppins.variable} ${jetbrainsMono.variable}`} suppressHydrationWarning>
       <head>
@@ -59,10 +73,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body className="antialiased" suppressHydrationWarning>
         <ThemeProvider>
           <div className="relative z-10 flex min-h-screen">
-            <Sidebar user={user} isPrivileged={user?.role === "admin" || user?.role === "manager"} />
+            <Suspense fallback={<aside className="sidebar-aside" aria-hidden="true" />}>
+              <AppChrome />
+            </Suspense>
             <main className="flex-1 min-w-0 overflow-x-hidden">{children}</main>
           </div>
-          {user ? <CommandPalette isPrivileged={user.role === "admin" || user.role === "manager"} /> : null}
         </ThemeProvider>
       </body>
     </html>

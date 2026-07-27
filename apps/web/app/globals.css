@@ -5325,3 +5325,39 @@ select:focus {
 .skel-chip { width: 90px; height: 20px; border-radius: 999px; margin-left: auto; flex-shrink: 0; }
 .skel-chip.sm { width: 56px; margin-left: 0; }
 .skel-card { height: 210px; border-radius: 12px; }
+
+/* ----------------------------------------------------------------------- */
+/* Today compact stats (replaced the image hero, 2026-07-27)               */
+/* ----------------------------------------------------------------------- */
+.today-stats {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 10px;
+  margin: 4px 0 20px;
+}
+@media (max-width: 1100px) { .today-stats { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 560px) { .today-stats { grid-template-columns: repeat(2, 1fr); } }
+.today-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 14px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  animation: tu-fade-in 0.3s ease-out both;
+}
+.today-stat-val {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  font-family: var(--font-mono), "JetBrains Mono", monospace;
+}
+.today-stat-label {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-3);
+  font-weight: 500;
+}

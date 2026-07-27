@@ -8,20 +8,36 @@
 // one DB query fires.
 
 import { cache } from "react";
+import { unstable_cache } from "next/cache";
 import { getDb, users, eq } from "@tu/db";
 import type { User } from "@tu/db";
+import { ORG_USERS_TAG } from "@/lib/cached-queries";
 
-async function lookup(email: string): Promise<User | null> {
-  const db = getDb();
-  const [u] = await db.select().from(users).where(eq(users.email, email.toLowerCase())).limit(1);
-  return u ?? null;
-}
+// The user-row lookups are cached CROSS-REQUEST (60s TTL + the org-users
+// tag, which every member mutation already invalidates). This removes 1–2
+// DB round-trips from EVERY page render — the session JWT itself is still
+// verified per-request; only the profile row is cached.
+// Note: values pass through the cache as JSON, so Date columns come back as
+// strings — callers only use id/name/email/role/departmentId/avatarUrl.
+const lookup = unstable_cache(
+  async (email: string): Promise<User | null> => {
+    const db = getDb();
+    const [u] = await db.select().from(users).where(eq(users.email, email.toLowerCase())).limit(1);
+    return u ?? null;
+  },
+  ["auth-user-by-email"],
+  { tags: [ORG_USERS_TAG], revalidate: 60 },
+);
 
-async function lookupById(id: string): Promise<User | null> {
-  const db = getDb();
-  const [u] = await db.select().from(users).where(eq(users.id, id)).limit(1);
-  return u ?? null;
-}
+const lookupById = unstable_cache(
+  async (id: string): Promise<User | null> => {
+    const db = getDb();
+    const [u] = await db.select().from(users).where(eq(users.id, id)).limit(1);
+    return u ?? null;
+  },
+  ["auth-user-by-id"],
+  { tags: [ORG_USERS_TAG], revalidate: 60 },
+);
 
 export const getCurrentUser: () => Promise<User> = cache(async () => {
   const { auth } = await import("@/auth");

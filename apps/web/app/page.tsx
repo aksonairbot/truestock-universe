@@ -293,90 +293,39 @@ export default async function HomePage({ searchParams }: PageProps) {
 
   return (
     <div className="page-content">
-      <div className="daily-hero">
-        <div className="daily-hero-fade" />
-        <div className="daily-hero-content">
-          {/* top row */}
-          <div className="daily-hero-top">
-            <div className="daily-hero-left">
-              <div className="daily-hero-kicker">
-                <span className="daily-hero-dot" />
-                Today's view
-              </div>
-              <div className="daily-hero-title">SeekPeak</div>
-              <div className="daily-hero-tagline">Plan better. Prioritize smarter. Deliver more.</div>
-              <div className="daily-hero-date">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" /></svg>
-                {fmtHumanDate(date)}
-              </div>
-              <div className="daily-hero-inline-stats">
-                <div className="daily-hero-istat">
-                  <div className="daily-hero-istat-icon closed">
-                    <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"/></svg>
-                  </div>
-                  <div>
-                    <div className="daily-hero-istat-val">{totals.completed}</div>
-                    <div className="daily-hero-istat-label">Closed today</div>
-                  </div>
-                </div>
-                <div className="daily-hero-istat">
-                  <div className="daily-hero-istat-icon active">
-                    <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16"><path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v1h8v-1zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-1a5.97 5.97 0 00-.75-2.91A3.97 3.97 0 0119 17v1h-3zM4.75 14.09A5.97 5.97 0 004 17v1H1v-1a3.97 3.97 0 013.75-3.91z"/></svg>
-                  </div>
-                  <div>
-                    <div className="daily-hero-istat-val">{totals.activePeople}</div>
-                    <div className="daily-hero-istat-label">Active</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="daily-hero-right">
-              <div className="daily-hero-stat-card">
-                <div className="daily-hero-stat-icon due">
-                  <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16"><rect x="3" y="4" width="14" height="14" rx="2" fill="none" stroke="currentColor" strokeWidth="1.5"/><path d="M7 2v3M13 2v3M3 8h14" fill="none" stroke="currentColor" strokeWidth="1.5"/><circle cx="10" cy="13" r="1.2" fill="currentColor"/></svg>
-                </div>
-                <div className="daily-hero-stat-info">
-                  <span className="daily-hero-stat-label">Tasks due today</span>
-                  <span className="daily-hero-stat-val">{dueToday}</span>
-                  <span className={`daily-hero-stat-sub ${dueToday > 3 ? "warn" : ""}`}>
-                    {dueToday > 3 ? "High priority" : "On track"}
-                  </span>
-                </div>
-              </div>
-              <div className="daily-hero-stat-card">
-                <div className="daily-hero-stat-icon progress">
-                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" width="16" height="16"><path d="M5 3v4M3 5h4M12 4v6M9 7h6M19 14v6M16 17h6M14 11l-5 8"/></svg>
-                </div>
-                <div className="daily-hero-stat-info">
-                  <span className="daily-hero-stat-label">In progress</span>
-                  <span className="daily-hero-stat-val">{inProgress}</span>
-                  <span className="daily-hero-stat-sub info">Across projects</span>
-                </div>
-              </div>
-              <div className="daily-hero-stat-card">
-                <div className="daily-hero-stat-icon completed">
-                  <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"/></svg>
-                </div>
-                <div className="daily-hero-stat-info">
-                  <span className="daily-hero-stat-label">Completed this week</span>
-                  <span className="daily-hero-stat-val">{weekCompleted}</span>
-                  <span className="daily-hero-stat-sub">Since Monday</span>
-                </div>
-              </div>
-              <div className="daily-hero-stat-card">
-                <div className="daily-hero-stat-icon focus">
-                  <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd"/></svg>
-                </div>
-                <div className="daily-hero-stat-info">
-                  <span className="daily-hero-stat-label">Overdue</span>
-                  <span className="daily-hero-stat-val">{overdueTasks}</span>
-                  <span className={`daily-hero-stat-sub ${overdueTasks > 0 ? "warn" : ""}`}>
-                    {overdueTasks > 0 ? "Needs a sweep" : "All clear"}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
+      {/* Compact header — replaced the full-bleed image hero (2026-07-27,
+          Amit's call): faster first paint, calmer page, same numbers. */}
+      <div className="page-head">
+        <div>
+          <div className="page-title">Today</div>
+          <div className="page-sub">{fmtHumanDate(date)}</div>
+        </div>
+      </div>
+
+      <div className="today-stats">
+        <div className="today-stat">
+          <span className="today-stat-val">{dueToday}</span>
+          <span className="today-stat-label">Due today</span>
+        </div>
+        <div className="today-stat">
+          <span className="today-stat-val">{inProgress}</span>
+          <span className="today-stat-label">In progress</span>
+        </div>
+        <div className="today-stat">
+          <span className="today-stat-val" style={{ color: "var(--success)" }}>{totals.completed}</span>
+          <span className="today-stat-label">Closed today</span>
+        </div>
+        <div className="today-stat">
+          <span className="today-stat-val">{weekCompleted}</span>
+          <span className="today-stat-label">This week</span>
+        </div>
+        <div className="today-stat">
+          <span className="today-stat-val" style={{ color: overdueTasks > 0 ? "var(--danger)" : "var(--success)" }}>{overdueTasks}</span>
+          <span className="today-stat-label">{overdueTasks > 0 ? "Overdue" : "Overdue · clear"}</span>
+        </div>
+        <div className="today-stat">
+          <span className="today-stat-val">{totals.activePeople}</span>
+          <span className="today-stat-label">Active people</span>
         </div>
       </div>
 

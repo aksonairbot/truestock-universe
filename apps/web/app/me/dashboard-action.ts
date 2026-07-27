@@ -199,19 +199,34 @@ async function computeStats(userId: string, period: Period): Promise<BentoStats>
             and created_at >= ${startStart.toISOString()} and created_at <= ${endEnd.toISOString()}), 0)::int as created
     `),
 
-    // 2. Daily breakdown
+    // 2. Daily breakdown — grouped aggregates instead of 2 correlated
+    // subqueries PER DAY (up to 60 non-sargable scans on the month view).
+    // The range predicates also let the partial completed_at index work.
     db.execute(sql<{ d: string; closed: number; commented: number }>`
       with d as (
         select generate_series(${startStart.toISOString()}::timestamptz, ${endEnd.toISOString()}::timestamptz, '1 day') as ts
+      ),
+      t as (
+        select (completed_at at time zone 'Asia/Kolkata')::date as day, count(*)::int as n
+        from tasks
+        where assignee_id = ${userId} and status = 'done'::task_status
+          and completed_at >= ${startStart.toISOString()} and completed_at <= ${endEnd.toISOString()}
+        group by 1
+      ),
+      c as (
+        select (created_at at time zone 'Asia/Kolkata')::date as day, count(*)::int as n
+        from task_comments
+        where author_id = ${userId}
+          and created_at >= ${startStart.toISOString()} and created_at <= ${endEnd.toISOString()}
+        group by 1
       )
       select to_char((d.ts at time zone 'Asia/Kolkata')::date, 'YYYY-MM-DD') as d,
-        coalesce((select count(*) from tasks t
-          where t.assignee_id = ${userId} and t.status = 'done'::task_status
-            and (t.completed_at at time zone 'Asia/Kolkata')::date = (d.ts at time zone 'Asia/Kolkata')::date), 0)::int as closed,
-        coalesce((select count(*) from task_comments c
-          where c.author_id = ${userId}
-            and (c.created_at at time zone 'Asia/Kolkata')::date = (d.ts at time zone 'Asia/Kolkata')::date), 0)::int as commented
-      from d order by d
+        coalesce(t.n, 0)::int as closed,
+        coalesce(c.n, 0)::int as commented
+      from d
+      left join t on t.day = (d.ts at time zone 'Asia/Kolkata')::date
+      left join c on c.day = (d.ts at time zone 'Asia/Kolkata')::date
+      order by d.ts
     `),
 
     // 3. Multi-week trend — single query instead of 4-8 loop
@@ -281,22 +296,30 @@ async function computeStats(userId: string, period: Period): Promise<BentoStats>
       order by closed desc, open desc
     `),
 
-    // 8. Team breakdown
+    // 8. Team breakdown — three grouped scans joined to users, instead of
+    // 3 correlated subqueries PER ACTIVE USER (54 scans for 18 people).
     db.execute(sql<{ name: string; closed: number; comments: number; created: number }>`
       select u.name,
-        coalesce((select count(*) from tasks t
-          where t.assignee_id = u.id and t.status = 'done'::task_status
-            and t.completed_at >= ${startStart.toISOString()}
-            and t.completed_at <= ${endEnd.toISOString()}), 0)::int as closed,
-        coalesce((select count(*) from task_comments c
-          where c.author_id = u.id
-            and c.created_at >= ${startStart.toISOString()}
-            and c.created_at <= ${endEnd.toISOString()}), 0)::int as comments,
-        coalesce((select count(*) from tasks t2
-          where t2.created_by_id = u.id
-            and t2.created_at >= ${startStart.toISOString()}
-            and t2.created_at <= ${endEnd.toISOString()}), 0)::int as created
+        coalesce(t.n, 0)::int as closed,
+        coalesce(c.n, 0)::int as comments,
+        coalesce(t2.n, 0)::int as created
       from users u
+      left join (
+        select assignee_id, count(*)::int as n from tasks
+        where status = 'done'::task_status
+          and completed_at >= ${startStart.toISOString()} and completed_at <= ${endEnd.toISOString()}
+        group by 1
+      ) t on t.assignee_id = u.id
+      left join (
+        select author_id, count(*)::int as n from task_comments
+        where created_at >= ${startStart.toISOString()} and created_at <= ${endEnd.toISOString()}
+        group by 1
+      ) c on c.author_id = u.id
+      left join (
+        select created_by_id, count(*)::int as n from tasks
+        where created_at >= ${startStart.toISOString()} and created_at <= ${endEnd.toISOString()}
+        group by 1
+      ) t2 on t2.created_by_id = u.id
       where u.is_active = true
       order by closed desc, comments desc
     `),

@@ -12,6 +12,7 @@ import {
   sql,
 } from "@tu/db";
 import { getCurrentUser } from "@/lib/auth";
+import { getActiveUsers } from "@/lib/cached-queries";
 import { isPrivileged, requireTaskAccess } from "@/lib/access";
 import {
   StatusSelect,
@@ -97,30 +98,20 @@ export default async function TaskDetailPage({ params }: PageProps) {
 
   if (!task) notFound();
 
-  // Read-path data wall: the list page scopes what members/managers can see,
-  // but this page previously served ANY task to anyone holding its UUID.
-  // Mirror the mutation-path check; render 404 (not 403) so URLs don't leak
-  // task existence.
-  try {
-    await requireTaskAccess(task.id, me);
-  } catch {
-    // Mirror the list page's extra rule: you may view a parent task when one
-    // of its subtasks is assigned to you.
-    const [mySubtask] = await db
-      .select({ id: tasks.id })
-      .from(tasks)
-      .where(sql`${tasks.parentTaskId} = ${task.id} and ${tasks.assigneeId} = ${me.id}`)
-      .limit(1);
-    if (!mySubtask) notFound();
-  }
+  // Everything below only needs the task id/createdById — run the access
+  // check CONCURRENTLY with the data reads instead of serializing them
+  // (previously: auth → task → access (re-fetch + dept scan) → data batch).
+  const [accessOk, creatorArr, allUsers, comments, subtaskRows, attachmentRows] = await Promise.all([
+    // Read-path data wall: mirrors the mutation-path check; renders 404
+    // (not 403) so URLs don't leak task existence.
+    requireTaskAccess(task.id, me).then(() => true).catch(() => false),
 
-  // Independent reads — one parallel batch instead of 5 sequential round-trips.
-  const [creatorArr, allUsers, comments, subtaskRows, attachmentRows] = await Promise.all([
     task.createdById
       ? db.select({ name: users.name }).from(users).where(eq(users.id, task.createdById)).limit(1)
       : Promise.resolve([undefined] as Array<{ name: string } | undefined>),
 
-    db.select({ id: users.id, name: users.name }).from(users),
+    // Cross-request cached — was a full users-table select per view.
+    getActiveUsers(),
 
     db
       .select({
@@ -164,6 +155,17 @@ export default async function TaskDetailPage({ params }: PageProps) {
       .orderBy(asc(taskAttachments.createdAt)),
   ]);
   const [creator] = creatorArr;
+
+  if (!accessOk) {
+    // Rare fallback path: you may still view a parent task when one of its
+    // subtasks is assigned to you (mirrors the list page's scope rule).
+    const [mySubtask] = await db
+      .select({ id: tasks.id })
+      .from(tasks)
+      .where(sql`${tasks.parentTaskId} = ${task.id} and ${tasks.assigneeId} = ${me.id}`)
+      .limit(1);
+    if (!mySubtask) notFound();
+  }
 
   return (
     <div className="min-h-screen px-6 md:px-8 py-6 max-w-[1100px] mx-auto">
