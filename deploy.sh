@@ -111,6 +111,9 @@ RSYNC_FLAGS="-az --delete --exclude=node_modules --exclude=.next --exclude=.turb
 rsync $RSYNC_FLAGS apps/web/app/        "$SERVER:$REMOTE/apps/web/app/"
 rsync $RSYNC_FLAGS apps/web/public/     "$SERVER:$REMOTE/apps/web/public/"
 rsync -az --exclude=node_modules apps/web/lib/        "$SERVER:$REMOTE/apps/web/lib/" 2>/dev/null || true
+# components/ was added 2026-07-26 (shared UI like the markdown renderer) —
+# it MUST ship, or the server build fails with "Can't resolve '@/components/…'"
+rsync -az --exclude=node_modules apps/web/components/ "$SERVER:$REMOTE/apps/web/components/"
 rsync -az apps/web/auth.ts apps/web/middleware.ts apps/web/next.config.mjs \
   apps/web/package.json apps/web/server.js apps/web/tailwind.config.ts \
   apps/web/postcss.config.mjs apps/web/tsconfig.json \
