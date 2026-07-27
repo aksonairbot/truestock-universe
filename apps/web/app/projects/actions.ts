@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getDb, projects } from "@tu/db";
 import { getCurrentUserId } from "@/lib/auth";
+import { revalidateOrgProjects } from "@/lib/cached-queries";
 import { log } from "@/lib/log";
 
 function slugify(s: string): string {
@@ -38,5 +39,6 @@ export async function createProject(formData: FormData): Promise<void> {
 
   log.info("project.created", { slug, name });
   revalidatePath("/projects");
+  revalidateOrgProjects();
   redirect(`/projects/${slug}`);
 }

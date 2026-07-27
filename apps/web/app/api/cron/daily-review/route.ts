@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runDailyReview } from "@/lib/daily-review";
 import { generateKnowledgeDigest } from "@/lib/knowledge-digest";
+import { prewarmMorningBriefings } from "@/lib/briefing";
 import { getDb, sql } from "@tu/db";
 import { log } from "@/lib/log";
 
@@ -52,7 +53,13 @@ export async function GET(req: NextRequest) {
       log.warn("cron.daily_review.digest_piggyback_failed", { error: (e as Error).message });
       return { ok: false, error: (e as Error).message };
     });
-    return NextResponse.json({ ok: true, ...result, digest, recurrenceRolled });
+    // Pre-warm every active user's morning briefing so nobody's first Today
+    // view of the day blocks on the LLM (was 2–25s for the first viewer).
+    const briefings = await prewarmMorningBriefings().catch((e) => {
+      log.warn("cron.daily_review.briefing_prewarm_failed", { error: (e as Error).message });
+      return { generated: 0, skipped: 0, failed: -1 };
+    });
+    return NextResponse.json({ ok: true, ...result, digest, recurrenceRolled, briefings });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     log.error("cron.daily_review.error", { error: msg });

@@ -32,9 +32,19 @@ const nextConfig = {
         ],
       },
       {
-        source: "/(.*)\\.(ico|png|jpg|jpeg|svg|woff2|css|js)",
+        // Hashed build assets only — these genuinely never change per URL.
+        source: "/_next/static/(.*)",
         headers: [
           { key: "Cache-Control", value: "public, max-age=31536000, immutable" },
+        ],
+      },
+      {
+        // Public images (banners, hero, icons) keep their filenames when
+        // replaced — "immutable" here meant a swapped banner never refreshed
+        // for returning users. One day + a week of stale-while-revalidate.
+        source: "/(.*)\\.(ico|png|jpg|jpeg|svg|webp|woff2)",
+        headers: [
+          { key: "Cache-Control", value: "public, max-age=86400, stale-while-revalidate=604800" },
         ],
       },
     ];

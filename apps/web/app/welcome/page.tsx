@@ -9,6 +9,9 @@
 
 import { SignInButton } from "./sign-in-button";
 import { Marquee } from "./marquee";
+// Landing-page styles — split out of globals.css so authenticated app pages
+// stop shipping ~22KB of marketing CSS.
+import "./welcome.css";
 
 // AUTH_SECRET is build-time-constant (NextAuth requires it set before the
 // build runs). Evaluating once at module load is safe and lets the page

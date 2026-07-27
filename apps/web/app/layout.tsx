@@ -1,8 +1,25 @@
 import type { Metadata } from "next";
+import { Poppins, JetBrains_Mono } from "next/font/google";
 import Sidebar from "./sidebar";
 import { getCurrentUser } from "@/lib/auth";
 import { ThemeProvider, themeInitScript } from "./theme-provider";
 import "./globals.css";
+
+// Self-hosted via next/font — replaces the render-blocking Google Fonts
+// @import chain (2 extra origins in the critical path). Fonts are downloaded
+// at build time and served from /_next/static with preload.
+const poppins = Poppins({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800"],
+  variable: "--font-poppins",
+  display: "swap",
+});
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  variable: "--font-mono",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "SeekPeak · Truestock",
@@ -34,7 +51,7 @@ async function getSidebarData() {
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const { user } = await getSidebarData();
   return (
-    <html lang="en" data-theme="dark" suppressHydrationWarning>
+    <html lang="en" data-theme="dark" className={`${poppins.variable} ${jetbrainsMono.variable}`} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>

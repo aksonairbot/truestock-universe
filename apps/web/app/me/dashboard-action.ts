@@ -8,6 +8,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import {
   getDb,
   aiDashboards,
@@ -545,39 +546,70 @@ export async function getOrGenerateDashboard(period: Period, opts?: { force?: bo
 
   // Always compute fresh stats so numbers are live
   try {
-    const stats = await computeStats(userId, period);
+    // Stats + narrative lookup are independent — one round-trip batch.
+    const [stats, existingArr] = await Promise.all([
+      computeStats(userId, period),
+      opts?.force
+        ? Promise.resolve([] as (typeof aiDashboards.$inferSelect)[])
+        : db
+            .select()
+            .from(aiDashboards)
+            .where(and(eq(aiDashboards.userId, userId), eq(aiDashboards.period, period), eq(aiDashboards.periodKey, periodKey)))
+            .limit(1),
+    ]);
+    const existing = existingArr[0];
 
-    // Reuse cached narrative if it's recent enough (saves LLM call)
-    let narrative = "", model = "", durationMs = 0;
-    let generatedAt = now;
-    let narrativeCached = false;
+    // SERVE-STALE: if ANY narrative exists for this period, return it
+    // immediately. A stale one (>6h) is refreshed in the background via
+    // after() — previously the page render blocked up to 30s on the LLM
+    // whenever the TTL had lapsed.
+    if (!opts?.force && existing?.narrative && existing.generatedAt) {
+      const age = now.getTime() - new Date(existing.generatedAt).getTime();
+      const stale = age >= NARRATIVE_TTL_MS;
+      const userName = me.name;
 
-    if (!opts?.force) {
-      const [existing] = await db
-        .select()
-        .from(aiDashboards)
-        .where(and(eq(aiDashboards.userId, userId), eq(aiDashboards.period, period), eq(aiDashboards.periodKey, periodKey)))
-        .limit(1);
-      if (existing?.narrative && existing.generatedAt) {
-        const age = now.getTime() - new Date(existing.generatedAt).getTime();
-        if (age < NARRATIVE_TTL_MS) {
-          narrative = existing.narrative;
-          model = existing.model ?? "";
-          generatedAt = existing.generatedAt;
-          narrativeCached = true;
+      after(async () => {
+        try {
+          let narrativeSet: Record<string, unknown> = {};
+          if (stale) {
+            const r = await generateNarrative(stats, userName);
+            narrativeSet = { narrative: r.body, model: r.model, durationMs: r.durationMs, generatedAt: new Date() };
+            log.info("dashboard.narrative_bg_refreshed", { period, periodKey, model: r.model });
+          }
+          await db
+            .insert(aiDashboards)
+            .values({
+              userId, period, periodKey,
+              bodyJson: stats as unknown as object,
+              narrative: existing.narrative, model: existing.model, durationMs: existing.durationMs ?? 0,
+            })
+            .onConflictDoUpdate({
+              target: [aiDashboards.userId, aiDashboards.period, aiDashboards.periodKey],
+              set: { bodyJson: stats as unknown as object, ...narrativeSet },
+            });
+        } catch (e) {
+          log.warn("dashboard.bg_refresh_failed", { period, error: (e as Error).message });
         }
-      }
+      });
+
+      return {
+        ok: true,
+        stats,
+        narrative: existing.narrative,
+        model: existing.model ?? "",
+        generatedAt: existing.generatedAt,
+        cached: true,
+      };
     }
 
-    // Generate fresh narrative if needed
-    if (!narrative) {
-      try {
-        const r = await generateNarrative(stats, me.name);
-        narrative = r.body; model = r.model; durationMs = r.durationMs;
-        generatedAt = now;
-      } catch (e) {
-        log.warn("dashboard.narrative_failed", { period, error: (e as Error).message });
-      }
+    // First view of this period (or explicit Refresh) — generate inline.
+    let narrative = "", model = "", durationMs = 0;
+    const generatedAt = now;
+    try {
+      const r = await generateNarrative(stats, me.name);
+      narrative = r.body; model = r.model; durationMs = r.durationMs;
+    } catch (e) {
+      log.warn("dashboard.narrative_failed", { period, error: (e as Error).message });
     }
 
     // Persist latest stats + narrative
@@ -592,17 +624,13 @@ export async function getOrGenerateDashboard(period: Period, opts?: { force?: bo
         target: [aiDashboards.userId, aiDashboards.period, aiDashboards.periodKey],
         set: {
           bodyJson: stats as unknown as object,
-          ...(!narrativeCached ? {
-            narrative: narrative || null, model: model || null, durationMs,
-            generatedAt: new Date(),
-          } : {}),
+          narrative: narrative || null, model: model || null, durationMs,
+          generatedAt: new Date(),
         },
       });
 
-    if (!narrativeCached) {
-      log.info("dashboard.generated", { period, periodKey, durationMs, model });
-    }
-    return { ok: true, stats, narrative: narrative || undefined, model, generatedAt, cached: narrativeCached };
+    log.info("dashboard.generated", { period, periodKey, durationMs, model });
+    return { ok: true, stats, narrative: narrative || undefined, model, generatedAt, cached: false };
   } catch (e) {
     log.error("dashboard.failed", { period, error: (e as Error).message });
     return { ok: false, error: (e as Error).message };
@@ -723,8 +751,10 @@ export async function getDeptDashboard(deptId: string, period: Period): Promise<
 
     const memberIdList = memberIds.map((id) => `'${id}'`).join(",");
 
+    // All six aggregates below are independent — kicked off together and
+    // awaited in one Promise.all (previously 6 sequential round-trips).
     // Headline counts
-    const headlineRows = await db.execute(sql.raw(`
+    const headlineRowsP = db.execute(sql.raw(`
       select
         coalesce(sum(case when status = 'done'::task_status and completed_at >= '${startStart.toISOString()}'
           and completed_at <= '${endEnd.toISOString()}' then 1 else 0 end), 0)::int as closed,
@@ -735,15 +765,14 @@ export async function getDeptDashboard(deptId: string, period: Period): Promise<
           and created_at <= '${endEnd.toISOString()}' then 1 else 0 end), 0)::int as created
       from tasks where assignee_id in (${memberIdList})
     `));
-    const hl = (headlineRows as unknown as Array<any>)[0] ?? {};
 
     // Comments count
-    const [commentRow] = await db.execute(sql.raw(`
+    const commentRowsP = db.execute(sql.raw(`
       select count(*)::int as n from task_comments
       where author_id in (${memberIdList})
         and created_at >= '${startStart.toISOString()}'
         and created_at <= '${endEnd.toISOString()}'
-    `)) as unknown as Array<{ n: number }>;
+    `));
 
     // Per-member breakdown
     // Status counts (todo/doing/review/done/cancelled) are CURRENT — the
@@ -751,7 +780,7 @@ export async function getDeptDashboard(deptId: string, period: Period): Promise<
     // up cleanly instead of mixing window-scoped and lifetime numbers.
     // `created` and `comments` stay window-scoped because they're activity
     // metrics, not workload.
-    const memberStatRows = await db.execute(sql.raw(`
+    const memberStatRowsP = db.execute(sql.raw(`
       select u.id, u.name,
         coalesce((select count(*)::int from tasks ta
           where ta.assignee_id = u.id and ta.status = 'todo'::task_status), 0) as todo,
@@ -776,7 +805,7 @@ export async function getDeptDashboard(deptId: string, period: Period): Promise<
     `));
 
     // Per-project breakdown
-    const projRows = await db.execute(sql.raw(`
+    const projRowsP = db.execute(sql.raw(`
       select p.slug, p.name,
         coalesce(sum(case when t.status = 'done'::task_status and t.completed_at >= '${startStart.toISOString()}'
           and t.completed_at <= '${endEnd.toISOString()}' then 1 else 0 end), 0)::int as closed,
@@ -791,20 +820,16 @@ export async function getDeptDashboard(deptId: string, period: Period): Promise<
     `));
 
     // Priority mix
-    const prioRows = await db.execute(sql.raw(`
+    const prioRowsP = db.execute(sql.raw(`
       select priority::text as priority, count(*)::int as n
       from tasks where assignee_id in (${memberIdList}) and status = 'done'::task_status
         and completed_at >= '${startStart.toISOString()}'
         and completed_at <= '${endEnd.toISOString()}'
       group by priority
     `));
-    const prioMap = new Map<string, number>();
-    for (const r of (prioRows as unknown as Array<{ priority: string; n: number }>)) {
-      prioMap.set(r.priority, Number(r.n) || 0);
-    }
 
     // Daily breakdown
-    const dailyRows = await db.execute(sql.raw(`
+    const dailyRowsP = db.execute(sql.raw(`
       with d as (
         select generate_series('${startStart.toISOString()}'::timestamptz, '${endEnd.toISOString()}'::timestamptz, '1 day') as ts
       )
@@ -817,6 +842,16 @@ export async function getDeptDashboard(deptId: string, period: Period): Promise<
             and (c.created_at at time zone 'Asia/Kolkata')::date = (d.ts at time zone 'Asia/Kolkata')::date), 0)::int as commented
       from d order by d
     `));
+
+    const [headlineRows, commentRows, memberStatRows, projRows, prioRows, dailyRows] = await Promise.all([
+      headlineRowsP, commentRowsP, memberStatRowsP, projRowsP, prioRowsP, dailyRowsP,
+    ]);
+    const hl = (headlineRows as unknown as Array<any>)[0] ?? {};
+    const [commentRow] = commentRows as unknown as Array<{ n: number }>;
+    const prioMap = new Map<string, number>();
+    for (const r of (prioRows as unknown as Array<{ priority: string; n: number }>)) {
+      prioMap.set(r.priority, Number(r.n) || 0);
+    }
     const daily = (dailyRows as unknown as Array<{ d: string; closed: number; commented: number }>).map((r) => ({
       day: r.d.toString().slice(0, 10), closed: Number(r.closed) || 0, commented: Number(r.commented) || 0,
     }));

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getDb, users, departments, eq } from "@tu/db";
 import { getCurrentUser } from "@/lib/auth";
+import { revalidateOrgUsers } from "@/lib/cached-queries";
 import { log } from "@/lib/log";
 
 const ROLES = ["admin", "manager", "member", "viewer", "agent"] as const;
@@ -60,6 +61,7 @@ export async function createMember(formData: FormData): Promise<void> {
   if (!created) throw new Error("insert returned no row");
   log.info("member.created", { id: created.id, email, role, departmentId, managerId });
   revalidatePath("/members");
+  revalidateOrgUsers();
   redirect("/members");
 }
 
@@ -83,6 +85,7 @@ export async function updateMemberRole(formData: FormData): Promise<void> {
   await db.update(users).set({ role: roleRaw, updatedAt: new Date() }).where(eq(users.id, memberId));
   log.info("member.role_changed", { memberId, newRole: roleRaw, by: me.email });
   revalidatePath("/members");
+  revalidateOrgUsers();
 }
 
 /**
@@ -103,6 +106,7 @@ export async function toggleMemberActive(formData: FormData): Promise<void> {
   await db.update(users).set({ isActive: !member.isActive, updatedAt: new Date() }).where(eq(users.id, memberId));
   log.info("member.active_toggled", { memberId, isActive: !member.isActive, by: me.email });
   revalidatePath("/members");
+  revalidateOrgUsers();
 }
 
 // ---------------------------------------------------------------------------
@@ -120,6 +124,7 @@ export async function updateMemberPhone(formData: FormData): Promise<void> {
   await db.update(users).set({ phone, updatedAt: new Date() }).where(eq(users.id, memberId));
   log.info("member.phone_changed", { memberId, by: me.email });
   revalidatePath("/members");
+  revalidateOrgUsers();
   revalidatePath(`/members/${memberId}`);
 }
 
@@ -138,6 +143,7 @@ export async function updateMemberDepartment(formData: FormData): Promise<void> 
   await db.update(users).set({ departmentId, updatedAt: new Date() }).where(eq(users.id, memberId));
   log.info("member.department_changed", { memberId, departmentId, by: me.email });
   revalidatePath("/members");
+  revalidateOrgUsers();
   revalidatePath(`/members/${memberId}`);
 }
 
@@ -157,6 +163,7 @@ export async function updateMemberManager(formData: FormData): Promise<void> {
   await db.update(users).set({ managerId, updatedAt: new Date() }).where(eq(users.id, memberId));
   log.info("member.manager_changed", { memberId, managerId, by: me.email });
   revalidatePath("/members");
+  revalidateOrgUsers();
   revalidatePath(`/members/${memberId}`);
 }
 
@@ -176,6 +183,7 @@ export async function createDepartment(formData: FormData): Promise<void> {
   await db.insert(departments).values({ name, color, headId });
   log.info("department.created", { name, by: me.email });
   revalidatePath("/members");
+  revalidateOrgUsers();
 }
 
 export async function updateDepartment(formData: FormData): Promise<void> {
@@ -193,6 +201,7 @@ export async function updateDepartment(formData: FormData): Promise<void> {
   await db.update(departments).set({ name, color, headId, updatedAt: new Date() }).where(eq(departments.id, departmentId));
   log.info("department.updated", { departmentId, name, by: me.email });
   revalidatePath("/members");
+  revalidateOrgUsers();
 }
 
 export async function deleteDepartment(formData: FormData): Promise<void> {
@@ -208,4 +217,5 @@ export async function deleteDepartment(formData: FormData): Promise<void> {
   await db.delete(departments).where(eq(departments.id, departmentId));
   log.info("department.deleted", { departmentId, by: me.email });
   revalidatePath("/members");
+  revalidateOrgUsers();
 }
