@@ -20,8 +20,8 @@ import { getCurrentUser } from "@/lib/auth";
 import { getActiveUsers } from "@/lib/cached-queries";
 import { isAdmin, isPrivileged, getDepartmentScope } from "@/lib/access";
 import { fmtDueCountdown, dueStatus } from "@/lib/worktime";
-import { StatusSelect, AssigneeSelect } from "./inline-controls";
-import { updateTaskStatus, bulkSweepOverdue } from "./actions";
+import { StatusSelect, AssigneeSelect, DoneCheck } from "./inline-controls";
+import { bulkSweepOverdue } from "./actions";
 import { TaskPane } from "./task-pane";
 import { TaskPaneContent } from "./task-pane-content";
 import { GroupForm } from "./group-form";
@@ -631,35 +631,10 @@ function TaskRow({
 
   return (
     <div className={`arow ${done ? "is-done" : ""} ${cancelled ? "is-cancelled" : ""}`}>
-      {/* completion check — server form, no JS needed. Cancelled tasks get a
-          static box: the old form posted status="done" unconditionally, so one
-          stray click resurrected a cancelled task as completed. */}
+      {/* completion check — optimistic client control with a satisfying
+          pop animation; guards cancelled tasks against accidental revival */}
       <div className="alist-cell-check">
-        {cancelled ? (
-          <span
-            className="acheck"
-            style={{ opacity: 0.35, cursor: "not-allowed" }}
-            title="Cancelled — reopen it from the task page first"
-            aria-label="Cancelled task"
-          />
-        ) : (
-          <form action={updateTaskStatus}>
-            <input type="hidden" name="taskId" value={t.id} />
-            <input type="hidden" name="status" value={done ? "todo" : "done"} />
-            <button
-              type="submit"
-              aria-label={done ? "Mark as to do" : "Mark as done"}
-              className={`acheck ${done ? "is-done" : ""}`}
-              title={done ? "Mark as to do" : "Mark as done"}
-            >
-              {done ? (
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="11" height="11">
-                  <path d="m5 12 5 5L20 7" />
-                </svg>
-              ) : null}
-            </button>
-          </form>
-        )}
+        <DoneCheck taskId={t.id} done={done} cancelled={cancelled} />
       </div>
 
       <div className="alist-cell-title">

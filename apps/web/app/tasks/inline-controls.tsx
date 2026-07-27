@@ -45,7 +45,7 @@ export function StatusSelect({ taskId, status }: { taskId: string; status: strin
           }
         });
       }}
-      className="bg-panel-2 border border-border-2 rounded-md px-2 py-1 text-xs cursor-pointer"
+      className={`status-select st-${value} border rounded-md px-2 py-1 text-xs cursor-pointer`}
       style={failed ? { borderColor: "var(--danger)" } : undefined}
       title={failed ? "Change was rejected — reverted" : undefined}
     >
@@ -55,6 +55,64 @@ export function StatusSelect({ taskId, status }: { taskId: string; status: strin
         </option>
       ))}
     </select>
+  );
+}
+
+/**
+ * Round completion check with instant, satisfying feedback (Things-style):
+ * checks the moment you tap it, plays a soft ring-burst + checkmark draw,
+ * and reverts quietly if the server rejects the change. Replaces the no-JS
+ * form post that made ticking a task feel like a page load.
+ */
+export function DoneCheck({ taskId, done, cancelled }: { taskId: string; done: boolean; cancelled?: boolean }) {
+  const [checked, setChecked] = useState(done);
+  const [burst, setBurst] = useState(false);
+  const [, start] = useTransition();
+
+  useEffect(() => { setChecked(done); }, [done]);
+
+  if (cancelled) {
+    return (
+      <span
+        className="acheck"
+        style={{ opacity: 0.35, cursor: "not-allowed" }}
+        title="Cancelled — reopen it from the task page first"
+        aria-label="Cancelled task"
+      />
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      aria-label={checked ? "Mark as to do" : "Mark as done"}
+      title={checked ? "Mark as to do" : "Mark as done"}
+      className={`acheck ${checked ? "is-done" : ""} ${burst ? "acheck-pop" : ""}`}
+      onClick={() => {
+        const next = !checked;
+        setChecked(next);
+        if (next) {
+          setBurst(true);
+          setTimeout(() => setBurst(false), 650);
+        }
+        const fd = new FormData();
+        fd.set("taskId", taskId);
+        fd.set("status", next ? "done" : "todo");
+        start(async () => {
+          try {
+            await updateTaskStatus(fd);
+          } catch {
+            setChecked(!next); // server said no — quietly revert
+          }
+        });
+      }}
+    >
+      {checked ? (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="11" height="11">
+          <path className="acheck-tick" d="m5 12 5 5L20 7" />
+        </svg>
+      ) : null}
+    </button>
   );
 }
 

@@ -6,6 +6,35 @@ import { ProjectBanner } from "./project-banner";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * Things-style completion ring — a glanceable "how far along is this
+ * project" that fills as tasks close. Informational only: it measures the
+ * project, never a person.
+ */
+function ProgressRing({ done, total }: { done: number; total: number }) {
+  if (!total) return null;
+  const pct = Math.round((done / total) * 100);
+  const r = 7;
+  const c = 2 * Math.PI * r;
+  return (
+    <span className="proj-ring" title={`${pct}% complete · ${done} of ${total} tasks done`}>
+      <svg viewBox="0 0 18 18" width="16" height="16" aria-hidden="true">
+        <circle cx="9" cy="9" r={r} fill="none" stroke="var(--border-2)" strokeWidth="2.6" />
+        <circle
+          cx="9" cy="9" r={r} fill="none"
+          stroke={pct >= 100 ? "var(--success)" : "var(--accent-2)"}
+          strokeWidth="2.6"
+          strokeDasharray={`${(pct / 100) * c} ${c}`}
+          strokeLinecap="round"
+          transform="rotate(-90 9 9)"
+          className="proj-ring-arc"
+        />
+      </svg>
+      <span className="mono" style={{ fontSize: 11, color: pct >= 100 ? "var(--success)" : "var(--text-2)" }}>{pct}%</span>
+    </span>
+  );
+}
+
 export default async function ProjectsPage() {
   const me = await getCurrentUser();
   const db = getDb();
@@ -80,6 +109,7 @@ export default async function ProjectsPage() {
                   <div className="text-[12px] text-text-3 italic mb-3">No description</div>
                 )}
                 <div className="flex items-center gap-3 text-[11.5px] text-text-3 mt-auto">
+                  <ProgressRing done={p.done} total={p.total} />
                   <span><span className="text-text font-medium mono">{p.open}</span> open</span>
                   <span className="text-text-4">·</span>
                   <span><span className="text-text font-medium mono">{p.done}</span> done</span>

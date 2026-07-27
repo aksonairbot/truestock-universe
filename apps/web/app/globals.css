@@ -5158,3 +5158,96 @@ select:focus {
 .md-body .md-code { background: var(--panel-2); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; font-family: var(--font-mono), "JetBrains Mono", monospace; font-size: 12px; }
 .md-body .md-link { color: var(--accent-2); text-decoration: underline; text-underline-offset: 2px; }
 .md-body strong { font-weight: 600; color: var(--text); }
+
+/* ----------------------------------------------------------------------- */
+/* Design polish layer (2026-07-26): tactile feedback, satisfying          */
+/* completion, status color language, progress rings.                      */
+/* Motion is craft, not gamification — no scores, no badges.               */
+/* ----------------------------------------------------------------------- */
+
+/* --- press feedback: every button feels physical --- */
+.btn:active,
+.acheck:active,
+.view-tab:active,
+.nav-link:active {
+  transform: scale(0.965);
+}
+.btn, .view-tab, .nav-link { transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.08s ease-out, box-shadow 0.15s; }
+
+/* --- keyboard focus ring (accessibility + Linear-style crispness) --- */
+:focus-visible {
+  outline: 2px solid var(--accent-2);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* --- completion pop: ring burst + checkmark draw --- */
+.acheck { position: relative; }
+.acheck:hover { transform: scale(1.12); }
+.acheck-pop {
+  animation: acheck-bounce 0.42s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.acheck-pop::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 2px solid var(--success);
+  opacity: 0;
+  animation: acheck-ring 0.55s ease-out forwards;
+  pointer-events: none;
+}
+.acheck-pop .acheck-tick {
+  stroke-dasharray: 24;
+  stroke-dashoffset: 24;
+  animation: acheck-draw 0.3s 0.08s ease-out forwards;
+}
+@keyframes acheck-bounce {
+  0% { transform: scale(0.8); }
+  55% { transform: scale(1.22); }
+  100% { transform: scale(1); }
+}
+@keyframes acheck-ring {
+  0% { transform: scale(0.6); opacity: 0.8; }
+  100% { transform: scale(1.9); opacity: 0; }
+}
+@keyframes acheck-draw {
+  to { stroke-dashoffset: 0; }
+}
+
+/* --- rows: completing feels smooth, not jarring --- */
+.arow .atitle { transition: color 0.25s, text-decoration-color 0.25s; }
+
+/* --- status color language (Linear-style): the select IS the status pill --- */
+.status-select {
+  background: var(--panel-2);
+  border-color: var(--border-2);
+  color: var(--text-2);
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.status-select.st-todo       { color: #60A5FA; border-color: rgba(96, 165, 250, 0.35); background: rgba(96, 165, 250, 0.08); }
+.status-select.st-in_progress{ color: var(--accent-2); border-color: rgba(123, 92, 255, 0.4); background: rgba(123, 92, 255, 0.10); }
+.status-select.st-review     { color: var(--warning); border-color: rgba(251, 191, 36, 0.35); background: rgba(251, 191, 36, 0.08); }
+.status-select.st-done       { color: var(--success); border-color: rgba(52, 211, 153, 0.35); background: rgba(52, 211, 153, 0.08); }
+.status-select.st-cancelled  { color: var(--text-3); border-color: var(--border-2); background: transparent; }
+.status-select.st-backlog    { color: var(--text-3); border-color: var(--border-2); background: var(--panel-2); }
+.status-select option { background: var(--panel); color: var(--text); }
+
+/* --- project progress ring --- */
+.proj-ring { display: inline-flex; align-items: center; gap: 5px; }
+.proj-ring-arc { transition: stroke-dasharray 0.6s cubic-bezier(0.22, 1, 0.36, 1); }
+
+/* --- cards lift slightly on hover (already themed; unify the motion) --- */
+.card-interactive { transition: transform 0.18s ease-out, box-shadow 0.18s ease-out, border-color 0.18s; }
+.card-interactive:hover { transform: translateY(-2px); }
+.tcard { transition: transform 0.15s ease-out, box-shadow 0.15s, border-color 0.15s; }
+.tcard:active { transform: scale(0.985); }
+
+/* --- respect users who prefer less motion --- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
