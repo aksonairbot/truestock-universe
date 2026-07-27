@@ -5361,3 +5361,35 @@ select:focus {
   color: var(--text-3);
   font-weight: 500;
 }
+
+/* ----------------------------------------------------------------------- */
+/* Task filter bar (batch 8 — real filters, Asana-style)                   */
+/* ----------------------------------------------------------------------- */
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-3);
+  flex-wrap: wrap;
+}
+.filter-select {
+  background: var(--panel-2);
+  border: 1px solid var(--border-2);
+  border-radius: 8px;
+  color: var(--text-2);
+  font-size: 12px;
+  padding: 5px 8px;
+  cursor: pointer;
+  max-width: 160px;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.filter-select:hover { border-color: var(--border-3); color: var(--text); }
+.filter-select.on {
+  color: var(--accent-2);
+  border-color: rgba(123, 92, 255, 0.45);
+  background: rgba(123, 92, 255, 0.08);
+}
+.filter-select option { background: var(--panel); color: var(--text); }
+@media (max-width: 800px) {
+  .filter-bar { width: 100%; order: 5; }
+}

@@ -17,7 +17,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { getDb, tasks, projects, users, eq, desc, or, and, ilike, inArray, sql } from "@tu/db";
 import { getCurrentUser } from "@/lib/auth";
-import { getActiveUsers } from "@/lib/cached-queries";
+import { getActiveUsers, getProjectsList } from "@/lib/cached-queries";
 import { isAdmin, isPrivileged, getDepartmentScope } from "@/lib/access";
 import { fmtDueCountdown, dueStatus } from "@/lib/worktime";
 import { StatusSelect, AssigneeSelect, DoneCheck } from "./inline-controls";
@@ -25,6 +25,7 @@ import { bulkSweepOverdue } from "./actions";
 import { TaskPane } from "./task-pane";
 import { TaskPaneContent } from "./task-pane-content";
 import { GroupForm } from "./group-form";
+import { FilterBar } from "./filter-bar";
 
 export const dynamic = "force-dynamic";
 
@@ -157,17 +158,29 @@ function isOverdue(t: { dueDate: string | Date | null; status: string }): boolea
 const PAGE_SIZE = 50;
 
 interface PageProps {
-  searchParams: Promise<{ view?: string; group?: string; q?: string; task?: string; page?: string }>;
+  searchParams: Promise<{ view?: string; group?: string; q?: string; task?: string; page?: string; assignee?: string; priority?: string; project?: string }>;
 }
+
+const FILTER_PRIORITIES = ["low", "med", "high", "urgent"] as const;
+const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+const SLUG_RE = /^[a-z0-9-]+$/;
 
 export default async function TasksPage({ searchParams }: PageProps) {
   const t0 = Date.now();
-  const { view, group: groupRaw, q: qRaw, task: taskIdRaw, page: pageRaw } = await searchParams;
+  const { view, group: groupRaw, q: qRaw, task: taskIdRaw, page: pageRaw, assignee: assigneeRaw, priority: priorityRaw, project: projectRaw } = await searchParams;
   const taskId = (taskIdRaw ?? "").trim() || null;
   const isBoard = view === "board";
   const group: GroupKey = (GROUP_OPTIONS.find((g) => g.value === groupRaw)?.value ?? "due") as GroupKey;
   const q = (qRaw ?? "").trim();
   const page = Math.max(1, parseInt(pageRaw ?? "1", 10) || 1);
+
+  // Filters — validated before they touch SQL. "me"/"none" are shortcuts;
+  // anything else must look like a UUID (assignee) or slug (project).
+  const assigneeParamRaw = (assigneeRaw ?? "").trim();
+  const assigneeParam = assigneeParamRaw === "me" || assigneeParamRaw === "none" || UUID_RE.test(assigneeParamRaw) ? assigneeParamRaw : "";
+  const priorityParam = (FILTER_PRIORITIES as readonly string[]).includes((priorityRaw ?? "").trim()) ? (priorityRaw ?? "").trim() : "";
+  const projectParam = SLUG_RE.test((projectRaw ?? "").trim()) ? (projectRaw ?? "").trim() : "";
+  const filtersActive = Boolean(assigneeParam || priorityParam || projectParam);
 
   const tAuth0 = Date.now();
   const me = await getCurrentUser();
@@ -204,15 +217,31 @@ export default async function TasksPage({ searchParams }: PageProps) {
     );
   }
 
-  const where = searchFilter && scopeFilter
-    ? and(searchFilter, scopeFilter)
-    : searchFilter ?? scopeFilter ?? undefined;
+  // User-chosen filters (validated above)
+  const assigneeFilter =
+    assigneeParam === "me"
+      ? eq(tasks.assigneeId, me.id)
+      : assigneeParam === "none"
+        ? sql`${tasks.assigneeId} is null`
+        : assigneeParam
+          ? eq(tasks.assigneeId, assigneeParam)
+          : undefined;
+  const priorityFilter = priorityParam ? sql`${tasks.priority} = ${priorityParam}` : undefined;
+  // Subquery (not a join) so the stats query stays join-free
+  const projectFilter = projectParam
+    ? sql`${tasks.projectId} in (select id from projects where slug = ${projectParam})`
+    : undefined;
+
+  const conds = [searchFilter, scopeFilter, assigneeFilter, priorityFilter, projectFilter].filter(
+    (c): c is NonNullable<typeof c> => Boolean(c),
+  );
+  const where = conds.length === 0 ? undefined : conds.length === 1 ? conds[0] : and(...conds);
 
   // Parallel: paginated rows + combined stats (single scan) + user list
   const offset = (page - 1) * PAGE_SIZE;
   const tQ0 = Date.now();
 
-  const [rows, [statsRow], allUsers] = await Promise.all([
+  const [rows, [statsRow], allUsers, projectsList] = await Promise.all([
     db
       .select({
         id: tasks.id,
@@ -258,6 +287,8 @@ export default async function TasksPage({ searchParams }: PageProps) {
       .where(where),
     // Cached per-request — shared with TaskPaneContent if panel is open
     getActiveUsers(),
+    // Cross-request cached project list for the filter dropdown
+    getProjectsList(),
   ]);
 
   const tQ1 = Date.now();
@@ -275,6 +306,9 @@ export default async function TasksPage({ searchParams }: PageProps) {
     if (view) params.set("view", view);
     if (group !== "due") params.set("group", group);
     if (q) params.set("q", q);
+    if (assigneeParam) params.set("assignee", assigneeParam);
+    if (priorityParam) params.set("priority", priorityParam);
+    if (projectParam) params.set("project", projectParam);
     // preserve page unless explicitly overridden
     if (page > 1 && !("page" in extra)) params.set("page", String(page));
     for (const [k, v] of Object.entries(extra)) {
@@ -291,6 +325,9 @@ export default async function TasksPage({ searchParams }: PageProps) {
     if (view) params.set("view", view);
     if (group !== "due") params.set("group", group);
     if (q) params.set("q", q);
+    if (assigneeParam) params.set("assignee", assigneeParam);
+    if (priorityParam) params.set("priority", priorityParam);
+    if (projectParam) params.set("project", projectParam);
     params.set("task", id);
     return `/tasks?${params.toString()}`;
   };
@@ -386,13 +423,26 @@ export default async function TasksPage({ searchParams }: PageProps) {
             </div>
           </details>
         ) : null}
+        <FilterBar
+          view={view}
+          group={group}
+          q={q}
+          assignee={assigneeParam}
+          priority={priorityParam}
+          project={projectParam}
+          users={allUsers}
+          projects={projectsList}
+        />
         {!isBoard ? (
-          <GroupForm view={view} group={group} q={q} />
+          <GroupForm view={view} group={group} q={q} extra={{ assignee: assigneeParam, priority: priorityParam, project: projectParam }} />
         ) : null}
         <div className="tb-spacer" />
         <form action="/tasks" method="GET" className="search-form">
           {view ? <input type="hidden" name="view" value={view} /> : null}
           {group !== "due" ? <input type="hidden" name="group" value={group} /> : null}
+          {assigneeParam ? <input type="hidden" name="assignee" value={assigneeParam} /> : null}
+          {priorityParam ? <input type="hidden" name="priority" value={priorityParam} /> : null}
+          {projectParam ? <input type="hidden" name="project" value={projectParam} /> : null}
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="14" height="14">
             <circle cx="11" cy="11" r="7" />
             <path d="m20 20-3.5-3.5" />
@@ -411,13 +461,13 @@ export default async function TasksPage({ searchParams }: PageProps) {
       {rows.length === 0 ? (
         <div className="card text-center py-16 mt-2">
           <div className="text-text-2 mb-2">
-            {q ? <>No tasks match <span className="mono">"{q}"</span>.</> : "Clean slate. What's the next thing?"}
+            {q ? <>No tasks match <span className="mono">"{q}"</span>.</> : filtersActive ? "No tasks match these filters." : "Clean slate. What's the next thing?"}
           </div>
           <div className="text-text-3 text-[12px] mb-3">
-            {q ? "Try a different search or clear it to see everything." : "Type the first task — SeekPeak will pick the project, assignee, and priority."}
+            {q || filtersActive ? "Try different filters or clear them to see everything." : "Type the first task — SeekPeak will pick the project, assignee, and priority."}
           </div>
-          <Link href="/tasks/new" className="btn btn-primary btn-sm">
-            {q ? "Clear search" : "✨ Capture a task"}
+          <Link href={q || filtersActive ? "/tasks" : "/tasks/new"} className="btn btn-primary btn-sm">
+            {q || filtersActive ? "Clear filters" : "✨ Capture a task"}
           </Link>
         </div>
       ) : isBoard ? (

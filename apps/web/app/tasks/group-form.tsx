@@ -9,7 +9,7 @@ const GROUP_OPTIONS = [
   { value: "project", label: "Project" },
 ] as const;
 
-export function GroupForm({ view, group, q }: { view?: string; group: string; q: string }) {
+export function GroupForm({ view, group, q, extra = {} }: { view?: string; group: string; q: string; extra?: Record<string, string> }) {
   const router = useRouter();
 
   function onChange(e: React.ChangeEvent<HTMLSelectElement>) {
@@ -18,6 +18,8 @@ export function GroupForm({ view, group, q }: { view?: string; group: string; q:
     const val = e.target.value;
     if (val !== "due") params.set("group", val);
     if (q) params.set("q", q);
+    // Preserve active filters (assignee/priority/project) across regrouping
+    for (const [k, v] of Object.entries(extra)) if (v) params.set(k, v);
     const qs = params.toString();
     router.push(qs ? `/tasks?${qs}` : "/tasks");
   }
