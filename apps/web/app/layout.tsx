@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Poppins, JetBrains_Mono } from "next/font/google";
 import Sidebar from "./sidebar";
+import { CommandPalette } from "@/components/command-palette";
 import { getCurrentUser } from "@/lib/auth";
 import { ThemeProvider, themeInitScript } from "./theme-provider";
 import "./globals.css";
@@ -61,6 +62,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             <Sidebar user={user} isPrivileged={user?.role === "admin" || user?.role === "manager"} />
             <main className="flex-1 min-w-0 overflow-x-hidden">{children}</main>
           </div>
+          {user ? <CommandPalette isPrivileged={user.role === "admin" || user.role === "manager"} /> : null}
         </ThemeProvider>
       </body>
     </html>

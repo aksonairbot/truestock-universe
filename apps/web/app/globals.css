@@ -5251,3 +5251,77 @@ select:focus {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ----------------------------------------------------------------------- */
+/* ⌘K command palette + skeleton loading states (batch 6)                  */
+/* ----------------------------------------------------------------------- */
+.cmdk-backdrop {
+  position: fixed; inset: 0; z-index: 200;
+  background: rgba(4, 6, 10, 0.55);
+  backdrop-filter: blur(4px);
+  display: flex; align-items: flex-start; justify-content: center;
+  padding-top: 14vh;
+  animation: tu-fade-in 0.12s ease-out;
+}
+.cmdk {
+  width: min(560px, 92vw);
+  background: var(--panel);
+  border: 1px solid var(--border-2);
+  border-radius: 14px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  animation: cmdk-in 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes cmdk-in {
+  from { opacity: 0; transform: translateY(-8px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+.cmdk-input {
+  width: 100%; background: transparent; border: 0; outline: none;
+  padding: 16px 18px; font-size: 15px; color: var(--text);
+  border-bottom: 1px solid var(--border);
+}
+.cmdk-input::placeholder { color: var(--text-4); }
+.cmdk-list { max-height: 320px; overflow-y: auto; padding: 6px; }
+.cmdk-item {
+  display: flex; align-items: center; justify-content: space-between;
+  width: 100%; text-align: left; padding: 10px 12px; border-radius: 8px;
+  font-size: 13.5px; color: var(--text-2); background: none; border: 0; cursor: pointer;
+}
+.cmdk-item.active { background: var(--hover); color: var(--text); }
+.cmdk-hint {
+  font-family: var(--font-mono), monospace; font-size: 10.5px;
+  color: var(--text-4); border: 1px solid var(--border-2);
+  border-radius: 4px; padding: 1px 6px; letter-spacing: 0.06em;
+}
+.cmdk-empty { padding: 18px; text-align: center; color: var(--text-3); font-size: 13px; }
+.cmdk-foot {
+  display: flex; gap: 14px; padding: 8px 14px;
+  border-top: 1px solid var(--border);
+  font-size: 10.5px; color: var(--text-4);
+}
+
+/* --- skeletons: quiet shimmer in the shape of real content --- */
+.skel {
+  position: relative; overflow: hidden;
+  background: var(--panel-2); border-radius: 6px;
+}
+.skel::after {
+  content: ""; position: absolute; inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, var(--hover), transparent);
+  animation: skel-sweep 1.4s infinite;
+}
+@keyframes skel-sweep { 100% { transform: translateX(100%); } }
+.skel-title { width: 120px; height: 22px; margin-bottom: 8px; }
+.skel-sub { width: 260px; height: 12px; }
+.skel-row {
+  display: flex; align-items: center; gap: 14px;
+  padding: 13px 16px; border-top: 1px solid var(--border);
+}
+.skel-row:first-child { border-top: 0; }
+.skel-dot { width: 18px; height: 18px; border-radius: 50%; flex-shrink: 0; }
+.skel-bar { height: 12px; }
+.skel-chip { width: 90px; height: 20px; border-radius: 999px; margin-left: auto; flex-shrink: 0; }
+.skel-chip.sm { width: 56px; margin-left: 0; }
+.skel-card { height: 210px; border-radius: 12px; }
