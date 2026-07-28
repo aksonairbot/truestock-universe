@@ -5393,3 +5393,70 @@ select:focus {
 @media (max-width: 800px) {
   .filter-bar { width: 100%; order: 5; }
 }
+
+/* ----------------------------------------------------------------------- */
+/* Toasts with Undo + board drag-and-drop (batch 9)                        */
+/* ----------------------------------------------------------------------- */
+.toast-viewport {
+  position: fixed;
+  bottom: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 300;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: min(480px, 92vw);
+  padding: 10px 10px 10px 16px;
+  background: var(--panel);
+  border: 1px solid var(--border-2);
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+  font-size: 13px;
+  color: var(--text);
+  pointer-events: auto;
+  animation: toast-in 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.toast-error { border-color: rgba(248, 113, 113, 0.45); }
+.toast-leave { opacity: 0; transform: translateY(6px); transition: opacity 0.18s, transform 0.18s; }
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+.toast-msg { min-width: 0; }
+.toast-undo {
+  background: none;
+  border: 1px solid var(--border-2);
+  border-radius: 7px;
+  color: var(--accent-2);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.toast-undo:hover { background: var(--hover); }
+.toast-x {
+  background: none; border: 0; color: var(--text-4);
+  font-size: 16px; line-height: 1; cursor: pointer; padding: 2px 4px;
+  flex-shrink: 0;
+}
+.toast-x:hover { color: var(--text-2); }
+
+/* board drag targets */
+.kcol { transition: background 0.15s, border-color 0.15s, box-shadow 0.15s; }
+.kcol-over {
+  background: rgba(123, 92, 255, 0.06);
+  border-color: rgba(123, 92, 255, 0.45) !important;
+  box-shadow: inset 0 0 0 1px rgba(123, 92, 255, 0.35);
+}
+.tcard { cursor: grab; }
+.tcard:active { cursor: grabbing; }
+.tcard-dragging { opacity: 0.45; transform: scale(0.98); }

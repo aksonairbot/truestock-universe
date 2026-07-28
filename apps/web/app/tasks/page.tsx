@@ -10,22 +10,23 @@
 //   Board view          — kanban grouped by status (always)
 //
 // Server component. Inline status / assignee mutations live in
-// inline-controls.tsx. Completion toggle is an inline <form> hitting
-// updateTaskStatus directly (no JS).
+// inline-controls.tsx (optimistic client controls). The Board is a client
+// component (board-view.tsx) so cards can be dragged between columns.
 
 import Link from "next/link";
 import { Suspense } from "react";
-import { getDb, tasks, projects, users, eq, desc, or, and, ilike, inArray, sql } from "@tu/db";
+import { getDb, tasks, projects, users, eq, desc, or, and, ilike, sql } from "@tu/db";
 import { getCurrentUser } from "@/lib/auth";
 import { getActiveUsers, getProjectsList } from "@/lib/cached-queries";
 import { isAdmin, isPrivileged, getDepartmentScope } from "@/lib/access";
-import { fmtDueCountdown, dueStatus } from "@/lib/worktime";
+import { fmtDueCountdown } from "@/lib/worktime";
 import { StatusSelect, AssigneeSelect, DoneCheck } from "./inline-controls";
 import { bulkSweepOverdue } from "./actions";
 import { TaskPane } from "./task-pane";
 import { TaskPaneContent } from "./task-pane-content";
 import { GroupForm } from "./group-form";
 import { FilterBar } from "./filter-bar";
+import { BoardView } from "./board-view";
 
 export const dynamic = "force-dynamic";
 
@@ -51,8 +52,6 @@ const PRIORITY_DOT: Record<string, string> = {
   high: "var(--warning)",
   urgent: "var(--danger)",
 };
-const BOARD_COLUMNS = ["backlog", "todo", "in_progress", "review", "done"] as const;
-
 const GROUP_OPTIONS = [
   { value: "due", label: "Due date" },
   { value: "status", label: "Status" },
@@ -319,8 +318,10 @@ export default async function TasksPage({ searchParams }: PageProps) {
     return s ? `/tasks?${s}` : "/tasks";
   };
 
-  // Build /tasks?task=<id>&view=...&group=...&q=... — used as the row click target
-  const rowHrefForTask = (id: string) => {
+  // Current view/filter params as a query string — row click targets append
+  // &task=<id>; the client BoardView gets it as a plain string (functions
+  // can't cross the server→client boundary).
+  const rowParamsQS = (() => {
     const params = new URLSearchParams();
     if (view) params.set("view", view);
     if (group !== "due") params.set("group", group);
@@ -328,9 +329,9 @@ export default async function TasksPage({ searchParams }: PageProps) {
     if (assigneeParam) params.set("assignee", assigneeParam);
     if (priorityParam) params.set("priority", priorityParam);
     if (projectParam) params.set("project", projectParam);
-    params.set("task", id);
-    return `/tasks?${params.toString()}`;
-  };
+    return params.toString();
+  })();
+  const rowHrefForTask = (id: string) => `/tasks?${rowParamsQS ? `${rowParamsQS}&` : ""}task=${id}`;
 
   return (
     <div className="page-content">
@@ -471,7 +472,7 @@ export default async function TasksPage({ searchParams }: PageProps) {
           </Link>
         </div>
       ) : isBoard ? (
-        <BoardView rows={rows} users={allUsers} rowHref={rowHrefForTask} />
+        <BoardView rows={rows} hrefParams={rowParamsQS} />
       ) : (
         <ListView rows={rows} users={allUsers} group={group} rowHref={rowHrefForTask} canAssignOthers={canAssignOthers} />
       )}
@@ -745,91 +746,6 @@ function TaskRow({
           {t.priority}
         </span>
       </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Board view — kanban (cleaner card chrome, inline + add per column)
-// ---------------------------------------------------------------------------
-function BoardView({
-  rows,
-  users: _users,
-  rowHref,
-}: {
-  rows: any[];
-  users: Array<{ id: string; name: string }>;
-  rowHref: (id: string) => string;
-}) {
-  const grouped: Record<string, any[]> = {
-    backlog: [], todo: [], in_progress: [], review: [], done: [], cancelled: [],
-  };
-  for (const t of rows) (grouped[t.status] ?? grouped.todo!).push(t);
-
-  return (
-    <div className="kanban">
-      {BOARD_COLUMNS.map((s) => {
-        const items = grouped[s] ?? [];
-        return (
-          <div key={s} className="kcol">
-            <div className="kcol-head">
-              <div className="kcol-title flex items-center gap-2">
-                <span
-                  className="inline-block rounded-full"
-                  style={{ width: 8, height: 8, background: STATUS_DOT[s] }}
-                />
-                {STATUS_LABEL[s]}
-              </div>
-              <div className="kcol-count">{items.length}</div>
-            </div>
-
-            {items.length === 0 ? (
-              <div className="text-text-3 italic text-xs px-2 py-3 text-center">empty</div>
-            ) : (
-              items.map((t) => (
-                <Link key={t.id} href={rowHref(t.id)} className="tcard no-underline" scroll={false}>
-                  <div className="flex gap-1 flex-wrap">
-                    <span className={`pchip ${t.project.slug}`}>{t.project.name}</span>
-                    {t.priority === "urgent" || t.priority === "high" ? (
-                      <span className={`prio ${t.priority}`}>{t.priority}</span>
-                    ) : null}
-                  </div>
-                  <div className="ttitle">{t.title}</div>
-                  <div className="tmeta">
-                    {t.assignee?.name ? (
-                      <span className="flex items-center gap-1.5">
-                        <span className={`tava ${avaClass(t.assignee.name)}`}>
-                          {avaInitial(t.assignee.name)}
-                        </span>
-                        {t.assignee.name}
-                      </span>
-                    ) : (
-                      <span className="text-text-3 italic">unassigned</span>
-                    )}
-                    <span
-                      className={`tdue ${isOverdue(t) ? "red" : ""}`}
-                      title={t.dueDate ? fmtDate(t.dueDate) : ""}
-                    >
-                      {t.dueDate
-                        ? (t.status === "done" || t.status === "cancelled"
-                            ? fmtDate(t.dueDate)
-                            : fmtDueCountdown(t.dueDate))
-                        : ""}
-                    </span>
-                  </div>
-                </Link>
-              ))
-            )}
-
-            <Link href="/tasks/new" className="kcol-add">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12">
-                <path d="M12 5v14M5 12h14" />
-              </svg>
-              Add task
-            </Link>
-          </div>
-        );
-      })}
     </div>
   );
 }

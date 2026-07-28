@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { Poppins, JetBrains_Mono } from "next/font/google";
 import Sidebar from "./sidebar";
 import { CommandPalette } from "@/components/command-palette";
+import { ToasterProvider } from "@/components/toaster";
 import { getCurrentUser } from "@/lib/auth";
 import { ThemeProvider, themeInitScript } from "./theme-provider";
 import "./globals.css";
@@ -72,12 +73,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className="antialiased" suppressHydrationWarning>
         <ThemeProvider>
-          <div className="relative z-10 flex min-h-screen">
-            <Suspense fallback={<aside className="sidebar-aside" aria-hidden="true" />}>
-              <AppChrome />
-            </Suspense>
-            <main className="flex-1 min-w-0 overflow-x-hidden">{children}</main>
-          </div>
+          <ToasterProvider>
+            <div className="relative z-10 flex min-h-screen">
+              <Suspense fallback={<aside className="sidebar-aside" aria-hidden="true" />}>
+                <AppChrome />
+              </Suspense>
+              <main className="flex-1 min-w-0 overflow-x-hidden">{children}</main>
+            </div>
+          </ToasterProvider>
         </ThemeProvider>
       </body>
     </html>

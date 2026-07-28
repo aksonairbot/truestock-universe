@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { updateTaskStatus, assignTask, updateTaskPriority, updateTaskRecurrence } from "./actions";
+import { useToast } from "@/components/toaster";
 
 const STATUS_LABELS: Record<string, string> = {
   backlog: "Backlog",
@@ -68,8 +69,23 @@ export function DoneCheck({ taskId, done, cancelled }: { taskId: string; done: b
   const [checked, setChecked] = useState(done);
   const [burst, setBurst] = useState(false);
   const [, start] = useTransition();
+  const toast = useToast();
 
   useEffect(() => { setChecked(done); }, [done]);
+
+  function setStatus(next: boolean, onFail: () => void) {
+    const fd = new FormData();
+    fd.set("taskId", taskId);
+    fd.set("status", next ? "done" : "todo");
+    start(async () => {
+      try {
+        await updateTaskStatus(fd);
+      } catch {
+        onFail();
+        toast("Couldn't update the task — change reverted.", { tone: "error" });
+      }
+    });
+  }
 
   if (cancelled) {
     return (
@@ -94,17 +110,15 @@ export function DoneCheck({ taskId, done, cancelled }: { taskId: string; done: b
         if (next) {
           setBurst(true);
           setTimeout(() => setBurst(false), 650);
+          // Asana-style safety net: completing offers a 6s Undo.
+          toast("Task completed", {
+            undo: () => {
+              setChecked(false);
+              setStatus(false, () => setChecked(true));
+            },
+          });
         }
-        const fd = new FormData();
-        fd.set("taskId", taskId);
-        fd.set("status", next ? "done" : "todo");
-        start(async () => {
-          try {
-            await updateTaskStatus(fd);
-          } catch {
-            setChecked(!next); // server said no — quietly revert
-          }
-        });
+        setStatus(next, () => setChecked(!next));
       }}
     >
       {checked ? (
