@@ -27,6 +27,7 @@ import { TaskPaneContent } from "./task-pane-content";
 import { GroupForm } from "./group-form";
 import { FilterBar } from "./filter-bar";
 import { BoardView } from "./board-view";
+import { TaskRowTitle } from "./task-row-title";
 
 export const dynamic = "force-dynamic";
 
@@ -736,9 +737,7 @@ function TaskRow({
       </div>
 
       <div className="alist-cell-title">
-        <Link href={rowHref(t.id)} className="atitle" scroll={false}>
-          {t.title}
-        </Link>
+        <TaskRowTitle href={rowHref(t.id)} title={t.title} />
         {t.recurrence && t.recurrence !== "none" ? (
           <span
             className="ml-2 inline-flex items-center gap-1 text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded"

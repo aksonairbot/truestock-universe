@@ -5632,3 +5632,24 @@ select {
 
 /* 6. Softer, more even elevation on the list container. */
 .alist { border-radius: 12px; overflow: hidden; }
+
+/* --- opening a task: instant feedback on the row (batch 14) ------------- */
+/* The ?task= navigation is a full server round-trip; without this the first
+   click looked like nothing happened and people clicked again. */
+.atitle.is-opening {
+  color: var(--text-3);
+  cursor: progress;
+}
+.atitle-spin {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  margin-left: 8px;
+  vertical-align: -1px;
+  border: 1.5px solid var(--border-3);
+  border-top-color: var(--accent-2);
+  border-radius: 50%;
+  animation: atitle-spin 0.6s linear infinite;
+}
+@keyframes atitle-spin { to { transform: rotate(360deg); } }
+.arow:has(.atitle.is-opening) { background: var(--hover); }
