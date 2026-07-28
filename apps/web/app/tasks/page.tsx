@@ -157,7 +157,7 @@ function isOverdue(t: { dueDate: string | Date | null; status: string }): boolea
 const PAGE_SIZE = 50;
 
 interface PageProps {
-  searchParams: Promise<{ view?: string; group?: string; q?: string; task?: string; page?: string; assignee?: string; priority?: string; project?: string }>;
+  searchParams: Promise<{ view?: string; group?: string; q?: string; task?: string; page?: string; assignee?: string; priority?: string; project?: string; closed?: string }>;
 }
 
 const FILTER_PRIORITIES = ["low", "med", "high", "urgent"] as const;
@@ -166,7 +166,8 @@ const SLUG_RE = /^[a-z0-9-]+$/;
 
 export default async function TasksPage({ searchParams }: PageProps) {
   const t0 = Date.now();
-  const { view, group: groupRaw, q: qRaw, task: taskIdRaw, page: pageRaw, assignee: assigneeRaw, priority: priorityRaw, project: projectRaw } = await searchParams;
+  const { view, group: groupRaw, q: qRaw, task: taskIdRaw, page: pageRaw, assignee: assigneeRaw, priority: priorityRaw, project: projectRaw, closed: closedRaw } = await searchParams;
+  const showClosed = (closedRaw ?? "").trim() === "1";
   const taskId = (taskIdRaw ?? "").trim() || null;
   const isBoard = view === "board";
   const group: GroupKey = (GROUP_OPTIONS.find((g) => g.value === groupRaw)?.value ?? "due") as GroupKey;
@@ -231,10 +232,27 @@ export default async function TasksPage({ searchParams }: PageProps) {
     ? sql`${tasks.projectId} in (select id from projects where slug = ${projectParam})`
     : undefined;
 
-  const conds = [searchFilter, scopeFilter, assigneeFilter, priorityFilter, projectFilter].filter(
+  // Closed-work visibility. Default: the list shows LIVE work only — 572 of
+  // 575 tasks here are done/cancelled, and paging through 12 pages of finished
+  // work to find 3 open ones is not a task list, it's an archive. Asana and
+  // monday both hide completed items until asked. "Show closed" reveals them.
+  // The Board keeps its Done column (a kanban without one is confusing) but
+  // caps it to the last 7 days so it can't accumulate hundreds of cards.
+  const visibleCond = isBoard
+    ? sql`(${tasks.status} not in ('done'::task_status,'cancelled'::task_status) or (${tasks.status} = 'done'::task_status and ${tasks.completedAt} >= now() - interval '7 days'))`
+    : sql`${tasks.status} not in ('done'::task_status,'cancelled'::task_status)`;
+
+  const baseConds = [searchFilter, scopeFilter, assigneeFilter, priorityFilter, projectFilter].filter(
     (c): c is NonNullable<typeof c> => Boolean(c),
   );
-  const where = conds.length === 0 ? undefined : conds.length === 1 ? conds[0] : and(...conds);
+  const rowConds = showClosed ? baseConds : [...baseConds, visibleCond];
+
+  const toWhere = (cs: typeof baseConds) =>
+    cs.length === 0 ? undefined : cs.length === 1 ? cs[0] : and(...cs);
+  // Stats stay computed over EVERYTHING that matches the user's filters, so
+  // the header can still say "575 total" while the list shows only live work.
+  const statsWhere = toWhere(baseConds);
+  const where = toWhere(rowConds);
 
   // Parallel: paginated rows + combined stats (single scan) + user list
   const offset = (page - 1) * PAGE_SIZE;
@@ -281,9 +299,13 @@ export default async function TasksPage({ searchParams }: PageProps) {
         total: sql<number>`count(*)::int`,
         open: sql<number>`count(*) filter (where status not in ('done','cancelled'))::int`,
         overdue: sql<number>`count(*) filter (where status not in ('done','cancelled') and due_date < (now() at time zone 'Asia/Kolkata')::date)::int`,
+        // How many rows the CURRENT view will page through
+        visible: showClosed
+          ? sql<number>`count(*)::int`
+          : sql<number>`count(*) filter (where ${visibleCond})::int`,
       })
       .from(tasks)
-      .where(where),
+      .where(statsWhere),
     // Cached per-request — shared with TaskPaneContent if panel is open
     getActiveUsers(),
     // Cross-request cached project list for the filter dropdown
@@ -296,9 +318,12 @@ export default async function TasksPage({ searchParams }: PageProps) {
   }
 
   const totalCount = statsRow?.total ?? 0;
-  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
   const open = statsRow?.open ?? 0;
   const overdueCount = statsRow?.overdue ?? 0;
+  // Pagination follows what's actually listed, not the whole archive.
+  const visibleCount = statsRow?.visible ?? 0;
+  const totalPages = Math.max(1, Math.ceil(visibleCount / PAGE_SIZE));
+  const closedCount = Math.max(0, totalCount - open);
 
   const baseQuery = (extra: Record<string, string | undefined>) => {
     const params = new URLSearchParams();
@@ -308,6 +333,7 @@ export default async function TasksPage({ searchParams }: PageProps) {
     if (assigneeParam) params.set("assignee", assigneeParam);
     if (priorityParam) params.set("priority", priorityParam);
     if (projectParam) params.set("project", projectParam);
+    if (showClosed) params.set("closed", "1");
     // preserve page unless explicitly overridden
     if (page > 1 && !("page" in extra)) params.set("page", String(page));
     for (const [k, v] of Object.entries(extra)) {
@@ -329,6 +355,7 @@ export default async function TasksPage({ searchParams }: PageProps) {
     if (assigneeParam) params.set("assignee", assigneeParam);
     if (priorityParam) params.set("priority", priorityParam);
     if (projectParam) params.set("project", projectParam);
+    if (showClosed) params.set("closed", "1");
     return params.toString();
   })();
   const rowHrefForTask = (id: string) => `/tasks?${rowParamsQS ? `${rowParamsQS}&` : ""}task=${id}`;
@@ -340,13 +367,14 @@ export default async function TasksPage({ searchParams }: PageProps) {
         <div>
           <div className="page-title">Tasks</div>
           <div className="page-sub">
-            {totalCount} total · {open} open
+            <span className="text-text font-medium">{open}</span> open
             {overdueCount > 0 ? (
               <>
                 {" · "}
                 <span style={{ color: "var(--danger)" }}>{overdueCount} overdue</span>
               </>
             ) : null}
+            {closedCount > 0 ? ` · ${closedCount} closed` : null}
             {totalPages > 1 ? ` · page ${page} of ${totalPages}` : null}
           </div>
         </div>
@@ -431,11 +459,33 @@ export default async function TasksPage({ searchParams }: PageProps) {
           assignee={assigneeParam}
           priority={priorityParam}
           project={projectParam}
+          showClosed={showClosed}
           users={allUsers}
           projects={projectsList}
         />
         {!isBoard ? (
-          <GroupForm view={view} group={group} q={q} extra={{ assignee: assigneeParam, priority: priorityParam, project: projectParam }} />
+          <GroupForm view={view} group={group} q={q} extra={{ assignee: assigneeParam, priority: priorityParam, project: projectParam, ...(showClosed ? { closed: "1" } : {}) }} />
+        ) : null}
+        {closedCount > 0 ? (
+          <Link
+            href={baseQuery({ closed: showClosed ? undefined : "1", page: undefined })}
+            className={`btn btn-ghost btn-sm ${showClosed ? "is-on" : ""}`}
+            title={showClosed ? "Hide completed and cancelled tasks" : `Show ${closedCount} completed and cancelled tasks`}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="14" height="14">
+              {showClosed ? (
+                <>
+                  <path d="M3 3l18 18M10.6 5.1A9.9 9.9 0 0112 5c5 0 9 4.5 10 7-.4 1-1.4 2.6-3 4M6.3 6.4C4.3 7.8 2.9 9.8 2 12c1 2.5 5 7 10 7 1.6 0 3-.4 4.3-1.1" />
+                </>
+              ) : (
+                <>
+                  <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z" />
+                  <circle cx="12" cy="12" r="3" />
+                </>
+              )}
+            </svg>
+            {showClosed ? "Hide closed" : `Show closed (${closedCount})`}
+          </Link>
         ) : null}
         <div className="tb-spacer" />
         <form action="/tasks" method="GET" className="search-form">
@@ -444,6 +494,7 @@ export default async function TasksPage({ searchParams }: PageProps) {
           {assigneeParam ? <input type="hidden" name="assignee" value={assigneeParam} /> : null}
           {priorityParam ? <input type="hidden" name="priority" value={priorityParam} /> : null}
           {projectParam ? <input type="hidden" name="project" value={projectParam} /> : null}
+          {showClosed ? <input type="hidden" name="closed" value="1" /> : null}
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="14" height="14">
             <circle cx="11" cy="11" r="7" />
             <path d="m20 20-3.5-3.5" />
@@ -496,7 +547,7 @@ export default async function TasksPage({ searchParams }: PageProps) {
             </span>
           )}
           <span className="pagination-info">
-            {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, totalCount)} of {totalCount}
+            {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, visibleCount)} of {visibleCount}
           </span>
           {page < totalPages ? (
             <Link href={baseQuery({ page: String(page + 1) })} className="btn btn-ghost btn-sm">

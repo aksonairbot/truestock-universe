@@ -5560,3 +5560,10 @@ select {
     grid-template-columns: 32px minmax(200px, 1fr) 168px 150px 120px 96px 78px;
   }
 }
+
+/* Toggle-style ghost button (e.g. "Show closed") when active */
+.btn.is-on {
+  color: var(--accent-2);
+  border-color: rgba(123, 92, 255, 0.45);
+  background: var(--accent-wash);
+}

@@ -23,6 +23,7 @@ export function FilterBar({
   assignee,
   priority,
   project,
+  showClosed = false,
   users,
   projects,
 }: {
@@ -32,6 +33,7 @@ export function FilterBar({
   assignee: string;
   priority: string;
   project: string;
+  showClosed?: boolean;
   users: Array<{ id: string; name: string }>;
   projects: Array<{ slug: string; name: string }>;
 }) {
@@ -47,6 +49,7 @@ export function FilterBar({
     if (merged.assignee) params.set("assignee", merged.assignee);
     if (merged.priority) params.set("priority", merged.priority);
     if (merged.project) params.set("project", merged.project);
+    if (showClosed) params.set("closed", "1");
     const qs = params.toString();
     router.push(qs ? `/tasks?${qs}` : "/tasks");
   }
