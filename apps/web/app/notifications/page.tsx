@@ -15,8 +15,8 @@ import {
   sql,
 } from "@tu/db";
 import { getCurrentUser } from "@/lib/auth";
-import { markAllRead } from "./actions";
 import { NotifRow } from "./row";
+import { MarkAllReadButton } from "./mark-all-button";
 
 export const dynamic = "force-dynamic";
 
@@ -79,11 +79,7 @@ export default async function NotificationsPage({ searchParams }: PageProps) {
             {total} total · {unread > 0 ? <span style={{ color: "var(--accent-2)" }}>{unread} unread</span> : "all caught up"}
           </div>
         </div>
-        {unread > 0 ? (
-          <form action={markAllRead}>
-            <button type="submit" className="btn btn-ghost btn-sm">Mark all read</button>
-          </form>
-        ) : null}
+        {unread > 0 ? <MarkAllReadButton unread={unread} /> : null}
       </div>
 
       <div className="filter-chips">

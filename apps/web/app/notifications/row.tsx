@@ -3,8 +3,9 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { markRead } from "./actions";
+import { BADGE_REFRESH_EVENT } from "@/lib/badge-events";
 
 type Row = {
   id: string;
@@ -55,6 +56,12 @@ export function NotifRow({ row }: { row: Row }) {
   const [unread, setUnread] = useState(row.readAt === null);
   const [, start] = useTransition();
 
+  // Re-sync when the server sends fresh data (e.g. after "Mark all read"
+  // revalidates the page). useState only honours its initial value on first
+  // mount, so without this the rows stayed visually unread forever and the
+  // button looked broken even though the write had succeeded.
+  useEffect(() => { setUnread(row.readAt === null); }, [row.readAt]);
+
   function onClick() {
     if (!unread) return;
     setUnread(false);
@@ -62,7 +69,10 @@ export function NotifRow({ row }: { row: Row }) {
     fd.set("ids", row.id);
     if (row.taskId) fd.set("taskId", row.taskId);
     start(async () => {
-      try { await markRead(fd); } catch { setUnread(true); }
+      try {
+        await markRead(fd);
+        window.dispatchEvent(new Event(BADGE_REFRESH_EVENT));
+      } catch { setUnread(true); }
     });
   }
 

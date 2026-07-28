@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useRef, useEffect } from "react";
 import { useTheme } from "./theme-provider";
+import { BADGE_REFRESH_EVENT } from "@/lib/badge-events";
 
 interface SidebarProps {
   user: { name: string; email: string; avatarUrl: string | null; role?: string } | null;
@@ -14,22 +15,37 @@ interface SidebarProps {
   isPrivileged?: boolean;
 }
 
-/** Fetch badge counts client-side so the layout doesn't block on these queries. */
-function useBadgeCounts() {
+/**
+ * Fetch badge counts client-side so the layout doesn't block on these queries.
+ * Refetches on route change AND when something marks notifications/messages
+ * read (via the seekpeak:badges-refresh event) — previously it fetched once
+ * on mount, so the Inbox badge kept showing a stale count (e.g. "7") long
+ * after the user had read everything, until a full page reload.
+ */
+function useBadgeCounts(pathname: string) {
   const [unread, setUnread] = useState(0);
   const [chatUnread, setChatUnread] = useState(0);
+
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/sidebar-badges")
-      .then((r) => r.json())
-      .then((d: { unread?: number; chatUnread?: number }) => {
-        if (cancelled) return;
-        setUnread(d.unread ?? 0);
-        setChatUnread(d.chatUnread ?? 0);
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, []);
+    const load = () => {
+      fetch("/api/sidebar-badges", { cache: "no-store" })
+        .then((r) => r.json())
+        .then((d: { unread?: number; chatUnread?: number }) => {
+          if (cancelled) return;
+          setUnread(d.unread ?? 0);
+          setChatUnread(d.chatUnread ?? 0);
+        })
+        .catch(() => {});
+    };
+    load();
+    window.addEventListener(BADGE_REFRESH_EVENT, load);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(BADGE_REFRESH_EVENT, load);
+    };
+  }, [pathname]);
+
   return { unread, chatUnread };
 }
 
@@ -41,8 +57,8 @@ export default function Sidebar({
   orgMembersLine = "Truestock · daily work tracker",
   isPrivileged = false,
 }: SidebarProps) {
-  const { unread: unreadCount, chatUnread: chatUnreadCount } = useBadgeCounts();
   const rawPath = usePathname() ?? "/";
+  const { unread: unreadCount, chatUnread: chatUnreadCount } = useBadgeCounts(rawPath);
   const [mobileOpen, setMobileOpen] = useState(false);
   // Normalize: strip trailing slash (except root), drop any query/hash
   const pathname = rawPath !== "/" && rawPath.endsWith("/") ? rawPath.slice(0, -1) : rawPath;
