@@ -681,7 +681,7 @@ function ListView({
       </div>
 
       {sections.map((sec) => (
-        <section key={sec.key} className="asec">
+        <section key={sec.key} className="asec" style={{ "--sec-tone": sec.tone } as React.CSSProperties}>
           <header className="asec-head">
             <span className="asec-chev" aria-hidden="true">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12">
@@ -691,6 +691,9 @@ function ListView({
             <span className="asec-tone" style={{ background: sec.tone }} />
             <span className="asec-label">{sec.label}</span>
             <span className="asec-count">{sec.items.length}</span>
+            {/* monday.com-style "battery": one glance tells you a group's
+                health without reading a single row. */}
+            <SectionBattery items={sec.items} />
           </header>
 
           {/* Empty sections stay as a slim header + the Add task affordance
@@ -710,6 +713,39 @@ function ListView({
         </section>
       ))}
     </div>
+  );
+}
+
+/**
+ * Status distribution bar for a group header. Segments are proportional and
+ * carry the same colours as the status pills, so the language stays single:
+ * blue = to do, violet = in progress, amber = review, green = done.
+ * Hidden when a group has fewer than 2 tasks — a full-width single-colour
+ * bar communicates nothing.
+ */
+function SectionBattery({ items }: { items: any[] }) {
+  if (items.length < 2) return null;
+  const order = ["done", "in_progress", "review", "todo", "backlog", "cancelled"] as const;
+  const counts = new Map<string, number>();
+  for (const t of items) counts.set(t.status, (counts.get(t.status) ?? 0) + 1);
+  const segments = order
+    .filter((s) => (counts.get(s) ?? 0) > 0)
+    .map((s) => ({ status: s, n: counts.get(s)!, pct: ((counts.get(s)! / items.length) * 100).toFixed(1) }));
+  const donePct = Math.round(((counts.get("done") ?? 0) / items.length) * 100);
+
+  return (
+    <span className="asec-battery" title={segments.map((s) => `${STATUS_LABEL[s.status]}: ${s.n}`).join(" · ")}>
+      <span className="asec-battery-track">
+        {segments.map((s) => (
+          <span
+            key={s.status}
+            className="asec-battery-seg"
+            style={{ width: `${s.pct}%`, background: STATUS_DOT[s.status] }}
+          />
+        ))}
+      </span>
+      {donePct > 0 ? <span className="asec-battery-pct">{donePct}%</span> : null}
+    </span>
   );
 }
 

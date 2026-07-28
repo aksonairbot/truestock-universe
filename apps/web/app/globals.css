@@ -5653,3 +5653,80 @@ select {
 }
 @keyframes atitle-spin { to { transform: rotate(360deg); } }
 .arow:has(.atitle.is-opening) { background: var(--hover); }
+
+/* ======================================================================= */
+/* Group intelligence (batch 15) — monday.com-style scanability:          */
+/* coloured group rail + status "battery" so a group's health reads at a  */
+/* glance, without adopting monday's shouting saturation.                 */
+/* ======================================================================= */
+
+/* Coloured rail down the left of each group, tinted per bucket */
+.asec {
+  position: relative;
+  padding-left: 3px;
+}
+.asec::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--sec-tone, transparent);
+  opacity: 0.55;
+  transition: opacity 0.2s;
+}
+.asec:hover::before { opacity: 0.9; }
+.asec:not(:has(.arow))::before { opacity: 0.18; }
+
+/* Status distribution battery in the group header */
+.asec-battery {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 14px;
+  min-width: 0;
+}
+.asec-battery-track {
+  display: flex;
+  width: 132px;
+  height: 6px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+}
+.asec-battery-seg {
+  height: 100%;
+  transition: width 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.asec-battery-seg:not(:last-child) { border-right: 1px solid var(--panel); }
+.asec-battery-pct {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+@media (max-width: 900px) {
+  .asec-battery { display: none; }
+}
+
+/* Row affordance: a quiet chevron on hover says "this opens" */
+.arow { position: relative; }
+.arow::after {
+  content: "";
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  margin-top: -4px;
+  border-right: 1.5px solid var(--text-4);
+  border-top: 1.5px solid var(--text-4);
+  transform: rotate(45deg);
+  opacity: 0;
+  transition: opacity 0.15s, right 0.15s;
+  pointer-events: none;
+}
+.arow:hover::after { opacity: 0.7; right: 3px; }
