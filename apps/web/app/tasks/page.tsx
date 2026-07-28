@@ -647,11 +647,13 @@ function ListView({
             <span className="asec-count">{sec.items.length}</span>
           </header>
 
-          {sec.items.length === 0 ? (
-            <div className="asec-empty">Drop a task here · or click below to add one</div>
-          ) : (
-            sec.items.map((t) => <TaskRow key={t.id} t={t} users={users} rowHref={rowHref} canAssignOthers={canAssignOthers} />)
-          )}
+          {/* Empty sections stay as a slim header + the Add task affordance
+              below — the old "Drop a task here" line was both untrue (the
+              list has no drop target) and repeated in every empty bucket,
+              which swallowed the top half of the page once Overdue hit 0. */}
+          {sec.items.length > 0
+            ? sec.items.map((t) => <TaskRow key={t.id} t={t} users={users} rowHref={rowHref} canAssignOthers={canAssignOthers} />)
+            : null}
 
           <Link href="/tasks/new" className="asec-add">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12">

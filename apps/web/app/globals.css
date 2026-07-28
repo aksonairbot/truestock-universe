@@ -5460,3 +5460,103 @@ select:focus {
 .tcard { cursor: grab; }
 .tcard:active { cursor: grabbing; }
 .tcard-dragging { opacity: 0.45; transform: scale(0.98); }
+
+/* ======================================================================= */
+/* UI polish pass (2026-07-28)                                             */
+/* 1. Custom select chrome — macOS Chrome draws a native ✓ over the label  */
+/*    on any styled <select> with appearance:auto ("✓n progress").         */
+/* 2. Slimmer empty sections. 3. Sticky list header. 4. Light-mode depth.  */
+/* ======================================================================= */
+
+:root {
+  --chev: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 6 8 9.5 4.5' fill='none' stroke='%2398A0B3' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+[data-theme="light"] {
+  --chev: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 6 8 9.5 4.5' fill='none' stroke='%23525770' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+select {
+  -webkit-appearance: none;
+  appearance: none;
+  background-image: var(--chev);
+  background-repeat: no-repeat;
+  background-position: right 7px center;
+  background-size: 10px 10px;
+  padding-right: 24px;
+  text-overflow: ellipsis;
+}
+/* Doubled class = specificity high enough to re-assert the chevron over the
+   status/filter tint rules, which use the `background` shorthand. */
+.status-select.status-select,
+.filter-select.filter-select {
+  background-image: var(--chev);
+  background-repeat: no-repeat;
+  background-position: right 7px center;
+  background-size: 10px 10px;
+  padding-right: 22px;
+}
+
+/* --- list rows: quieter empty buckets, no wrapping dates --- */
+.asec-empty { display: none; }
+.asec-add { padding: 7px 16px 10px; }
+.asec:has(.arow) .asec-add { padding-top: 8px; }
+.alist-cell-due { white-space: nowrap; }
+
+/* --- sticky column headers on long lists --- */
+.alist-head {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  background: var(--panel-2);
+  backdrop-filter: saturate(140%) blur(6px);
+}
+
+/* --- section headers: a touch more presence --- */
+.asec-head { position: relative; }
+.asec-count { font-variant-numeric: tabular-nums; }
+
+/* --- numbers align in columns --- */
+.today-stat-val,
+.alist-cell-due,
+.kcol-count,
+.pagination-info { font-variant-numeric: tabular-nums; }
+
+/* --- light mode: give surfaces real edges so cards stop dissolving --- */
+[data-theme="light"] {
+  --border: rgba(15, 18, 24, 0.13);
+  --border-2: rgba(15, 18, 24, 0.18);
+  --bg: #F2F4F7;
+}
+[data-theme="light"] .card,
+[data-theme="light"] .alist,
+[data-theme="light"] .today-stat,
+[data-theme="light"] .kcol {
+  box-shadow: 0 1px 2px rgba(15, 18, 24, 0.05), 0 1px 1px rgba(15, 18, 24, 0.03);
+}
+[data-theme="light"] .alist-head {
+  background: #FBFCFD;
+  color: var(--text-3);
+}
+[data-theme="light"] .arow:hover { background: #F7F8FB; }
+
+/* --- Today stat chips: hierarchy instead of six identical boxes --- */
+.today-stat { position: relative; overflow: hidden; }
+.today-stat::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 2px;
+  background: var(--border-2);
+}
+.today-stat:nth-child(5)::before { background: var(--danger); opacity: 0.55; }
+.today-stat:nth-child(3)::before { background: var(--success); opacity: 0.55; }
+
+/* Desktop only (above the 1100px collapse breakpoint): give Due a little
+   more room so countdowns never crowd the Priority column. Scoped to
+   min-width so the existing max-width responsive rules stay authoritative. */
+@media (min-width: 1101px) {
+  .alist-head,
+  .arow {
+    grid-template-columns: 32px minmax(200px, 1fr) 168px 150px 120px 96px 78px;
+  }
+}

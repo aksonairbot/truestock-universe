@@ -121,8 +121,12 @@ export function fmtDueCountdown(dueDate: string | Date | null): string {
   const absDays = Math.floor(Math.abs(workHours) / HOURS_PER_DAY);
   const absHours = Math.round(Math.abs(workHours) % HOURS_PER_DAY);
 
+  // Precision that matches how people actually think: hours only matter when
+  // the deadline is close. Past a week, "521d 1h left" is noise that also
+  // wrapped the Due column onto two lines.
   let label = "";
-  if (absDays > 0 && absHours > 0) label = `${absDays}d ${absHours}h`;
+  if (absDays >= 7) label = `${absDays}d`;
+  else if (absDays > 0 && absHours > 0) label = `${absDays}d ${absHours}h`;
   else if (absDays > 0) label = `${absDays}d`;
   else label = `${absHours}h`;
 
