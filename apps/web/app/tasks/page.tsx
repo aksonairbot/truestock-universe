@@ -46,12 +46,6 @@ const STATUS_DOT: Record<string, string> = {
   done: "var(--success)",
   cancelled: "var(--text-4)",
 };
-const PRIORITY_DOT: Record<string, string> = {
-  low: "var(--text-3)",
-  med: "var(--text-2)",
-  high: "var(--warning)",
-  urgent: "var(--danger)",
-};
 const GROUP_OPTIONS = [
   { value: "due", label: "Due date" },
   { value: "status", label: "Status" },
@@ -794,10 +788,9 @@ function TaskRow({
       </div>
 
       <div className="alist-cell-prio">
-        <span className="aprio">
-          <span className="aprio-dot" style={{ background: PRIORITY_DOT[t.priority] }} />
-          {t.priority}
-        </span>
+        {/* Priority reads as a tinted chip so it speaks the same visual
+            language as the status pill (one chip system, not two). */}
+        <span className={`aprio aprio-${t.priority}`}>{t.priority}</span>
       </div>
     </div>
   );

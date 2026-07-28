@@ -5567,3 +5567,68 @@ select {
   border-color: rgba(123, 92, 255, 0.45);
   background: var(--accent-wash);
 }
+
+/* ======================================================================= */
+/* Composition pass (2026-07-28) — layout balance, one chip system,        */
+/* quieter empty state, calmer type. Apple: restraint + rhythm.            */
+/* ======================================================================= */
+
+/* 1. Center every page column. It was pinned left, leaving a ~900px void
+      on wide displays — the single thing that made the app read
+      "unfinished" rather than "designed". */
+.page-content {
+  margin-inline: auto;
+}
+
+/* 2. Empty buckets acknowledge, they don't shout. No duplicate "Add task"
+      (the toolbar already has one); the header itself recedes. */
+.asec:not(:has(.arow)) .asec-add { display: none; }
+.asec:not(:has(.arow)) .asec-head { opacity: 0.5; }
+.asec:not(:has(.arow)) .asec-count { background: transparent; border-color: transparent; }
+.asec-head { transition: opacity 0.2s; }
+.asec:not(:has(.arow)):hover .asec-head { opacity: 0.8; }
+
+/* 3. ONE chip system: priority now speaks the same language as status. */
+.aprio {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--border-2);
+  background: var(--panel-2);
+  color: var(--text-3);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  line-height: 1.7;
+}
+.aprio-dot { display: none; }
+.aprio-urgent {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 38%, transparent);
+  background: var(--danger-wash);
+}
+.aprio-high {
+  color: var(--warning);
+  border-color: color-mix(in srgb, var(--warning) 34%, transparent);
+  background: var(--warning-wash);
+}
+.aprio-med { color: var(--text-2); }
+.aprio-low { color: var(--text-4); background: transparent; }
+
+/* 4. Type: large headings get tighter tracking and less shout. */
+.page-title {
+  font-weight: 600;
+  letter-spacing: -0.024em;
+}
+.page-sub { margin-top: 3px; }
+.asec-label { letter-spacing: -0.01em; }
+
+/* 5. Rhythm: a little more air between the toolbar and the table, and
+      between page header and content. */
+.page-head { margin-bottom: 18px; }
+.toolbar { margin-bottom: 14px; }
+
+/* 6. Softer, more even elevation on the list container. */
+.alist { border-radius: 12px; overflow: hidden; }
