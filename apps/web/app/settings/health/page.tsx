@@ -54,6 +54,12 @@ const SCHEMA_CHECKS: Array<{
     feature: "Publishing handoff",
     taskColumns: ["publish_state", "published_url", "published_at", "publish_ref", "publish_error", "publish_profile"],
   },
+  {
+    migration: "0025_campaigns",
+    feature: "Campaigns and media-plan budgets",
+    table: "campaigns",
+    taskColumns: ["campaign_id", "budget_paise"],
+  },
 ];
 
 function Row({ label, state, detail }: { label: string; state: State; detail?: string }) {

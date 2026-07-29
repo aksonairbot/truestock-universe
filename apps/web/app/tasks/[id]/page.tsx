@@ -11,6 +11,7 @@ import {
   eq,
   asc,
   sql,
+  isNull,
 } from "@tu/db";
 import { getCurrentUser } from "@/lib/auth";
 import { getActiveUsers } from "@/lib/cached-queries";
@@ -29,6 +30,9 @@ import { TaskAttachments } from "../task-attachments";
 import { TaskLinks } from "../task-links";
 import { ContentFields } from "../content-fields";
 import { ContentApproval } from "../content-approval";
+import { CampaignFields } from "../campaign-fields";
+import { paiseToRupeeInput } from "@/lib/campaigns";
+import { campaigns as campaignsTbl } from "@tu/db";
 import { PublishPanel } from "../publish-panel";
 import { isPublishConfigured } from "@/lib/upload-post";
 import { ReviewActions } from "../review-actions";
@@ -97,6 +101,8 @@ export default async function TaskDetailPage({ params }: PageProps) {
       publishedUrl: tasks.publishedUrl,
       publishedAt: tasks.publishedAt,
       publishError: tasks.publishError,
+      campaignId: tasks.campaignId,
+      budgetPaise: tasks.budgetPaise,
       createdAt: tasks.createdAt,
       updatedAt: tasks.updatedAt,
       startedAt: tasks.startedAt,
@@ -117,7 +123,7 @@ export default async function TaskDetailPage({ params }: PageProps) {
   // Everything below only needs the task id/createdById — run the access
   // check CONCURRENTLY with the data reads instead of serializing them
   // (previously: auth → task → access (re-fetch + dept scan) → data batch).
-  const [accessOk, creatorArr, allUsers, comments, subtaskRows, attachmentRows, linkRows] = await Promise.all([
+  const [accessOk, creatorArr, allUsers, campaignList, comments, subtaskRows, attachmentRows, linkRows] = await Promise.all([
     // Read-path data wall: mirrors the mutation-path check; renders 404
     // (not 403) so URLs don't leak task existence.
     requireTaskAccess(task.id, me).then(() => true).catch(() => false),
@@ -128,6 +134,13 @@ export default async function TaskDetailPage({ params }: PageProps) {
 
     // Cross-request cached — was a full users-table select per view.
     getActiveUsers(),
+
+    // Live campaigns to file this task under. Small table, cheap read.
+    db
+      .select({ id: campaignsTbl.id, name: campaignsTbl.name, status: campaignsTbl.status })
+      .from(campaignsTbl)
+      .where(isNull(campaignsTbl.archivedAt))
+      .orderBy(asc(campaignsTbl.name)),
 
     db
       .select({
@@ -283,6 +296,15 @@ export default async function TaskDetailPage({ params }: PageProps) {
             }))}
             users={allUsers}
             canAssignOthers={canAssignOthers}
+          />
+
+          <h3 className="text-xs text-text-3 uppercase tracking-wider mb-2 mt-2">Campaign</h3>
+          <CampaignFields
+            taskId={task.id}
+            campaignId={task.campaignId}
+            budget={paiseToRupeeInput(task.budgetPaise)}
+            campaigns={campaignList}
+            disabled={task.status === "cancelled"}
           />
 
           {/* attachments */}

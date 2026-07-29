@@ -6145,3 +6145,122 @@ a.cview-btn:hover { color: var(--text); }
   .ccard-move { opacity: 0; transition: opacity 0.12s ease; }
   .tcard:hover .ccard-move, .ccard-move:focus-visible { opacity: 1; }
 }
+
+/* ===========================================================================
+   Campaigns — digital media planning
+   =========================================================================== */
+.cmp-grid {
+  display: grid; gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+}
+.cmp-card {
+  display: flex; flex-direction: column; gap: 7px;
+  padding: 14px 16px;
+  border: 1px solid var(--border); border-radius: 12px;
+  background: var(--panel); color: inherit;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+.cmp-card:hover { border-color: var(--border-2); transform: translateY(-1px); }
+.cmp-card-top { display: flex; align-items: center; gap: 8px; }
+.cmp-status {
+  font-size: 9.5px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
+  border: 1px solid; border-radius: 999px; padding: 1px 7px;
+}
+.cmp-live { color: #34c759; font-size: 9px; }
+.cmp-archived { font-size: 10px; color: var(--text-4); text-transform: uppercase; letter-spacing: 0.05em; }
+.cmp-name { font-size: 14.5px; font-weight: 600; color: var(--text); }
+.cmp-obj {
+  font-size: 12px; color: var(--text-2); line-height: 1.45;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.cmp-meta { display: flex; gap: 10px; flex-wrap: wrap; font-size: 11.5px; color: var(--text-3); }
+.cmp-stats { display: flex; gap: 14px; font-size: 11.5px; color: var(--text-3); margin-top: 2px; }
+.cmp-stats strong { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.cmp-budget { display: flex; flex-direction: column; gap: 5px; }
+.cmp-bar { height: 5px; border-radius: 999px; background: var(--border); overflow: hidden; }
+.cmp-bar-lg { height: 8px; }
+.cmp-bar-fill { display: block; height: 100%; background: var(--accent); border-radius: 999px; }
+.cmp-bar-fill.is-over { background: #ff453a; }
+.cmp-budget-line {
+  display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap;
+  font-size: 11.5px; color: var(--text-2); font-variant-numeric: tabular-nums;
+}
+.cmp-budget-line .is-over, .cmp-num-v.is-over { color: #ff453a; }
+.cmp-warn { font-size: 11px; color: #ff453a; }
+
+/* --- plan page header --- */
+.cmp-objective {
+  font-size: 13px; color: var(--text-2); line-height: 1.5;
+  margin: 2px 0 14px; max-width: 70ch;
+}
+.cmp-budget-card { padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
+.cmp-budget-nums { display: flex; gap: 32px; flex-wrap: wrap; }
+.cmp-num { display: flex; flex-direction: column; gap: 3px; }
+.cmp-num-v { font-size: 20px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; line-height: 1; }
+.cmp-num-l { font-size: 11px; color: var(--text-3); }
+.cmp-item-money { font-size: 11.5px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+
+/* --- the channel × week grid --- */
+.plan-wrap { overflow-x: auto; padding-bottom: 4px; }
+.plan {
+  display: grid; gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border); border-radius: 12px; overflow: hidden;
+  min-width: min-content;
+}
+.plan-corner, .plan-wk, .plan-ch, .plan-cell { background: var(--panel); }
+.plan-corner {
+  padding: 8px 10px; font-size: 10.5px; text-transform: uppercase;
+  letter-spacing: 0.05em; color: var(--text-3); position: sticky; left: 0; z-index: 2;
+}
+.plan-wk { padding: 8px 10px; display: flex; flex-direction: column; gap: 1px; }
+.plan-wk-d { font-size: 12px; font-weight: 600; color: var(--text); }
+.plan-wk-l { font-size: 9.5px; color: var(--text-4); text-transform: uppercase; letter-spacing: 0.04em; }
+.plan-ch {
+  padding: 10px; display: flex; align-items: center; gap: 7px;
+  font-size: 12px; color: var(--text); position: sticky; left: 0; z-index: 1;
+}
+.plan-ch-dot { width: 7px; height: 7px; border-radius: 999px; flex-shrink: 0; }
+.plan-cell { padding: 6px; display: flex; flex-direction: column; gap: 4px; min-height: 52px; }
+.plan-cell.has-items { background: var(--panel-2, var(--panel)); }
+.plan-item {
+  font-size: 11px; line-height: 1.3; color: var(--text-2);
+  padding: 4px 6px; border-radius: 5px;
+  border-left: 3px solid var(--text-3);
+  background: var(--bg);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.plan-item:hover { color: var(--text); }
+.plan-item.is-unapproved { border-left-style: dashed; }
+.plan-item.is-live { opacity: 0.6; text-decoration: line-through; text-decoration-thickness: 1px; }
+
+/* --- campaign create / edit form --- */
+.cmp-form { padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
+.cmp-form-grid {
+  display: grid; gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+.cmp-field { display: flex; flex-direction: column; gap: 4px; }
+.cmp-field-wide { grid-column: 1 / -1; }
+.cmp-label { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-3); }
+.cmp-input {
+  font-size: 13px; padding: 6px 9px;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--bg); color: var(--text); width: 100%;
+}
+select.cmp-input {
+  appearance: none; -webkit-appearance: none;
+  padding-right: 26px;
+  background-image: var(--chev); background-repeat: no-repeat;
+  background-position: right 9px center; background-size: 10px;
+}
+.cmp-input:focus { outline: none; border-color: var(--accent); }
+.cmp-form-foot { display: flex; align-items: center; gap: 8px; }
+.cmp-edit-foot { display: flex; align-items: center; gap: 10px; margin-top: 24px; }
+.cmp-danger {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);
+}
+.cmp-danger-note { font-size: 11px; color: var(--text-3); }
+.cfield-empty { font-size: 11.5px; color: var(--text-3); padding: 4px 0 8px; }

@@ -155,6 +155,9 @@ export default function Sidebar({
         <NavLink href="/content" active={isActive("/content")} icon={<IcContent />}>
           Content
         </NavLink>
+        <NavLink href="/campaigns" active={isActive("/campaigns")} icon={<IcCampaign />}>
+          Campaigns
+        </NavLink>
         <NavLink href="/chat" active={isActive("/chat")} icon={<IcChat />}>
           <span className="flex-1">Chat</span>
           {chatUnreadCount > 0 ? (
@@ -366,6 +369,17 @@ function IcMembers() {
       <path d="M3 21c1-3 3.5-5 6-5s5 2 6 5" />
       <circle cx="17" cy="9" r="2.5" />
       <path d="M22 19c-.4-2-1.7-3.5-3.7-4" />
+    </svg>
+  );
+}
+
+function IcCampaign() {
+  // A megaphone: a campaign is the push, not the calendar.
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 11v2a1 1 0 0 0 1 1h2l4 4V6L6 10H4a1 1 0 0 0-1 1z" />
+      <path d="M14 8.5a4 4 0 0 1 0 7" />
+      <path d="M17.5 6a7.5 7.5 0 0 1 0 12" />
     </svg>
   );
 }

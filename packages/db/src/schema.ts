@@ -396,6 +396,14 @@ export const tasks = pgTable(
     publishRef: text("publish_ref"),
     publishError: text("publish_error"),
     publishProfile: text("publish_profile"),
+    // ---- campaigns / media planning (migration 0025) ----
+    // A task has one PROJECT (which product) and at most one CAMPAIGN (which
+    // push). They're orthogonal — a Diwali campaign spans several products.
+    // budgetPaise is the PLANNED spend for this line item; the campaign's
+    // budget is the envelope it has to fit inside. Money is bigint paise,
+    // never float.
+    campaignId: uuid("campaign_id").references(() => campaigns.id, { onDelete: "set null" }),
+    budgetPaise: bigint("budget_paise", { mode: "bigint" }).notNull().default(sql`0`),
     createdById: uuid("created_by_id")
       .notNull()
       .references(() => users.id),
@@ -409,10 +417,45 @@ export const tasks = pgTable(
     byDue: index("tasks_due_idx").on(t.dueDate),
     byOrder: index("tasks_order_idx").on(t.projectId, t.status, t.orderIndex),
     byPublish: index("tasks_publish_idx").on(t.publishAt),
+    byCampaign: index("tasks_campaign_idx").on(t.campaignId),
   }),
 );
 
 // ---------- task comments ----------
+
+// ---------- campaigns (digital media planning) ----------
+// The unit a marketing team actually plans in. Spans channels, weeks and a
+// budget, and cuts across products — which is exactly why it is not a project.
+export const campaigns = pgTable(
+  "campaigns",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    objective: text("objective"),
+    /** planning | live | done | cancelled (CHECK constraint, not an enum —
+     *  adding an enum value takes a lock and this list will grow). */
+    status: text("status").notNull().default("planning"),
+    startDate: date("start_date"),
+    endDate: date("end_date"),
+    /** Total envelope, in paise. Line-item budgets are summed against it. */
+    budgetPaise: bigint("budget_paise", { mode: "bigint" }).notNull().default(sql`0`),
+    ownerId: uuid("owner_id").references(() => users.id),
+    /** Optional: campaigns that belong to one product can say so. */
+    projectId: uuid("project_id").references(() => projects.id),
+    color: text("color"),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+    createdById: uuid("created_by_id")
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    byStatus: index("campaigns_status_idx").on(t.status),
+    byOwner: index("campaigns_owner_idx").on(t.ownerId),
+    byArchived: index("campaigns_archived_idx").on(t.archivedAt),
+  }),
+);
 
 export const taskComments = pgTable(
   "task_comments",

@@ -30,6 +30,7 @@ export function CommandPalette({ isPrivileged = false }: { isPrivileged?: boolea
       { id: "projects", label: "Go to Projects", hint: "G P", href: "/projects" },
       { id: "content", label: "Go to Content calendar", hint: "G C", href: "/content", keywords: "social post publish schedule campaign" },
       { id: "content-board", label: "Go to Content pipeline board", href: "/content?view=board", keywords: "social pipeline stage kanban idea script design" },
+      { id: "campaigns", label: "Go to Campaigns", hint: "G M", href: "/campaigns", keywords: "media plan budget push launch spend" },
       { id: "week", label: "Go to My week", hint: "G W", href: "/me/week" },
       { id: "month", label: "Go to Month", href: "/me/month" },
       { id: "chat", label: "Go to Chat", href: "/chat", keywords: "messages" },
@@ -92,7 +93,7 @@ export function CommandPalette({ isPrivileged = false }: { isPrivileged?: boolea
       }
       if (now - lastG.current < 900) {
         const map: Record<string, string> = {
-          t: "/tasks", p: "/projects", h: "/", i: "/notifications", u: "/members", w: "/me/week", c: "/content",
+          t: "/tasks", p: "/projects", h: "/", i: "/notifications", u: "/members", w: "/me/week", c: "/content", m: "/campaigns",
         };
         const href = map[key];
         lastG.current = 0;

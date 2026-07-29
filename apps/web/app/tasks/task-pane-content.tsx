@@ -16,6 +16,7 @@ import {
   eq,
   asc,
   sql,
+  isNull,
 } from "@tu/db";
 import { getCurrentUser } from "@/lib/auth";
 import { isPrivileged, requireTaskAccess } from "@/lib/access";
@@ -34,6 +35,9 @@ import { TaskAttachments } from "./task-attachments";
 import { TaskLinks } from "./task-links";
 import { ContentFields } from "./content-fields";
 import { ContentApproval } from "./content-approval";
+import { CampaignFields } from "./campaign-fields";
+import { paiseToRupeeInput } from "@/lib/campaigns";
+import { campaigns as campaignsTbl } from "@tu/db";
 import { PublishPanel } from "./publish-panel";
 import { isPublishConfigured } from "@/lib/upload-post";
 import { ReviewActions } from "./review-actions";
@@ -104,6 +108,8 @@ export async function TaskPaneContent({ taskId }: { taskId: string }) {
       publishedUrl: tasks.publishedUrl,
       publishedAt: tasks.publishedAt,
       publishError: tasks.publishError,
+      campaignId: tasks.campaignId,
+      budgetPaise: tasks.budgetPaise,
       createdAt: tasks.createdAt,
       updatedAt: tasks.updatedAt,
       startedAt: tasks.startedAt,
@@ -150,7 +156,7 @@ export async function TaskPaneContent({ taskId }: { taskId: string }) {
   }
 
   // Parallel fetch: creator + users + comments + subtasks + attachments (no waterfall)
-  const [creatorArr, allUsers, comments, subtaskRows, attachmentRows, linkRows] = await Promise.all([
+  const [creatorArr, allUsers, campaignList, comments, subtaskRows, attachmentRows, linkRows] = await Promise.all([
     task.createdById
       ? db.select({ name: users.name }).from(users).where(eq(users.id, task.createdById)).limit(1)
       : Promise.resolve([undefined]),
@@ -312,6 +318,15 @@ export async function TaskPaneContent({ taskId }: { taskId: string }) {
         }))}
         users={allUsers}
         canAssignOthers={canAssignOthers}
+      />
+
+      <h3 className="task-pane-section-h">Campaign</h3>
+      <CampaignFields
+        taskId={task.id}
+        campaignId={task.campaignId}
+        budget={paiseToRupeeInput(task.budgetPaise)}
+        campaigns={campaignList}
+        disabled={task.status === "cancelled"}
       />
 
       {/* attachments */}
