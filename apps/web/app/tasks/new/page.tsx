@@ -2,10 +2,23 @@ import Link from "next/link";
 import { getDb, projects, users, asc, isNull, eq } from "@tu/db";
 import { getCurrentUser } from "@/lib/auth";
 import { NewTaskForm } from "../new-task-form";
+import { isChannel } from "@/lib/content";
 
 export const dynamic = "force-dynamic";
 
-export default async function NewTaskPage() {
+interface PageProps {
+  // Arriving from /content: ?content=1 opens the Publish block, and
+  // ?channel= / ?date= prefill it. Everything is validated here — a bad
+  // query string must never reach the insert.
+  searchParams: Promise<{ content?: string; channel?: string; date?: string }>;
+}
+
+export default async function NewTaskPage({ searchParams }: PageProps) {
+  const sp = await searchParams;
+  const channel = isChannel(sp.channel ?? "") ? sp.channel! : "";
+  const publishDate = /^\d{4}-\d{2}-\d{2}$/.test(sp.date ?? "") ? sp.date! : "";
+  const contentMode = sp.content === "1" || Boolean(channel) || Boolean(publishDate);
+
   const me = await getCurrentUser();
   const db = getDb();
   const projectList = await db
@@ -24,12 +37,24 @@ export default async function NewTaskPage() {
     <div className="page-content max-w-[820px]">
       <div className="page-head">
         <div>
-          <div className="page-title">New task</div>
-          <div className="page-sub">Quick capture. Use Suggest to triage with AI.</div>
+          <div className="page-title">{contentMode ? "New content" : "New task"}</div>
+          <div className="page-sub">
+            {contentMode
+              ? "Quick capture. It lands on the content board as an idea."
+              : "Quick capture. Use Suggest to triage with AI."}
+          </div>
         </div>
         <Link href="/tasks" className="btn btn-ghost">← Back</Link>
       </div>
-      <NewTaskForm projects={projectList} users={userList} currentUserId={me.id} userRole={me.role} />
+      <NewTaskForm
+        projects={projectList}
+        users={userList}
+        currentUserId={me.id}
+        userRole={me.role}
+        initialChannel={channel}
+        initialPublishDate={publishDate}
+        contentMode={contentMode}
+      />
     </div>
   );
 }

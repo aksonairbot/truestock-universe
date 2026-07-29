@@ -105,9 +105,12 @@ export default async function ContentPage({ searchParams }: PageProps) {
               {stalled > 0 ? ` · ${stalled} without a slot` : null}
             </div>
           </div>
-          <div className="cview">
-            <Link href="/content" className="cview-btn">Calendar</Link>
-            <span className="cview-btn is-on">Board</span>
+          <div className="flex items-center gap-2">
+            <div className="cview">
+              <Link href="/content" className="cview-btn">Calendar</Link>
+              <span className="cview-btn is-on">Board</span>
+            </div>
+            <Link href="/tasks/new?content=1" className="btn btn-primary btn-sm">New content</Link>
           </div>
         </div>
 
@@ -117,7 +120,7 @@ export default async function ContentPage({ searchParams }: PageProps) {
             <div className="text-text-3 text-[12px] mb-3">
               Open any task and set a channel in its Publish section — it appears here as an idea.
             </div>
-            <Link href="/tasks" className="btn btn-primary btn-sm">Go to tasks</Link>
+            <Link href="/tasks/new?content=1" className="btn btn-primary btn-sm">Capture your first post</Link>
           </div>
         ) : (
           <ContentBoard items={boardItems} />
@@ -226,6 +229,7 @@ export default async function ContentPage({ searchParams }: PageProps) {
             <Link href="/content" className="btn btn-ghost btn-sm">This month</Link>
           ) : null}
           <Link href={`/content?month=${shiftMonth(month, 1)}`} className="btn btn-ghost btn-sm">→</Link>
+          <Link href="/tasks/new?content=1" className="btn btn-primary btn-sm">New content</Link>
         </div>
       </div>
 
@@ -249,7 +253,21 @@ export default async function ContentPage({ searchParams }: PageProps) {
             key={i}
             className={`cal-cell ${c.date === today ? "is-today" : ""} ${c.date ? "" : "is-blank"}`}
           >
-            {c.day ? <div className="cal-day">{c.day}</div> : null}
+            {c.day ? (
+              <div className="cal-day-row">
+                <span className="cal-day">{c.day}</span>
+                {/* Click a day, capture the post for that day. The whole
+                    point of a calendar is that the date is already chosen. */}
+                <Link
+                  href={`/tasks/new?content=1&date=${c.date}`}
+                  className="cal-add"
+                  aria-label={`Add content on ${c.date}`}
+                  title="Add content"
+                >
+                  +
+                </Link>
+              </div>
+            ) : null}
             {(byDay.get(c.date ?? "") ?? []).map((item) => (
               <Link
                 key={item.id}
@@ -308,9 +326,9 @@ export default async function ContentPage({ searchParams }: PageProps) {
         <div className="card text-center py-16 mt-4">
           <div className="text-text-2 mb-2">Nothing in the content calendar yet.</div>
           <div className="text-text-3 text-[12px] mb-3">
-            Open any task and set a channel in its Publish section — a webinar, an ad, a reel — and it appears here.
+            Capture a post, a webinar, an ad or a reel — or set a channel on any existing task&rsquo;s Publish section.
           </div>
-          <Link href="/tasks" className="btn btn-primary btn-sm">Go to tasks</Link>
+          <Link href="/tasks/new?content=1" className="btn btn-primary btn-sm">Capture your first post</Link>
         </div>
       ) : null}
     </div>

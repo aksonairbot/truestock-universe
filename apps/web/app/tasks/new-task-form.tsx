@@ -17,6 +17,7 @@ import { useRef, useState, useTransition } from "react";
 import { createTask } from "./actions";
 import { suggestTaskMeta, type TriageSuggestion } from "./triage-action";
 import { AttachmentUpload, type PendingFile } from "./attachment-upload";
+import { CONTENT_CHANNELS, CHANNEL_COLOR } from "@/lib/content";
 
 type Project = { slug: string; name: string };
 type User = { id: string; email: string; name: string };
@@ -69,7 +70,25 @@ const DUE_CHIPS: Array<{ label: string; value: () => string }> = [
   { label: "+2 weeks", value: () => isoPlus(14) },
 ];
 
-export function NewTaskForm({ projects, users, currentUserId, userRole }: { projects: Project[]; users: User[]; currentUserId: string; userRole: string }) {
+export function NewTaskForm({
+  projects,
+  users,
+  currentUserId,
+  userRole,
+  initialChannel = "",
+  initialPublishDate = "",
+  contentMode = false,
+}: {
+  projects: Project[];
+  users: User[];
+  currentUserId: string;
+  userRole: string;
+  /** Prefilled when arriving from /content — e.g. clicking a day in the calendar. */
+  initialChannel?: string;
+  initialPublishDate?: string;
+  /** Show the Publish block open from the start. */
+  contentMode?: boolean;
+}) {
   const router = useRouter();
   // Members can only assign tasks to themselves
   const canAssignOthers = userRole === "admin" || userRole === "manager";
@@ -82,6 +101,13 @@ export function NewTaskForm({ projects, users, currentUserId, userRole }: { proj
   const [recurrence, setRecurrence] = useState("none");
   const [dueDate, setDueDate] = useState("");
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
+  // Content capture. Off by default: the create form is the hottest path in
+  // the app and Amit has already had it slowed down once, so ordinary tasks
+  // see one small text link and nothing else.
+  const [showPublish, setShowPublish] = useState(contentMode || Boolean(initialChannel));
+  const [channel, setChannel] = useState(initialChannel);
+  const [publishDate, setPublishDate] = useState(initialPublishDate);
+  const [publishTime, setPublishTime] = useState("10:00");
 
   const [suggestPending, startSuggest] = useTransition();
   const [submitPending, startSubmit] = useTransition();
@@ -349,6 +375,70 @@ export function NewTaskForm({ projects, users, currentUserId, userRole }: { proj
         </div>
         <span className="text-[10px] text-text-4">Pick a date or tap a preset · up to 2 weeks out</span>
       </label>
+
+      {/* Publish (content capture) — collapsed to one link for normal tasks */}
+      <div className="md:col-span-2">
+        {!showPublish ? (
+          <button
+            type="button"
+            onClick={() => setShowPublish(true)}
+            className="text-[11px] text-text-3 hover:text-accent-2 underline underline-offset-2"
+          >
+            Going out on a channel? Capture it as content
+          </button>
+        ) : (
+          <div className="ncontent">
+            <span className="text-[11px] text-text-3 uppercase tracking-wider font-medium block mb-1.5">
+              Publish <span className="normal-case text-text-4">(optional)</span>
+            </span>
+            <div className="content-fields-row">
+              <label className="content-field">
+                <span className="content-field-label">Channel</span>
+                <select
+                  name="contentChannel"
+                  value={channel}
+                  onChange={(e) => setChannel(e.target.value)}
+                  className="content-select"
+                  style={channel ? { color: CHANNEL_COLOR[channel], borderColor: CHANNEL_COLOR[channel] } : undefined}
+                >
+                  <option value="">Not content</option>
+                  {CONTENT_CHANNELS.map((c) => (
+                    <option key={c.value} value={c.value}>{c.label}</option>
+                  ))}
+                </select>
+              </label>
+
+              {channel ? (
+                <>
+                  <label className="content-field">
+                    <span className="content-field-label">Publish date</span>
+                    <input
+                      type="date"
+                      name="publishDate"
+                      value={publishDate}
+                      onChange={(e) => setPublishDate(e.target.value)}
+                      className="content-input"
+                    />
+                  </label>
+                  <label className="content-field">
+                    <span className="content-field-label">Time (IST)</span>
+                    <input
+                      type="time"
+                      name="publishTime"
+                      value={publishTime}
+                      onChange={(e) => setPublishTime(e.target.value)}
+                      className="content-input"
+                    />
+                  </label>
+                </>
+              ) : null}
+            </div>
+            <span className="text-[10px] text-text-4 block mt-1.5">
+              Starts as an idea on the content board. It needs approval before it can be scheduled.
+            </span>
+          </div>
+        )}
+      </div>
 
       {/* Attachments */}
       <div className="md:col-span-2">

@@ -6,6 +6,7 @@ import { getDb, tasks, projects, taskComments, eq, and, sql } from "@tu/db";
 import { getCurrentUserId, getCurrentUser } from "@/lib/auth";
 import { isPrivileged, isAdmin, getDepartmentScope, requireTaskAccess } from "@/lib/access";
 import { log } from "@/lib/log";
+import { isChannel, istDateTimeToUtc } from "@/lib/content";
 import { notifyAssigned, notifyTaskCompleted, notifyCommentOnAssigned, notifyMentions, notifyReviewRequested, notifyReviewOutcome } from "@/lib/notify";
 import { offsetToDeadline, deadlineToDateStr } from "@/lib/worktime";
 
@@ -217,6 +218,30 @@ export async function createTask(formData: FormData): Promise<string> {
     }
   }
 
+  // ---- optional content capture ----
+  // Set a channel at creation time and the task lands straight on the
+  // content calendar instead of needing a second visit to the detail page.
+  // A new item ALWAYS starts at stage "idea" — never "scheduled" — so the
+  // approval gate cannot be side-stepped by creating something pre-scheduled.
+  const contentChannelRaw = ((formData.get("contentChannel") as string) ?? "").trim();
+  const publishDateRaw = ((formData.get("publishDate") as string) ?? "").trim();
+  const publishTimeRaw = ((formData.get("publishTime") as string) ?? "").trim();
+
+  let contentChannel: string | null = null;
+  let contentStage: string | null = null;
+  let publishAt: Date | null = null;
+
+  if (contentChannelRaw) {
+    if (!isChannel(contentChannelRaw)) throw new Error(`Unknown channel: ${contentChannelRaw}`);
+    contentChannel = contentChannelRaw;
+    contentStage = "idea";
+    if (publishDateRaw) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(publishDateRaw)) throw new Error("Publish date must be a real date.");
+      publishAt = istDateTimeToUtc(publishDateRaw, publishTimeRaw);
+      if (Number.isNaN(publishAt.getTime())) throw new Error("Publish date/time is not valid.");
+    }
+  }
+
   const db = getDb();
   const [project] = await db
     .select({ id: projects.id })
@@ -246,6 +271,9 @@ export async function createTask(formData: FormData): Promise<string> {
       dueDate,
       assigneeId,
       recurrence,
+      contentChannel,
+      contentStage,
+      publishAt,
       createdById: userId,
     })
     .returning({ id: tasks.id });
@@ -260,6 +288,7 @@ export async function createTask(formData: FormData): Promise<string> {
   }
   revalidatePath("/tasks");
   revalidatePath("/projects");
+  if (contentChannel) revalidatePath("/content");
   return created.id;
 }
 

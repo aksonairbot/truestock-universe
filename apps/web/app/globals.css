@@ -5956,7 +5956,9 @@ select {
    glance across a month without shouting on every tile. */
 .cal-item.is-unapproved { border-left-style: dashed; }
 .cal-item-flag {
-  margin-left: auto; flex-shrink: 0;
+  /* .cal-item is a column flex, so align-self (not margin-left) is what
+     pushes this to the right edge. */
+  align-self: flex-end; flex-shrink: 0; margin-top: 1px;
   width: 13px; height: 13px; line-height: 13px; text-align: center;
   border-radius: 999px; font-size: 9px; font-weight: 800;
   color: #1a1a1a; background: #ff9f0a;
@@ -6009,7 +6011,8 @@ select {
 .cal-item.is-live .cal-item-title { text-decoration: line-through; text-decoration-thickness: 1px; }
 .cal-item.is-failed { border-left-style: solid; background: rgba(255,69,58,0.08); }
 .cal-item-live {
-  margin-left: auto; flex-shrink: 0; font-size: 10px; font-weight: 800; color: #34c759;
+  align-self: flex-end; flex-shrink: 0; margin-top: 1px;
+  font-size: 10px; font-weight: 800; color: #34c759;
 }
 .cal-item-flag.is-err { background: #ff453a; color: #fff; }
 
@@ -6043,3 +6046,26 @@ a.cview-btn:hover { color: var(--text); }
 .ccard-flag.is-ok { color: #34c759; border-color: rgba(52,199,89,0.4); }
 .ccard.is-live { opacity: 0.66; }
 .ccard.is-failed { border-color: rgba(255,69,58,0.34); }
+
+/* Calendar day header: number left, hover-revealed "+" right. The affordance
+   stays invisible until the cell is hovered so a full month doesn't turn into
+   a grid of plus signs. Always visible on touch, where there is no hover. */
+.cal-day-row { display: flex; align-items: center; justify-content: space-between; gap: 4px; margin-bottom: 2px; }
+.cal-day-row .cal-day { margin-bottom: 0; }
+.cal-add {
+  width: 16px; height: 16px; line-height: 15px; text-align: center;
+  border-radius: 5px; font-size: 13px; font-weight: 600;
+  color: var(--text-3); text-decoration: none;
+  opacity: 0; transition: opacity 0.12s ease, background 0.12s ease, color 0.12s ease;
+}
+.cal-cell:hover .cal-add { opacity: 1; }
+.cal-add:hover { background: var(--accent); color: #fff; }
+.cal-add:focus-visible { opacity: 1; outline: 2px solid var(--accent); }
+@media (hover: none) { .cal-add { opacity: 0.55; } }
+
+/* Content capture block inside the new-task form. */
+.ncontent {
+  border: 1px dashed var(--border); border-radius: 10px;
+  padding: 10px 12px;
+  background: var(--surface-2, rgba(255,255,255,0.02));
+}
