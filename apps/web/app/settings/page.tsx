@@ -77,6 +77,28 @@ export default async function SettingsPage() {
             </div>
           </section>
         )}
+
+        {/* Health — admin only. A self-hosted deploy can look fine and still
+            be missing a migration or an env var; this is where you check. */}
+        {user.role === "admin" && (
+          <section className="card mt-6">
+            <div className="px-6 py-4 border-b border-border">
+              <h2 className="text-[14px] font-semibold text-text">Health</h2>
+            </div>
+            <div className="px-6 py-4">
+              <Link
+                href="/settings/health"
+                className="inline-flex items-center gap-2 text-[13px] text-accent hover:underline"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" width="14" height="14">
+                  <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+                </svg>
+                Check deploy health
+              </Link>
+              <p className="text-[12px] text-text-2 mt-1">Database, migrations, configuration and publishing status</p>
+            </div>
+          </section>
+        )}
       </div>
     </div>
   );

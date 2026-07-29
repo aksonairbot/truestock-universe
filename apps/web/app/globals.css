@@ -6069,3 +6069,54 @@ a.cview-btn:hover { color: var(--text); }
   padding: 10px 12px;
   background: var(--surface-2, rgba(255,255,255,0.02));
 }
+
+/* ---------------------------------------------------------------------------
+   Health page (admin). Reads top-to-bottom as a checklist: dot, what it is,
+   what's wrong. Green is silent, red carries the fix.
+--------------------------------------------------------------------------- */
+.hsec-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 12px 16px; border-bottom: 1px solid var(--border);
+  font-size: 13px; font-weight: 600; color: var(--text);
+}
+.hsec-badge {
+  margin-left: auto;
+  font-size: 9.5px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
+  border: 1px solid; border-radius: 999px; padding: 1px 7px;
+}
+.hsec-badge.is-ok { color: #34c759; border-color: rgba(52,199,89,0.4); }
+.hsec-badge.is-bad { color: #ff453a; border-color: rgba(255,69,58,0.42); }
+.hsec-body { padding: 6px 16px 12px; }
+
+.hrow {
+  display: flex; align-items: baseline; gap: 10px;
+  padding: 7px 0; border-bottom: 1px solid var(--border);
+  font-size: 12.5px; flex-wrap: wrap;
+}
+.hrow:last-child { border-bottom: 0; }
+.hrow-label { color: var(--text); }
+.hrow-detail { color: var(--text-3); font-size: 11.5px; margin-left: auto; text-align: right; }
+
+.hdot {
+  width: 7px; height: 7px; border-radius: 999px; flex-shrink: 0;
+  position: relative; top: -1px;
+}
+.hdot.is-ok { background: #34c759; }
+.hdot.is-warn { background: #ff9f0a; }
+.hdot.is-bad { background: #ff453a; box-shadow: 0 0 0 3px rgba(255,69,58,0.14); }
+.hdot.is-off { background: var(--text-4); }
+
+.hnote { margin-top: 10px; font-size: 11.5px; color: var(--text-3); }
+.hcode {
+  display: block; margin-top: 6px; padding: 6px 9px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 7px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px;
+  color: var(--text-2); overflow-x: auto;
+}
+.hlink { color: var(--accent-2); text-decoration: none; }
+.hlink:hover { text-decoration: underline; }
+
+.hstats { display: flex; gap: 24px; flex-wrap: wrap; padding: 6px 0 2px; }
+.hstat { display: flex; flex-direction: column; gap: 2px; }
+.hstat-n { font-size: 22px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; line-height: 1; }
+.hstat-l { font-size: 11px; color: var(--text-3); }
