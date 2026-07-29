@@ -6120,3 +6120,28 @@ a.cview-btn:hover { color: var(--text); }
 .hstat { display: flex; flex-direction: column; gap: 2px; }
 .hstat-n { font-size: 22px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; line-height: 1; }
 .hstat-l { font-size: 11px; color: var(--text-3); }
+
+/* Board cards: the clickable body is a link, the stage/status select sits
+   OUTSIDE it. A <select> nested inside an <a> is invalid and swallows taps,
+   which is how the touch path used to be impossible. */
+.ccard-open { display: flex; flex-direction: column; gap: 6px; color: inherit; }
+.ccard-move {
+  width: 100%; margin-top: 8px;
+  font-size: 11px; padding: 4px 22px 4px 8px;
+  border: 1px solid var(--border); border-radius: 7px;
+  background-color: var(--bg); color: var(--text-2);
+  appearance: none; -webkit-appearance: none;
+  background-image: var(--chev);
+  background-repeat: no-repeat;
+  background-position: right 7px center;
+  background-size: 9px;
+  cursor: pointer;
+}
+.ccard-move:hover { color: var(--text); border-color: var(--border-2); }
+.ccard-move:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* On a pointer device the drag is the fast path — keep the select quiet until
+   the card is hovered. On touch there is no hover, so it is always visible. */
+@media (hover: hover) {
+  .ccard-move { opacity: 0; transition: opacity 0.12s ease; }
+  .tcard:hover .ccard-move, .ccard-move:focus-visible { opacity: 1; }
+}

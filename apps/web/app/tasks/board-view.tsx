@@ -2,6 +2,11 @@
 //
 // Kanban board with DRAG-AND-DROP between columns (the biggest remaining
 // interaction gap vs Asana/monday). Zero dependencies — native HTML5 DnD.
+//
+// Every card ALSO carries a status <select>. HTML5 drag-and-drop does not
+// exist on touch devices and is invisible to keyboard users, so on a phone
+// that select is the primary control, not a fallback. Both paths call the
+// same moveTo(), so they can never disagree.
 // Dropping a card moves it optimistically, persists via updateTaskStatus,
 // shows a toast with Undo, and reverts (with an error toast) if the server
 // rejects the change.
@@ -157,11 +162,9 @@ export function BoardView({ rows, hrefParams }: { rows: BoardRow[]; hrefParams: 
               </div>
             ) : (
               items.map((t) => (
-                <Link
+                <div
                   key={t.id}
-                  href={rowHref(t.id)}
-                  className="tcard no-underline"
-                  scroll={false}
+                  className="tcard"
                   draggable
                   onDragStart={(e) => {
                     dragId.current = t.id;
@@ -174,6 +177,7 @@ export function BoardView({ rows, hrefParams }: { rows: BoardRow[]; hrefParams: 
                     setOverCol(null);
                   }}
                 >
+                  <Link href={rowHref(t.id)} className="ccard-open no-underline" scroll={false}>
                   <div className="flex gap-1 flex-wrap">
                     <span className={`pchip ${t.project.slug}`}>{t.project.name}</span>
                     {t.priority === "urgent" || t.priority === "high" ? (
@@ -198,7 +202,21 @@ export function BoardView({ rows, hrefParams }: { rows: BoardRow[]; hrefParams: 
                         : ""}
                     </span>
                   </div>
-                </Link>
+                  </Link>
+
+                  {/* Touch + keyboard path. Same moveTo() as a drop. */}
+                  <select
+                    className="ccard-move"
+                    value={effectiveStatus(t)}
+                    aria-label={`Move "${t.title}" to another column`}
+                    onChange={(e) => moveTo(t, e.target.value as ColStatus)}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {BOARD_COLUMNS.map((opt) => (
+                      <option key={opt} value={opt}>{STATUS_LABEL[opt]}</option>
+                    ))}
+                  </select>
+                </div>
               ))
             )}
 

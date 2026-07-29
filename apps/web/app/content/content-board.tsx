@@ -8,6 +8,12 @@
 // is stuck in design?" — the question a marketing lead actually asks in a
 // standup. Same items, two views; neither replaces the other.
 //
+// TOUCH + KEYBOARD: HTML5 drag-and-drop does not exist on touch devices and
+// is invisible to keyboard users, so every card also carries a stage <select>.
+// It is not a fallback bolted on — it is the primary control on a phone, and
+// it routes through exactly the same moveTo() as a drop, so the two paths can
+// never disagree.
+//
 // THE INTERESTING DECISION: the illegal moves are refused HERE, on the
 // client, before the round trip. Next.js redacts server-action error messages
 // in production, so a server rejection would surface as "something went
@@ -166,10 +172,9 @@ export function ContentBoard({ items }: { items: BoardItem[] }) {
                 const live = t.publishState === "published";
                 const failed = t.publishState === "failed";
                 return (
-                  <Link
+                  <div
                     key={t.id}
-                    href={`/tasks/${t.id}`}
-                    className={`tcard ccard no-underline ${live ? "is-live" : ""} ${failed ? "is-failed" : ""}`}
+                    className={`tcard ccard ${live ? "is-live" : ""} ${failed ? "is-failed" : ""}`}
                     draggable
                     onDragStart={(e) => {
                       dragId.current = t.id;
@@ -182,6 +187,7 @@ export function ContentBoard({ items }: { items: BoardItem[] }) {
                       setOverCol(null);
                     }}
                   >
+                    <Link href={`/tasks/${t.id}`} className="ccard-open no-underline">
                     <div className="flex gap-1 flex-wrap items-center">
                       <span
                         className="content-chip"
@@ -214,7 +220,24 @@ export function ContentBoard({ items }: { items: BoardItem[] }) {
                         {t.publishAt ? fmtSlot(t.publishAt) : <span className="text-text-3 italic">no slot</span>}
                       </span>
                     </div>
-                  </Link>
+                    </Link>
+
+                    {/* Works on touch, works with a keyboard, works when a
+                        drag is fiddly on a trackpad. Same code path as a drop. */}
+                    <select
+                      className="ccard-move"
+                      value={stageOf(t)}
+                      aria-label={`Move "${t.title}" to another stage`}
+                      onChange={(e) => moveTo(t, e.target.value)}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {CONTENT_STAGES.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 );
               })
             )}
