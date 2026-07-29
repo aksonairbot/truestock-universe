@@ -21,16 +21,66 @@ function nowIST(): Date {
   return now;
 }
 
+// IST is a FIXED +05:30 offset with no DST, so wall-clock parts can be read
+// arithmetically. The previous versions of these two helpers each built an
+// Intl formatter via toLocaleString — and countWorkingHours called them up to
+// 730 times per task, i.e. ~1,400 formatter constructions PER ROW. Measured
+// 2026-07-28: that made /tasks ~250ms slower per rendered row (900ms total)
+// while the board — which formats on the client — served in 90ms.
+const IST_OFFSET_MS = 5.5 * 3_600_000;
+const MS_PER_DAY = 86_400_000;
+
+/** Day index since the IST epoch day (1970-01-01 IST, a Thursday). */
+function istDayIndex(t: number): number {
+  return Math.floor((t + IST_OFFSET_MS) / MS_PER_DAY);
+}
+
+/** Day-of-week (0=Sun..6=Sat) for a day index. 1970-01-01 was a Thursday. */
+function dowOfDayIndex(i: number): number {
+  return (((i + 4) % 7) + 7) % 7;
+}
+
 /** Get the IST day-of-week for a Date (0=Sun..6=Sat). */
 function istDow(d: Date): number {
-  const s = d.toLocaleDateString("en-US", { timeZone: TZ, weekday: "short" });
-  const map: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
-  return map[s] ?? 0;
+  return dowOfDayIndex(istDayIndex(d.getTime()));
 }
 
 /** Get IST hour (0-23) for a Date. */
 function istHour(d: Date): number {
-  return Number(d.toLocaleString("en-US", { timeZone: TZ, hour: "numeric", hour12: false }));
+  const shifted = d.getTime() + IST_OFFSET_MS;
+  return Math.floor((((shifted % MS_PER_DAY) + MS_PER_DAY) % MS_PER_DAY) / 3_600_000);
+}
+
+/** IST hour as a float (e.g. 14.5 for 2:30 PM). */
+function istHourFloat(d: Date): number {
+  const shifted = d.getTime() + IST_OFFSET_MS;
+  return (((shifted % MS_PER_DAY) + MS_PER_DAY) % MS_PER_DAY) / 3_600_000;
+}
+
+/** Working days strictly before day index `i`, counting from index 0. */
+function workDaysBefore(i: number): number {
+  const weeks = Math.floor(i / 7);
+  let count = weeks * 5;
+  for (let k = weeks * 7; k < i; k++) {
+    const dow = dowOfDayIndex(k);
+    if (dow >= 1 && dow <= 5) count++;
+  }
+  return count;
+}
+
+/**
+ * Total working hours elapsed from the epoch to `t`. Working hours between
+ * any two instants is then just W(end) - W(start) — exact, and O(1) instead
+ * of walking one day at a time.
+ */
+function workHoursSinceEpoch(t: number): number {
+  const day = istDayIndex(t);
+  let hours = workDaysBefore(day) * HOURS_PER_DAY;
+  if (isWorkDay(dowOfDayIndex(day))) {
+    const h = istHourFloat(new Date(t));
+    hours += Math.min(Math.max(h - WORK_START_H, 0), HOURS_PER_DAY);
+  }
+  return hours;
 }
 
 /**
@@ -121,6 +171,15 @@ export function fmtDueCountdown(dueDate: string | Date | null): string {
   const absDays = Math.floor(Math.abs(workHours) / HOURS_PER_DAY);
   const absHours = Math.round(Math.abs(workHours) % HOURS_PER_DAY);
 
+  // Beyond three working weeks a countdown in WORKING days is meaningless —
+  // "372d left" reads like calendar days and is off by months. Show the real
+  // date instead, the way Asana does for anything far out.
+  if (absDays > 15) {
+    return new Intl.DateTimeFormat("en-IN", {
+      timeZone: TZ, day: "2-digit", month: "short", year: "numeric",
+    }).format(due);
+  }
+
   // Precision that matches how people actually think: hours only matter when
   // the deadline is close. Past a week, "521d 1h left" is noise that also
   // wrapped the Due column onto two lines.
@@ -152,57 +211,14 @@ export function dueStatus(dueDate: string | Date | null): "overdue" | "today" | 
   return "normal";
 }
 
-/** Count working hours between two dates (positive if end > start). */
+/**
+ * Count working hours between two dates (positive if end > start).
+ * O(1) — see workHoursSinceEpoch. The previous implementation looped one
+ * day at a time (capped at 730 iterations, which silently truncated results
+ * for far-future dates) and called Intl formatters inside the loop.
+ */
 function countWorkingHours(start: Date, end: Date): number {
-  const sign = end >= start ? 1 : -1;
-  const [a, b] = sign === 1 ? [new Date(start), end] : [new Date(end), start];
-
-  let hours = 0;
-  const cursor = new Date(a);
-
-  // Cap at 365 days to prevent infinite loops
-  const maxIterations = 365 * 2;
-  let iterations = 0;
-
-  while (cursor < b && iterations < maxIterations) {
-    iterations++;
-    const dow = istDow(cursor);
-    const hour = istHour(cursor);
-
-    if (!isWorkDay(dow)) {
-      cursor.setDate(cursor.getDate() + 1);
-      setISTHour(cursor, WORK_START_H);
-      continue;
-    }
-
-    if (hour < WORK_START_H) {
-      setISTHour(cursor, WORK_START_H);
-      continue;
-    }
-
-    if (hour >= WORK_END_H) {
-      cursor.setDate(cursor.getDate() + 1);
-      setISTHour(cursor, WORK_START_H);
-      continue;
-    }
-
-    const hoursLeftToday = WORK_END_H - hour;
-    const endOfWorkToday = new Date(cursor);
-    setISTHour(endOfWorkToday, WORK_END_H);
-
-    if (b <= endOfWorkToday) {
-      // Destination is within today's work hours
-      const remaining = (b.getTime() - cursor.getTime()) / 3600_000;
-      hours += Math.max(0, remaining);
-      break;
-    } else {
-      hours += hoursLeftToday;
-      cursor.setDate(cursor.getDate() + 1);
-      setISTHour(cursor, WORK_START_H);
-    }
-  }
-
-  return hours * sign;
+  return workHoursSinceEpoch(end.getTime()) - workHoursSinceEpoch(start.getTime());
 }
 
 function snapToWorkStart(d: Date): void {

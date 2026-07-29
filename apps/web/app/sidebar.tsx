@@ -149,8 +149,11 @@ export default function Sidebar({
             Team
           </NavLink>
         )}
-        <NavLink href="/reviews" active={isActive("/reviews")} icon={<IcReview />}>
-          Reviews
+        {/* Reviews removed from the sidebar 2026-07-28 (Amit). The /reviews
+            routes and their data are untouched — only the nav entry is gone,
+            so this is reversible by restoring this NavLink. */}
+        <NavLink href="/content" active={isActive("/content")} icon={<IcContent />}>
+          Content
         </NavLink>
         <NavLink href="/chat" active={isActive("/chat")} icon={<IcChat />}>
           <span className="flex-1">Chat</span>
@@ -367,6 +370,15 @@ function IcMembers() {
   );
 }
 
+function IcContent() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="18" height="18">
+      <rect x="3" y="4" width="18" height="17" rx="2" />
+      <path d="M3 10h18M8 2v4M16 2v4" />
+      <circle cx="12" cy="15" r="1.6" fill="currentColor" />
+    </svg>
+  );
+}
 function IcChat() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
@@ -398,15 +410,6 @@ function IcSpark() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="18" height="18">
       <path d="M5 3v4M3 5h4M12 4v6M9 7h6M19 14v6M16 17h6M14 11l-5 8" />
-    </svg>
-  );
-}
-function IcReview() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="18" height="18">
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-      <path d="M14 2v6h6" />
-      <path d="M9 15l2 2 4-4" />
     </svg>
   );
 }

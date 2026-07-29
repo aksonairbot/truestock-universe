@@ -7,6 +7,7 @@ import {
   users,
   taskComments,
   taskAttachments,
+  taskLinks,
   eq,
   asc,
   sql,
@@ -25,6 +26,9 @@ import { fmtDueCountdown } from "@/lib/worktime";
 import { Markdown } from "@/components/markdown";
 import { SubtaskList } from "../subtask-list";
 import { TaskAttachments } from "../task-attachments";
+import { TaskLinks } from "../task-links";
+import { ContentFields } from "../content-fields";
+import { ContentApproval } from "../content-approval";
 import { ReviewActions } from "../review-actions";
 
 export const dynamic = "force-dynamic";
@@ -81,6 +85,12 @@ export default async function TaskDetailPage({ params }: PageProps) {
       priority: tasks.priority,
       dueDate: tasks.dueDate,
       recurrence: tasks.recurrence,
+      contentChannel: tasks.contentChannel,
+      contentStage: tasks.contentStage,
+      publishAt: tasks.publishAt,
+      contentApprovedById: tasks.contentApprovedById,
+      contentApprovedAt: tasks.contentApprovedAt,
+      complianceChecked: tasks.complianceChecked,
       createdAt: tasks.createdAt,
       updatedAt: tasks.updatedAt,
       startedAt: tasks.startedAt,
@@ -101,7 +111,7 @@ export default async function TaskDetailPage({ params }: PageProps) {
   // Everything below only needs the task id/createdById — run the access
   // check CONCURRENTLY with the data reads instead of serializing them
   // (previously: auth → task → access (re-fetch + dept scan) → data batch).
-  const [accessOk, creatorArr, allUsers, comments, subtaskRows, attachmentRows] = await Promise.all([
+  const [accessOk, creatorArr, allUsers, comments, subtaskRows, attachmentRows, linkRows] = await Promise.all([
     // Read-path data wall: mirrors the mutation-path check; renders 404
     // (not 403) so URLs don't leak task existence.
     requireTaskAccess(task.id, me).then(() => true).catch(() => false),
@@ -153,6 +163,18 @@ export default async function TaskDetailPage({ params }: PageProps) {
       .from(taskAttachments)
       .where(eq(taskAttachments.taskId, task.id))
       .orderBy(asc(taskAttachments.createdAt)),
+
+    // external links (Figma / assets / published URLs)
+    db
+      .select({
+        id: taskLinks.id,
+        kind: taskLinks.kind,
+        url: taskLinks.url,
+        label: taskLinks.label,
+      })
+      .from(taskLinks)
+      .where(eq(taskLinks.taskId, task.id))
+      .orderBy(asc(taskLinks.createdAt)),
   ]);
   const [creator] = creatorArr;
 
@@ -258,6 +280,32 @@ export default async function TaskDetailPage({ params }: PageProps) {
           />
 
           {/* attachments */}
+          <h3 className="text-xs text-text-3 uppercase tracking-wider mb-2 mt-2">Publish</h3>
+          <ContentFields
+            taskId={task.id}
+            channel={task.contentChannel}
+            stage={task.contentStage}
+            publishAt={task.publishAt}
+            disabled={task.status === "cancelled"}
+          />
+          <ContentApproval
+            taskId={task.id}
+            channel={task.contentChannel}
+            approvedById={task.contentApprovedById}
+            approvedAt={task.contentApprovedAt}
+            complianceChecked={task.complianceChecked}
+            approverName={allUsers.find((u) => u.id === task.contentApprovedById)?.name}
+            canApprove={canAssignOthers}
+            disabled={task.status === "cancelled"}
+          />
+
+          <h3 className="text-xs text-text-3 uppercase tracking-wider mb-2 mt-2">Links</h3>
+          <TaskLinks
+            taskId={task.id}
+            links={linkRows}
+            disabled={task.status === "cancelled"}
+          />
+
           <TaskAttachments
             taskId={task.id}
             attachments={attachmentRows.map((a) => ({

@@ -363,6 +363,29 @@ export const tasks = pgTable(
       .notNull()
       .default("none"),
     recurrenceParentId: uuid("recurrence_parent_id"),
+    // ---- content pipeline (migration 0022) ----
+    // A task becomes a content item the moment contentChannel is set. Content
+    // lives on `tasks` rather than a separate table so it inherits assignee,
+    // comments, attachments, links, the approval flow, notifications and the
+    // permission model for free.
+    //   contentChannel — instagram | linkedin | youtube | x | reddit |
+    //                    facebook | tiktok | email | google_ads | webinar | blog
+    //   contentStage   — idea → script → design → review → scheduled → published
+    //   publishAt      — when it goes LIVE (distinct from dueDate, which is
+    //                    when the work is due)
+    contentChannel: text("content_channel"),
+    contentStage: text("content_stage"),
+    publishAt: timestamp("publish_at", { withTimezone: true }),
+    // ---- approval gate (migration 0023) ----
+    // Named approver on record before anything can be scheduled/published.
+    // For SEBI-regulated financial promotions this is a compliance record,
+    // so it lives in queryable columns rather than only in the comment feed.
+    // complianceChecked is a separate signal: approval = "the content is
+    // right"; compliance = "required disclaimers/registration details are
+    // present".
+    contentApprovedById: uuid("content_approved_by_id").references(() => users.id),
+    contentApprovedAt: timestamp("content_approved_at", { withTimezone: true }),
+    complianceChecked: boolean("compliance_checked").notNull().default(false),
     createdById: uuid("created_by_id")
       .notNull()
       .references(() => users.id),
@@ -375,6 +398,7 @@ export const tasks = pgTable(
     byParent: index("tasks_parent_idx").on(t.parentTaskId),
     byDue: index("tasks_due_idx").on(t.dueDate),
     byOrder: index("tasks_order_idx").on(t.projectId, t.status, t.orderIndex),
+    byPublish: index("tasks_publish_idx").on(t.publishAt),
   }),
 );
 
@@ -422,6 +446,33 @@ export const taskAttachments = pgTable(
   },
   (t) => ({
     byTask: index("task_attachments_task_idx").on(t.taskId),
+  }),
+);
+
+// ---------- task links ----------
+//
+// External URLs attached to a task: the Figma file for a design task, the
+// finished asset, the live/published URL for a post or ad. Modelled as rows
+// (not three columns on tasks) because content work routinely has several —
+// e.g. one script doc, three creatives, and a published link per channel.
+// This is the foundation the content pipeline builds on.
+
+export const taskLinks = pgTable(
+  "task_links",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    taskId: uuid("task_id")
+      .notNull()
+      .references(() => tasks.id, { onDelete: "cascade" }),
+    // figma | asset | live | doc | other
+    kind: text("kind").notNull().default("other"),
+    url: text("url").notNull(),
+    label: text("label"),
+    createdById: uuid("created_by_id").references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    byTask: index("task_links_task_idx").on(t.taskId),
   }),
 );
 

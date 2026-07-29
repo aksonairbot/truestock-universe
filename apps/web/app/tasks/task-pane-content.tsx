@@ -12,6 +12,7 @@ import {
   users,
   taskComments,
   taskAttachments,
+  taskLinks,
   eq,
   asc,
   sql,
@@ -30,6 +31,9 @@ import { fmtDueCountdown } from "@/lib/worktime";
 import { Markdown } from "@/components/markdown";
 import { SubtaskList } from "./subtask-list";
 import { TaskAttachments } from "./task-attachments";
+import { TaskLinks } from "./task-links";
+import { ContentFields } from "./content-fields";
+import { ContentApproval } from "./content-approval";
 import { ReviewActions } from "./review-actions";
 
 const PRIORITY_BADGE: Record<string, string> = {
@@ -88,6 +92,12 @@ export async function TaskPaneContent({ taskId }: { taskId: string }) {
       priority: tasks.priority,
       dueDate: tasks.dueDate,
       recurrence: tasks.recurrence,
+      contentChannel: tasks.contentChannel,
+      contentStage: tasks.contentStage,
+      publishAt: tasks.publishAt,
+      contentApprovedById: tasks.contentApprovedById,
+      contentApprovedAt: tasks.contentApprovedAt,
+      complianceChecked: tasks.complianceChecked,
       createdAt: tasks.createdAt,
       updatedAt: tasks.updatedAt,
       startedAt: tasks.startedAt,
@@ -134,7 +144,7 @@ export async function TaskPaneContent({ taskId }: { taskId: string }) {
   }
 
   // Parallel fetch: creator + users + comments + subtasks + attachments (no waterfall)
-  const [creatorArr, allUsers, comments, subtaskRows, attachmentRows] = await Promise.all([
+  const [creatorArr, allUsers, comments, subtaskRows, attachmentRows, linkRows] = await Promise.all([
     task.createdById
       ? db.select({ name: users.name }).from(users).where(eq(users.id, task.createdById)).limit(1)
       : Promise.resolve([undefined]),
@@ -175,6 +185,18 @@ export async function TaskPaneContent({ taskId }: { taskId: string }) {
       .from(taskAttachments)
       .where(eq(taskAttachments.taskId, task.id))
       .orderBy(asc(taskAttachments.createdAt)),
+
+    // external links (Figma / assets / published URLs)
+    db
+      .select({
+        id: taskLinks.id,
+        kind: taskLinks.kind,
+        url: taskLinks.url,
+        label: taskLinks.label,
+      })
+      .from(taskLinks)
+      .where(eq(taskLinks.taskId, task.id))
+      .orderBy(asc(taskLinks.createdAt)),
   ]);
   const [creator] = creatorArr;
 
@@ -287,6 +309,32 @@ export async function TaskPaneContent({ taskId }: { taskId: string }) {
       />
 
       {/* attachments */}
+      <h3 className="task-pane-section-h">Publish</h3>
+      <ContentFields
+        taskId={task.id}
+        channel={task.contentChannel}
+        stage={task.contentStage}
+        publishAt={task.publishAt}
+        disabled={task.status === "cancelled"}
+      />
+      <ContentApproval
+        taskId={task.id}
+        channel={task.contentChannel}
+        approvedById={task.contentApprovedById}
+        approvedAt={task.contentApprovedAt}
+        complianceChecked={task.complianceChecked}
+        approverName={allUsers.find((u) => u.id === task.contentApprovedById)?.name}
+        canApprove={canAssignOthers}
+        disabled={task.status === "cancelled"}
+      />
+
+      <h3 className="task-pane-section-h">Links</h3>
+      <TaskLinks
+        taskId={task.id}
+        links={linkRows}
+        disabled={task.status === "cancelled"}
+      />
+
       <TaskAttachments
         taskId={task.id}
         attachments={attachmentRows.map((a) => ({

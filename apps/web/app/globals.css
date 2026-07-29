@@ -5730,3 +5730,234 @@ select {
   pointer-events: none;
 }
 .arow:hover::after { opacity: 0.7; right: 3px; }
+
+/* ----------------------------------------------------------------------- */
+/* Task links — Figma files, creatives, published post URLs (stage 0 of    */
+/* the content pipeline)                                                   */
+/* ----------------------------------------------------------------------- */
+.tlinks { margin-bottom: 16px; }
+.tlinks-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.tlink {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--panel-2);
+  font-size: 12.5px;
+  min-width: 0;
+}
+.tlink-kind {
+  flex-shrink: 0;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border: 1px solid;
+  border-radius: 999px;
+  padding: 1px 7px;
+  opacity: 0.9;
+}
+.tlink-url {
+  color: var(--text-2);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.tlink-url:hover { color: var(--accent-2); text-decoration: underline; }
+.tlink-remove-form { margin-left: auto; display: flex; }
+.tlink-remove {
+  background: none; border: 0; cursor: pointer;
+  color: var(--text-4); font-size: 15px; line-height: 1; padding: 0 2px;
+}
+.tlink-remove:hover { color: var(--danger); }
+.tlink-add { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.tlink-input {
+  flex: 1 1 220px;
+  min-width: 0;
+  background: var(--panel-2);
+  border: 1px solid var(--border-2);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 12.5px;
+  color: var(--text);
+}
+.tlink-select {
+  background: var(--panel-2);
+  border: 1px solid var(--border-2);
+  border-radius: 8px;
+  padding: 6px 8px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+/* ======================================================================= */
+/* Content pipeline — publish fields + calendar (stage 1)                  */
+/* ======================================================================= */
+.content-fields { margin-bottom: 16px; }
+.content-fields-row { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; }
+.content-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.content-field-label {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.07em;
+  color: var(--text-3); font-weight: 600;
+}
+.content-select, .content-input {
+  background: var(--panel-2);
+  border: 1px solid var(--border-2);
+  border-radius: 8px;
+  padding: 6px 9px;
+  font-size: 12.5px;
+  color: var(--text);
+}
+.content-save { align-self: flex-end; }
+
+/* stage legend / pipeline summary */
+.content-legend { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 14px; }
+.content-legend-item {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11.5px; color: var(--text-3);
+}
+.content-legend-dot { width: 8px; height: 8px; border-radius: 50%; }
+.content-legend-n {
+  font-family: var(--font-mono), monospace; font-size: 11px;
+  color: var(--text-2); font-variant-numeric: tabular-nums;
+}
+
+/* month grid */
+.cal {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.cal-dow {
+  background: var(--panel-2);
+  padding: 8px 10px;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-3);
+}
+.cal-cell {
+  background: var(--panel);
+  min-height: 104px;
+  padding: 6px 7px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.cal-cell.is-blank { background: var(--bg-2); }
+.cal-cell.is-today { background: var(--accent-wash); }
+.cal-day {
+  font-size: 11.5px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+  margin-bottom: 2px;
+}
+.cal-cell.is-today .cal-day { color: var(--accent-2); font-weight: 700; }
+.cal-item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  border-left: 3px solid var(--text-3);
+  background: var(--panel-2);
+  text-decoration: none;
+  transition: transform 0.12s, background 0.12s;
+}
+.cal-item:hover { background: var(--hover); transform: translateX(1px); }
+.cal-item-time {
+  font-size: 9.5px;
+  color: var(--text-4);
+  font-family: var(--font-mono), monospace;
+}
+.cal-item-title {
+  font-size: 11.5px;
+  color: var(--text-2);
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+@media (max-width: 800px) {
+  .cal-cell { min-height: 72px; }
+  .cal-item-title { -webkit-line-clamp: 1; }
+}
+
+/* "needs a slot" backlog */
+.content-backlog { display: flex; flex-direction: column; }
+.content-backlog-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 2px; text-decoration: none;
+  border-top: 1px solid var(--border);
+}
+.content-backlog li:first-child .content-backlog-row { border-top: 0; }
+.content-backlog-row:hover .content-backlog-title { color: var(--accent-2); }
+.content-backlog-title { flex: 1; font-size: 13px; color: var(--text); min-width: 0; }
+.content-backlog-who { font-size: 11.5px; color: var(--text-3); }
+.content-chip {
+  font-size: 9.5px; font-weight: 700; letter-spacing: 0.05em;
+  text-transform: uppercase; border: 1px solid; border-radius: 999px;
+  padding: 1px 7px; flex-shrink: 0;
+}
+
+/* ---------------------------------------------------------------------------
+   Content approval gate (Stage 2)
+   The state line is deliberately quiet when approved and warm-but-not-alarming
+   when pending: this is a normal step in the flow, not an error.
+--------------------------------------------------------------------------- */
+.capprove {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  margin: 8px 0 4px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2, rgba(255,255,255,0.02));
+}
+.capprove-state { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 220px; flex-wrap: wrap; }
+.capprove-text { font-size: 12.5px; color: var(--text-2); }
+.capprove-text strong { color: var(--text); font-weight: 600; }
+.capprove-dot { width: 7px; height: 7px; border-radius: 999px; flex-shrink: 0; }
+
+.capprove.is-approved { border-color: rgba(52, 199, 89, 0.32); }
+.capprove.is-approved .capprove-dot { background: #34c759; box-shadow: 0 0 0 3px rgba(52,199,89,0.14); }
+
+.capprove.is-pending { border-color: rgba(255, 159, 10, 0.32); }
+.capprove.is-pending .capprove-dot { background: #ff9f0a; box-shadow: 0 0 0 3px rgba(255,159,10,0.14); }
+
+.capprove-badge {
+  font-size: 9.5px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
+  border: 1px solid; border-radius: 999px; padding: 1px 7px;
+}
+.capprove-badge.ok { color: #34c759; border-color: rgba(52,199,89,0.4); }
+.capprove-badge.warn { color: #ff9f0a; border-color: rgba(255,159,10,0.4); }
+
+.capprove-form { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.capprove-check { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); cursor: pointer; }
+.capprove-check input { accent-color: var(--accent); }
+.capprove-note {
+  font-size: 12px; padding: 4px 8px; min-width: 160px;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--bg); color: var(--text);
+}
+.capprove-note:focus { outline: none; border-color: var(--accent); }
+.capprove-hint { font-size: 11.5px; color: var(--text-3); }
+
+/* Unapproved items on the calendar carry a small amber flag — visible at a
+   glance across a month without shouting on every tile. */
+.cal-item.is-unapproved { border-left-style: dashed; }
+.cal-item-flag {
+  margin-left: auto; flex-shrink: 0;
+  width: 13px; height: 13px; line-height: 13px; text-align: center;
+  border-radius: 999px; font-size: 9px; font-weight: 800;
+  color: #1a1a1a; background: #ff9f0a;
+}
