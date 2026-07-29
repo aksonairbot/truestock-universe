@@ -12,6 +12,7 @@ import { getDb, tasks, projects, users, eq, and, sql, asc } from "@tu/db";
 import { getCurrentUser } from "@/lib/auth";
 import { isAdmin, getDepartmentScope } from "@/lib/access";
 import { CONTENT_STAGES, CHANNEL_COLOR, CHANNEL_LABEL, STAGE_COLOR, STAGE_LABEL } from "@/lib/content";
+import { ContentBoard } from "./content-board";
 
 export const dynamic = "force-dynamic";
 
@@ -42,7 +43,7 @@ function monthLabel(ym: string): string {
 }
 
 interface PageProps {
-  searchParams: Promise<{ month?: string }>;
+  searchParams: Promise<{ month?: string; view?: string }>;
 }
 
 export default async function ContentPage({ searchParams }: PageProps) {
@@ -50,6 +51,9 @@ export default async function ContentPage({ searchParams }: PageProps) {
   const today = istToday();
   const thisMonth = today.slice(0, 7);
   const month = /^\d{4}-\d{2}$/.test(sp.month ?? "") ? sp.month! : thisMonth;
+  // The board is the pipeline view; the calendar is the schedule view.
+  // Neither is a subset of the other, so they are peers, not a toggle on one.
+  const isBoard = sp.view === "board";
 
   const me = await getCurrentUser();
   const deptScope = getDepartmentScope(me);
@@ -61,6 +65,66 @@ export default async function ContentPage({ searchParams }: PageProps) {
     : deptScope
       ? sql`(${tasks.assigneeId} in (select id from users where department_id = ${deptScope}) or ${tasks.createdById} in (select id from users where department_id = ${deptScope}))`
       : sql`(${tasks.assigneeId} = ${me.id} or ${tasks.createdById} = ${me.id})`;
+
+  // ---- board view: the whole live pipeline, not one month of it ----
+  // A piece stuck in "script" for three weeks has no publish date yet, so
+  // month-scoping the board would hide exactly the items it exists to surface.
+  if (isBoard) {
+    const boardItems = await db
+      .select({
+        id: tasks.id,
+        title: tasks.title,
+        channel: tasks.contentChannel,
+        stage: tasks.contentStage,
+        publishAt: tasks.publishAt,
+        approvedAt: tasks.contentApprovedAt,
+        publishState: tasks.publishState,
+        assignee: users.name,
+      })
+      .from(tasks)
+      .leftJoin(users, eq(tasks.assigneeId, users.id))
+      .where(and(
+        sql`${tasks.contentChannel} is not null`,
+        sql`${tasks.status} <> 'cancelled'::task_status`,
+        scope,
+      ))
+      .orderBy(asc(tasks.publishAt), asc(tasks.createdAt))
+      .limit(300);
+
+    const stalled = boardItems.filter(
+      (i) => i.stage !== "published" && i.publishState !== "published" && !i.publishAt,
+    ).length;
+
+    return (
+      <div className="page-content">
+        <div className="page-head">
+          <div>
+            <div className="page-title">Content</div>
+            <div className="page-sub">
+              {boardItems.length} in the pipeline
+              {stalled > 0 ? ` · ${stalled} without a slot` : null}
+            </div>
+          </div>
+          <div className="cview">
+            <Link href="/content" className="cview-btn">Calendar</Link>
+            <span className="cview-btn is-on">Board</span>
+          </div>
+        </div>
+
+        {boardItems.length === 0 ? (
+          <div className="card text-center py-16 mt-4">
+            <div className="text-text-2 mb-2">Nothing in the pipeline yet.</div>
+            <div className="text-text-3 text-[12px] mb-3">
+              Open any task and set a channel in its Publish section — it appears here as an idea.
+            </div>
+            <Link href="/tasks" className="btn btn-primary btn-sm">Go to tasks</Link>
+          </div>
+        ) : (
+          <ContentBoard items={boardItems} />
+        )}
+      </div>
+    );
+  }
 
   const monthStart = new Date(`${month}-01T00:00:00+05:30`);
   const nextMonth = shiftMonth(month, 1);
@@ -75,6 +139,8 @@ export default async function ContentPage({ searchParams }: PageProps) {
         stage: tasks.contentStage,
         publishAt: tasks.publishAt,
         approvedAt: tasks.contentApprovedAt,
+        publishState: tasks.publishState,
+        publishedUrl: tasks.publishedUrl,
         assignee: users.name,
         project: projects.name,
       })
@@ -136,6 +202,7 @@ export default async function ContentPage({ searchParams }: PageProps) {
   // Anything with a slot but no sign-off is the thing that bites you on the
   // morning it is due — surface the count in the header, not buried per-item.
   const awaitingApproval = scheduled.filter((s) => !s.approvedAt).length;
+  const publishFailed = scheduled.filter((s) => s.publishState === "failed").length;
 
   return (
     <div className="page-content">
@@ -146,9 +213,14 @@ export default async function ContentPage({ searchParams }: PageProps) {
             {scheduled.length} scheduled in {monthLabel(month)}
             {unscheduled.length > 0 ? ` · ${unscheduled.length} without a slot` : null}
             {awaitingApproval > 0 ? ` · ${awaitingApproval} awaiting approval` : null}
+            {publishFailed > 0 ? ` · ${publishFailed} failed to publish` : null}
           </div>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-2">
+          <div className="cview">
+            <span className="cview-btn is-on">Calendar</span>
+            <Link href="/content?view=board" className="cview-btn">Board</Link>
+          </div>
           <Link href={`/content?month=${shiftMonth(month, -1)}`} className="btn btn-ghost btn-sm">←</Link>
           {month !== thisMonth ? (
             <Link href="/content" className="btn btn-ghost btn-sm">This month</Link>
@@ -182,7 +254,9 @@ export default async function ContentPage({ searchParams }: PageProps) {
               <Link
                 key={item.id}
                 href={`/tasks/${item.id}`}
-                className={`cal-item ${item.approvedAt ? "" : "is-unapproved"}`}
+                className={`cal-item ${item.approvedAt ? "" : "is-unapproved"} ${
+                  item.publishState === "published" ? "is-live" : item.publishState === "failed" ? "is-failed" : ""
+                }`}
                 style={{ borderLeftColor: CHANNEL_COLOR[item.channel ?? ""] ?? "var(--text-3)" }}
                 title={`${CHANNEL_LABEL[item.channel ?? ""] ?? "Content"} · ${STAGE_LABEL[item.stage ?? "idea"]} · ${item.assignee ?? "unassigned"}${item.approvedAt ? "" : " · not approved"}`}
               >
@@ -190,7 +264,13 @@ export default async function ContentPage({ searchParams }: PageProps) {
                   {istPartsOf(item.publishAt instanceof Date ? item.publishAt : new Date(item.publishAt!)).time}
                 </span>
                 <span className="cal-item-title">{item.title}</span>
-                {item.approvedAt ? null : <span className="cal-item-flag" aria-label="Not approved">!</span>}
+                {item.publishState === "published" ? (
+                  <span className="cal-item-live" aria-label="Published">&#10003;</span>
+                ) : item.publishState === "failed" ? (
+                  <span className="cal-item-flag is-err" aria-label="Failed to publish">&times;</span>
+                ) : item.approvedAt ? null : (
+                  <span className="cal-item-flag" aria-label="Not approved">!</span>
+                )}
               </Link>
             ))}
           </div>

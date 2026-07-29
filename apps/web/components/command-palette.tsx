@@ -29,6 +29,7 @@ export function CommandPalette({ isPrivileged = false }: { isPrivileged?: boolea
       { id: "today", label: "Go to Today", hint: "G H", href: "/", keywords: "home dashboard" },
       { id: "projects", label: "Go to Projects", hint: "G P", href: "/projects" },
       { id: "content", label: "Go to Content calendar", hint: "G C", href: "/content", keywords: "social post publish schedule campaign" },
+      { id: "content-board", label: "Go to Content pipeline board", href: "/content?view=board", keywords: "social pipeline stage kanban idea script design" },
       { id: "week", label: "Go to My week", hint: "G W", href: "/me/week" },
       { id: "month", label: "Go to Month", href: "/me/month" },
       { id: "chat", label: "Go to Chat", href: "/chat", keywords: "messages" },

@@ -191,11 +191,18 @@ export async function revokeContentApproval(formData: FormData): Promise<void> {
   const db = getDb();
   const now = new Date();
 
-  // Anything already sitting in Scheduled/Published falls back to Review —
-  // otherwise an unapproved item would keep a "ready to go" stage.
-  const demote = task.contentStage === "scheduled" || task.contentStage === "published"
-    ? { contentStage: "review" as const }
-    : {};
+  // Anything still waiting to go out falls back to Review — otherwise an
+  // unapproved item would keep a "ready to go" stage.
+  //
+  // But something ALREADY LIVE is not rewound: the post exists in the world,
+  // and relabelling it "in review" would make the calendar lie. Withdrawing
+  // approval on a published item records the objection; taking it down is a
+  // separate, deliberate act.
+  const alreadyLive = task.publishState === "published";
+  const demote =
+    !alreadyLive && (task.contentStage === "scheduled" || task.contentStage === "published")
+      ? { contentStage: "review" as const }
+      : {};
 
   await db
     .update(tasks)
@@ -206,7 +213,9 @@ export async function revokeContentApproval(formData: FormData): Promise<void> {
     taskId,
     authorId: me.id,
     kind: "review_revise",
-    body: "Approval withdrawn — this needs sign-off again before it can go out.",
+    body: alreadyLive
+      ? "Approval withdrawn on an already-published item — the live post needs review."
+      : "Approval withdrawn — this needs sign-off again before it can go out.",
   });
 
   log.info("content.approval_revoked", { taskId, actorId: me.id });

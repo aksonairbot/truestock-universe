@@ -13,7 +13,12 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 
-const PUBLIC_PATHS = ["/welcome", "/api/auth", "/favicon.ico", "/favicon.svg", "/favicon-32.png", "/manifest.json", "/apple-icon.png", "/banners", "/hero", "/celebrate", "/_next", "/icon", "/manifest"];
+// /api/cron/* and /api/media/* carry their own proof (CRON_SECRET header and
+// an HMAC-signed URL respectively) and must NOT be cookie-gated: cron runs
+// with no session, and Upload-post fetches media from its own servers. Both
+// routes re-check that proof themselves — this list only stops the middleware
+// from bouncing them to /welcome.
+const PUBLIC_PATHS = ["/welcome", "/api/auth", "/api/cron", "/api/media", "/favicon.ico", "/favicon.svg", "/favicon-32.png", "/manifest.json", "/apple-icon.png", "/banners", "/hero", "/celebrate", "/_next", "/icon", "/manifest"];
 
 // Edge runtime — `process.env.AUTH_SECRET` is inlined at build time. If
 // it wasn't set when the build ran, the middleware will throw on first

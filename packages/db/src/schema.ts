@@ -386,6 +386,16 @@ export const tasks = pgTable(
     contentApprovedById: uuid("content_approved_by_id").references(() => users.id),
     contentApprovedAt: timestamp("content_approved_at", { withTimezone: true }),
     complianceChecked: boolean("compliance_checked").notNull().default(false),
+    // ---- publishing handoff (migration 0024) ----
+    // publishState is a SEPARATE state machine from contentStage on purpose:
+    // contentStage tracks where the work is, publishState tracks what the
+    // publisher did. A failed post must not rewrite editorial history.
+    publishState: text("publish_state").notNull().default("idle"),
+    publishedUrl: text("published_url"),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+    publishRef: text("publish_ref"),
+    publishError: text("publish_error"),
+    publishProfile: text("publish_profile"),
     createdById: uuid("created_by_id")
       .notNull()
       .references(() => users.id),

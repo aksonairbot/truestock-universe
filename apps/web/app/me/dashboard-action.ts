@@ -772,6 +772,22 @@ export async function getDeptDashboard(deptId: string, period: Period): Promise<
       };
     }
 
+    // These six aggregates are built with sql.raw because the IN-list is
+    // variable-length. Every value interpolated below is server-derived
+    // (member ids read from `users` a few lines up, timestamps computed from
+    // `period`), so there is no live injection path today — but "no path
+    // today" is a property of the callers, not of this code, and callers
+    // change. Assert the shape here so the query can never be reached with
+    // anything but UUIDs, whatever a future caller does.
+    //
+    // TODO: replace sql.raw with parameterised sql`` templates + sql.join
+    // once there's a way to exercise this dashboard against real data — the
+    // rewrite is mechanical but untestable from the build box.
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!memberIds.every((id) => UUID_RE.test(id))) {
+      log.error("dept_dashboard.bad_member_id", { deptId });
+      return { ok: false, error: "Department member data looks malformed." };
+    }
     const memberIdList = memberIds.map((id) => `'${id}'`).join(",");
 
     // All six aggregates below are independent — kicked off together and

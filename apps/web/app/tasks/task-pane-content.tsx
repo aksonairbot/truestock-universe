@@ -34,6 +34,8 @@ import { TaskAttachments } from "./task-attachments";
 import { TaskLinks } from "./task-links";
 import { ContentFields } from "./content-fields";
 import { ContentApproval } from "./content-approval";
+import { PublishPanel } from "./publish-panel";
+import { isPublishConfigured } from "@/lib/upload-post";
 import { ReviewActions } from "./review-actions";
 
 const PRIORITY_BADGE: Record<string, string> = {
@@ -98,6 +100,10 @@ export async function TaskPaneContent({ taskId }: { taskId: string }) {
       contentApprovedById: tasks.contentApprovedById,
       contentApprovedAt: tasks.contentApprovedAt,
       complianceChecked: tasks.complianceChecked,
+      publishState: tasks.publishState,
+      publishedUrl: tasks.publishedUrl,
+      publishedAt: tasks.publishedAt,
+      publishError: tasks.publishError,
       createdAt: tasks.createdAt,
       updatedAt: tasks.updatedAt,
       startedAt: tasks.startedAt,
@@ -325,6 +331,18 @@ export async function TaskPaneContent({ taskId }: { taskId: string }) {
         complianceChecked={task.complianceChecked}
         approverName={allUsers.find((u) => u.id === task.contentApprovedById)?.name}
         canApprove={canAssignOthers}
+        disabled={task.status === "cancelled"}
+      />
+      <PublishPanel
+        taskId={task.id}
+        channel={task.contentChannel}
+        approved={Boolean(task.contentApprovedAt)}
+        publishState={task.publishState}
+        publishedUrl={task.publishedUrl}
+        publishedAt={task.publishedAt}
+        publishError={task.publishError}
+        canPublish={canAssignOthers}
+        configured={isPublishConfigured()}
         disabled={task.status === "cancelled"}
       />
 
