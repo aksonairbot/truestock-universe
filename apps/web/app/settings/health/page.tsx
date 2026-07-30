@@ -9,6 +9,14 @@
 // then one feature throws "column does not exist" for whoever touches it
 // first. This page answers "did the deploy actually land?" in one look.
 //
+// FIRST RULE OF A DIAGNOSTICS PAGE: IT MUST NOT CRASH.
+// The first version of this page did exactly that — it hit the generic
+// "Something went wrong" boundary, which is the least useful possible outcome
+// for the one page you open when something is wrong. Every probe below is now
+// individually guarded, and anything unexpected is RENDERED as a finding
+// rather than thrown. Showing the error text is correct here: the page is
+// admin-only and diagnosing is its entire job.
+//
 // SAFETY RULE: this page reports whether a secret is PRESENT, never what it
 // is. No env value is ever rendered. The only exception is NEXT_PUBLIC_APP_URL,
 // which is public by definition and whose value is the thing most likely to be
@@ -19,8 +27,10 @@ import { getDb, sql } from "@tu/db";
 import { getCurrentUser } from "@/lib/auth";
 import { isAdmin } from "@/lib/access";
 import { isPublishConfigured, isAutoPublishEnabled } from "@/lib/upload-post";
-import { access, constants } from "fs/promises";
+import { access } from "fs/promises";
+import { constants as FS } from "node:fs";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export const metadata = {
@@ -31,7 +41,9 @@ export const metadata = {
 type State = "ok" | "warn" | "bad" | "off";
 
 /** Each shipped feature and the schema it needs. Grouped by migration so a
- *  missing row tells you exactly which file didn't run. */
+ *  missing row tells you exactly which file didn't run.
+ *  ADD A PROBE HERE FOR EVERY NEW MIGRATION — otherwise this page will claim
+ *  "all applied" while a feature is quietly broken. */
 const SCHEMA_CHECKS: Array<{
   migration: string;
   feature: string;
@@ -62,6 +74,22 @@ const SCHEMA_CHECKS: Array<{
   },
 ];
 
+/**
+ * db.execute() returns different shapes across drivers — postgres-js gives an
+ * array-like RowList, node-postgres gives { rows }. Normalise once so a driver
+ * swap can't turn this page into a crash.
+ */
+function rowsOf(result: unknown): Array<Record<string, unknown>> {
+  if (Array.isArray(result)) return result as Array<Record<string, unknown>>;
+  const maybe = (result ?? {}) as { rows?: unknown };
+  if (Array.isArray(maybe.rows)) return maybe.rows as Array<Record<string, unknown>>;
+  return [];
+}
+
+function msg(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
 function Row({ label, state, detail }: { label: string; state: State; detail?: string }) {
   return (
     <div className="hrow">
@@ -84,49 +112,55 @@ export default async function HealthPage() {
     );
   }
 
+  // Anything that goes wrong while probing is collected and shown, never thrown.
+  const problems: string[] = [];
+
   // ---- database + schema ----
-  const db = getDb();
-  const t0 = Date.now();
-  let dbOk = true;
+  let dbOk = false;
   let dbMs = 0;
+  let dbError = "";
   let taskColumns = new Set<string>();
   let tableNames = new Set<string>();
 
   try {
-    const [colRows, tblRows] = await Promise.all([
+    const db = getDb();
+    const t0 = Date.now();
+    const [colRes, tblRes] = await Promise.all([
       db.execute(sql`select column_name from information_schema.columns where table_schema = 'public' and table_name = 'tasks'`),
       db.execute(sql`select table_name from information_schema.tables where table_schema = 'public'`),
     ]);
     dbMs = Date.now() - t0;
-    taskColumns = new Set((colRows as unknown as Array<{ column_name: string }>).map((r) => r.column_name));
-    tableNames = new Set((tblRows as unknown as Array<{ table_name: string }>).map((r) => r.table_name));
-  } catch {
-    dbOk = false;
-    dbMs = Date.now() - t0;
+    for (const r of rowsOf(colRes)) if (typeof r.column_name === "string") taskColumns.add(r.column_name);
+    for (const r of rowsOf(tblRes)) if (typeof r.table_name === "string") tableNames.add(r.table_name);
+    dbOk = taskColumns.size > 0;
+    if (!dbOk) dbError = "connected, but the tasks table reported no columns";
+  } catch (e) {
+    dbError = msg(e);
+    problems.push(`Schema probe failed: ${dbError}`);
   }
 
   const schemaResults = SCHEMA_CHECKS.map((c) => {
-    if (!dbOk) return { ...c, missing: ["(database unreachable)"] };
+    if (!dbOk) return { ...c, missing: ["(schema could not be read)"] };
     const missing: string[] = [];
     if (c.table && !tableNames.has(c.table)) missing.push(`table ${c.table}`);
     for (const col of c.taskColumns ?? []) if (!taskColumns.has(col)) missing.push(`tasks.${col}`);
     return { ...c, missing };
   });
-  const pendingMigrations = schemaResults.filter((r) => r.missing.length > 0);
+  const pending = schemaResults.filter((r) => r.missing.length > 0);
 
   // ---- uploads directory ----
-  const uploadsDir = process.env.UPLOADS_DIR || "/opt/truestock-universe/uploads";
   let uploadsState: State = "ok";
   let uploadsDetail = "readable and writable";
+  const uploadsDir = process.env.UPLOADS_DIR || "/opt/truestock-universe/uploads";
   try {
-    await access(uploadsDir, constants.R_OK | constants.W_OK);
+    await access(uploadsDir, FS.R_OK | FS.W_OK);
   } catch {
     uploadsState = "bad";
     uploadsDetail = "missing or not writable — attachments will fail";
   }
 
   // ---- configuration (presence only, never values) ----
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? "").trim();
   const appUrlState: State = !appUrl ? "bad" : appUrl.startsWith("https://") ? "ok" : "warn";
   const appUrlDetail = !appUrl
     ? "not set — signed media links for publishing cannot be built"
@@ -134,15 +168,25 @@ export default async function HealthPage() {
       ? appUrl
       : `${appUrl} — should be the public https origin in production`;
 
-  const publishConfigured = isPublishConfigured();
-  const autoPublish = isAutoPublishEnabled();
+  const hasCronSecret = Boolean(process.env.CRON_SECRET);
+  const hasAi = Boolean(process.env.OLLAMA_BASE_URL || process.env.ANTHROPIC_API_KEY || process.env.DEEPSEEK_API_KEY);
+
+  let publishConfigured = false;
+  let autoPublish = false;
+  try {
+    publishConfigured = isPublishConfigured();
+    autoPublish = isAutoPublishEnabled();
+  } catch (e) {
+    problems.push(`Publishing config check failed: ${msg(e)}`);
+  }
 
   // ---- what's actually flowing through the pipeline ----
-  let counts = { content: 0, approved: 0, scheduled: 0, published: 0, failed: 0 };
-  const pipelineReadable = dbOk && pendingMigrations.length === 0;
-  if (pipelineReadable) {
+  let counts: { content: number; approved: number; scheduled: number; published: number; failed: number } | null = null;
+  const canReadPipeline = dbOk && pending.length === 0;
+  if (canReadPipeline) {
     try {
-      const rows = await db.execute(sql`
+      const db = getDb();
+      const res = await db.execute(sql`
         select
           count(*) filter (where content_channel is not null)::int as content,
           count(*) filter (where content_approved_at is not null)::int as approved,
@@ -151,7 +195,7 @@ export default async function HealthPage() {
           count(*) filter (where publish_state = 'failed')::int as failed
         from tasks
       `);
-      const r = (rows as unknown as Array<Record<string, number>>)[0];
+      const r = rowsOf(res)[0];
       if (r) {
         counts = {
           content: Number(r.content) || 0,
@@ -161,12 +205,13 @@ export default async function HealthPage() {
           failed: Number(r.failed) || 0,
         };
       }
-    } catch {
-      /* counts stay zero — the schema rows above already explain why */
+    } catch (e) {
+      problems.push(`Pipeline counts failed: ${msg(e)}`);
     }
   }
 
-  const allGood = dbOk && pendingMigrations.length === 0 && uploadsState === "ok" && appUrlState !== "bad";
+  const allGood =
+    dbOk && pending.length === 0 && uploadsState === "ok" && appUrlState !== "bad" && problems.length === 0;
 
   return (
     <div className="page-content max-w-[820px]">
@@ -180,13 +225,29 @@ export default async function HealthPage() {
         <Link href="/settings" className="btn btn-ghost btn-sm">← Settings</Link>
       </div>
 
+      {/* Unexpected failures surface here instead of replacing the whole page
+          with a generic error screen. */}
+      {problems.length > 0 ? (
+        <div className="card mb-4">
+          <div className="hsec-head">
+            Probe errors
+            <span className="hsec-badge is-bad">{problems.length}</span>
+          </div>
+          <div className="hsec-body">
+            {problems.map((p, i) => (
+              <Row key={i} label={p} state="bad" />
+            ))}
+          </div>
+        </div>
+      ) : null}
+
       <div className="card mb-4">
         <div className="hsec-head">Database</div>
         <div className="hsec-body">
           <Row
             label="Connection"
             state={dbOk ? (dbMs > 500 ? "warn" : "ok") : "bad"}
-            detail={dbOk ? `${dbMs} ms` : "unreachable — check DATABASE_URL"}
+            detail={dbOk ? `${dbMs} ms` : dbError || "unreachable — check DATABASE_URL"}
           />
         </div>
       </div>
@@ -194,8 +255,8 @@ export default async function HealthPage() {
       <div className="card mb-4">
         <div className="hsec-head">
           Migrations
-          {pendingMigrations.length > 0 ? (
-            <span className="hsec-badge is-bad">{pendingMigrations.length} not applied</span>
+          {pending.length > 0 ? (
+            <span className="hsec-badge is-bad">{pending.length} not applied</span>
           ) : (
             <span className="hsec-badge is-ok">all applied</span>
           )}
@@ -209,7 +270,7 @@ export default async function HealthPage() {
               detail={r.missing.length === 0 ? undefined : `missing ${r.missing.join(", ")}`}
             />
           ))}
-          {pendingMigrations.length > 0 ? (
+          {pending.length > 0 ? (
             <div className="hnote">
               Run the migration step on the server, then reload this page:
               <code className="hcode">pnpm --filter @tu/db migrate</code>
@@ -225,19 +286,13 @@ export default async function HealthPage() {
           <Row label="Uploads directory" state={uploadsState} detail={uploadsDetail} />
           <Row
             label="Cron secret"
-            state={process.env.CRON_SECRET ? "ok" : "bad"}
-            detail={process.env.CRON_SECRET ? "set" : "not set — scheduled jobs will refuse to run"}
+            state={hasCronSecret ? "ok" : "bad"}
+            detail={hasCronSecret ? "set" : "not set — scheduled jobs will refuse to run"}
           />
           <Row
             label="AI provider"
-            state={
-              process.env.OLLAMA_BASE_URL || process.env.ANTHROPIC_API_KEY || process.env.DEEPSEEK_API_KEY ? "ok" : "off"
-            }
-            detail={
-              process.env.OLLAMA_BASE_URL || process.env.ANTHROPIC_API_KEY || process.env.DEEPSEEK_API_KEY
-                ? "configured"
-                : "none configured — Suggest and briefings are unavailable"
-            }
+            state={hasAi ? "ok" : "off"}
+            detail={hasAi ? "configured" : "none configured — Suggest and briefings are unavailable"}
           />
         </div>
       </div>
@@ -263,13 +318,13 @@ export default async function HealthPage() {
                 : "off — nothing posts without someone pressing Publish"
             }
           />
-          {counts.failed > 0 ? (
+          {counts && counts.failed > 0 ? (
             <Row label="Failed posts" state="bad" detail={`${counts.failed} need a retry`} />
           ) : null}
         </div>
       </div>
 
-      {pipelineReadable ? (
+      {counts ? (
         <div className="card">
           <div className="hsec-head">Content pipeline</div>
           <div className="hsec-body">
@@ -281,6 +336,8 @@ export default async function HealthPage() {
             </div>
             <div className="hnote">
               <Link href="/content" className="hlink">Open the content calendar →</Link>
+              {" · "}
+              <Link href="/campaigns" className="hlink">Campaigns →</Link>
             </div>
           </div>
         </div>
