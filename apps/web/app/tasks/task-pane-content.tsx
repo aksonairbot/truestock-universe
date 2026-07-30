@@ -36,6 +36,7 @@ import { TaskLinks } from "./task-links";
 import { ContentFields } from "./content-fields";
 import { ContentApproval } from "./content-approval";
 import { CampaignFields } from "./campaign-fields";
+import { PostComposer } from "./post-composer";
 import { paiseToRupeeInput } from "@/lib/campaigns";
 import { campaigns as campaignsTbl } from "@tu/db";
 import { PublishPanel } from "./publish-panel";
@@ -108,6 +109,9 @@ export async function TaskPaneContent({ taskId }: { taskId: string }) {
       publishedUrl: tasks.publishedUrl,
       publishedAt: tasks.publishedAt,
       publishError: tasks.publishError,
+      postCaption: tasks.postCaption,
+      postFirstComment: tasks.postFirstComment,
+      contentPillar: tasks.contentPillar,
       campaignId: tasks.campaignId,
       budgetPaise: tasks.budgetPaise,
       createdAt: tasks.createdAt,
@@ -346,6 +350,15 @@ export async function TaskPaneContent({ taskId }: { taskId: string }) {
         publishAt={task.publishAt}
         disabled={task.status === "cancelled"}
       />
+      <PostComposer
+        taskId={task.id}
+        channel={task.contentChannel}
+        caption={task.postCaption ?? ""}
+        firstComment={task.postFirstComment ?? ""}
+        pillar={task.contentPillar}
+        disabled={task.status === "cancelled"}
+      />
+
       <ContentApproval
         taskId={task.id}
         channel={task.contentChannel}

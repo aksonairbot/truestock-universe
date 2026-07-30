@@ -6285,3 +6285,76 @@ select.cmp-input {
 /* The checkbox itself is the state, but visually the chip is the control. */
 .cmp-day input { position: absolute; opacity: 0; width: 0; height: 0; }
 .cmp-day:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* ---------------------------------------------------------------------------
+   Post composer. The counter and the over-limit state carry the weight here —
+   the whole point is that you see the network's ceiling while you write.
+--------------------------------------------------------------------------- */
+.pcomp {
+  display: flex; flex-direction: column; gap: 8px;
+  margin: 8px 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border); border-radius: 12px;
+  background: var(--surface-2, rgba(255,255,255,0.02));
+}
+.pcomp-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.pcomp-title { font-size: 12.5px; font-weight: 600; color: var(--text); }
+.pcomp-for { font-size: 11px; color: var(--text-3); }
+.pcomp-count {
+  margin-left: auto; font-size: 11.5px; color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+.pcomp-count.is-near { color: #ff9f0a; }
+.pcomp-count.is-over { color: #ff453a; font-weight: 600; }
+
+.pcomp-text {
+  width: 100%; resize: vertical;
+  font-size: 13px; line-height: 1.5; padding: 9px 11px;
+  border: 1px solid var(--border); border-radius: 9px;
+  background: var(--bg); color: var(--text);
+  font-family: inherit;
+}
+.pcomp-text:focus { outline: none; border-color: var(--accent); }
+.pcomp-text.is-over { border-color: #ff453a; }
+.pcomp-text-sm { font-size: 12.5px; }
+.pcomp-warn { font-size: 11.5px; color: #ff453a; }
+
+.pcomp-field { display: flex; flex-direction: column; gap: 4px; }
+.pcomp-field-inline { flex-direction: row; align-items: center; gap: 8px; }
+.pcomp-label { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-3); }
+.pcomp-hint { text-transform: none; letter-spacing: 0; color: var(--text-4); font-size: 10.5px; }
+.pcomp-foot { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.pcomp-foot .btn { margin-left: auto; }
+.pcomp-foot .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* Preview: shows where the platform folds the text, which is the thing people
+   actually get wrong — the first line has to earn the tap on "more". */
+.pcomp-preview {
+  border: 1px solid var(--border); border-radius: 10px;
+  background: var(--bg); overflow: hidden;
+}
+.pcomp-preview-h {
+  font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--text-4); padding: 6px 11px; border-bottom: 1px solid var(--border);
+}
+.pcomp-preview-body {
+  padding: 10px 11px; font-size: 12.5px; line-height: 1.55; color: var(--text-2);
+  white-space: pre-wrap; word-break: break-word;
+}
+.pcomp-fold { color: var(--text-4); font-weight: 600; }
+.pcomp-folded { color: var(--text-4); }
+.pcomp-preview-fc {
+  padding: 8px 11px; border-top: 1px dashed var(--border);
+  font-size: 12px; color: var(--accent-2); white-space: pre-wrap; word-break: break-word;
+}
+
+/* Campaign content mix */
+.cmp-mix { padding: 14px 16px; display: flex; flex-direction: column; gap: 9px; margin-top: 16px; }
+.cmp-mix-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; font-size: 13px; font-weight: 600; color: var(--text); }
+.cmp-mix-sub { font-size: 11.5px; font-weight: 400; color: var(--text-3); }
+.cmp-mix-bar { display: flex; height: 9px; border-radius: 999px; overflow: hidden; background: var(--border); }
+.cmp-mix-seg { display: block; height: 100%; }
+.cmp-mix-legend { display: flex; gap: 14px; flex-wrap: wrap; }
+.cmp-mix-key { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--text-3); }
+.cmp-mix-key strong { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+.cmp-mix-dot { width: 7px; height: 7px; border-radius: 999px; }

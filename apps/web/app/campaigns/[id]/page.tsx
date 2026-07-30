@@ -18,7 +18,7 @@ import { notFound } from "next/navigation";
 import { getDb, campaigns, tasks, users, projects, eq, and, sql, asc, isNull } from "@tu/db";
 import { getCurrentUser } from "@/lib/auth";
 import { isAdmin, isPrivileged, getDepartmentScope } from "@/lib/access";
-import { CHANNEL_COLOR, CHANNEL_LABEL, STAGE_COLOR, STAGE_LABEL } from "@/lib/content";
+import { CHANNEL_COLOR, CHANNEL_LABEL, STAGE_COLOR, STAGE_LABEL, CONTENT_PILLARS, PILLAR_LABEL, PILLAR_COLOR } from "@/lib/content";
 import {
   CAMPAIGN_STATUS_COLOR,
   CAMPAIGN_STATUS_LABEL,
@@ -86,6 +86,7 @@ export default async function CampaignPlanPage({ params }: PageProps) {
         approvedAt: tasks.contentApprovedAt,
         publishState: tasks.publishState,
         budgetPaise: tasks.budgetPaise,
+        pillar: tasks.contentPillar,
         assignee: users.name,
         projectName: projects.name,
       })
@@ -158,6 +159,20 @@ export default async function CampaignPlanPage({ params }: PageProps) {
   const unapproved = scheduledItems.filter((t) => !t.approvedAt).length;
 
   const gridUsable = weeks.length > 0 && channelsUsed.length > 0;
+
+  // ---- pillar mix ----
+  // The number a content lead actually argues about. A feed that is 70%
+  // promotion stops working, and for a SEBI-regulated firm the promotional
+  // share is also the share that needs disclaimers — so making the ratio
+  // visible here is the point of tagging pillars at all.
+  const pillarCounts = new Map<string, number>();
+  let pillarTagged = 0;
+  for (const t of items) {
+    if (!t.pillar) continue;
+    pillarTagged++;
+    pillarCounts.set(t.pillar, (pillarCounts.get(t.pillar) ?? 0) + 1);
+  }
+  const promoShare = pillarTagged > 0 ? Math.round(((pillarCounts.get("promotion") ?? 0) / pillarTagged) * 100) : 0;
 
   return (
     <div className="page-content">
@@ -233,6 +248,46 @@ export default async function CampaignPlanPage({ params }: PageProps) {
         )}
       </div>
 
+      {/* ---- pillar mix ---- */}
+      {pillarTagged > 0 ? (
+        <div className="card cmp-mix">
+          <div className="cmp-mix-head">
+            <span>Content mix</span>
+            <span className="cmp-mix-sub">
+              {pillarTagged} of {items.length} tagged
+              {promoShare >= 40 ? ` · ${promoShare}% promotion — heavy` : promoShare > 0 ? ` · ${promoShare}% promotion` : null}
+            </span>
+          </div>
+          <div className="cmp-mix-bar">
+            {CONTENT_PILLARS.map((p) => {
+              const n = pillarCounts.get(p.value) ?? 0;
+              if (n === 0) return null;
+              return (
+                <span
+                  key={p.value}
+                  className="cmp-mix-seg"
+                  style={{ width: `${(n / pillarTagged) * 100}%`, background: p.color }}
+                  title={`${p.label}: ${n}`}
+                />
+              );
+            })}
+          </div>
+          <div className="cmp-mix-legend">
+            {CONTENT_PILLARS.map((p) => {
+              const n = pillarCounts.get(p.value) ?? 0;
+              if (n === 0) return null;
+              return (
+                <span key={p.value} className="cmp-mix-key">
+                  <span className="cmp-mix-dot" style={{ background: p.color }} />
+                  {p.label}
+                  <strong>{Math.round((n / pillarTagged) * 100)}%</strong>
+                </span>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+
       {/* ---- the plan grid ---- */}
       <div className="section-title mt-6">The plan</div>
       {gridUsable ? (
@@ -264,7 +319,7 @@ export default async function CampaignPlanPage({ params }: PageProps) {
                             t.approvedAt ? "" : "is-unapproved"
                           }`}
                           style={{ borderLeftColor: CHANNEL_COLOR[ch] ?? "var(--text-3)" }}
-                          title={`${t.title} · ${STAGE_LABEL[t.stage ?? "idea"]} · ${t.assignee ?? "unassigned"}`}
+                          title={`${t.title} · ${STAGE_LABEL[t.stage ?? "idea"]}${t.pillar ? ` · ${PILLAR_LABEL[t.pillar]}` : ""} · ${t.assignee ?? "unassigned"}`}
                         >
                           {t.title}
                         </Link>
@@ -314,6 +369,14 @@ export default async function CampaignPlanPage({ params }: PageProps) {
                         style={{ color: STAGE_COLOR[t.stage], borderColor: STAGE_COLOR[t.stage] }}
                       >
                         {STAGE_LABEL[t.stage]}
+                      </span>
+                    ) : null}
+                    {t.pillar ? (
+                      <span
+                        className="content-chip"
+                        style={{ color: PILLAR_COLOR[t.pillar], borderColor: PILLAR_COLOR[t.pillar] }}
+                      >
+                        {PILLAR_LABEL[t.pillar]}
                       </span>
                     ) : null}
                     {(t.budgetPaise ?? 0n) > 0n ? (

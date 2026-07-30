@@ -37,6 +37,8 @@ export async function publishNow(formData: FormData): Promise<void> {
       id: task.id,
       title: task.title,
       description: task.description,
+      postCaption: task.postCaption,
+      postFirstComment: task.postFirstComment,
       contentChannel: task.contentChannel,
       contentApprovedAt: task.contentApprovedAt,
       publishState: task.publishState,

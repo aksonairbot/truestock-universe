@@ -72,6 +72,11 @@ const SCHEMA_CHECKS: Array<{
     table: "campaigns",
     taskColumns: ["campaign_id", "budget_paise"],
   },
+  {
+    migration: "0026_post_composer",
+    feature: "Post copy, first comment and content pillars",
+    taskColumns: ["post_caption", "post_first_comment", "content_pillar"],
+  },
 ];
 
 /**
@@ -169,6 +174,12 @@ export default async function HealthPage() {
       : `${appUrl} — should be the public https origin in production`;
 
   const hasCronSecret = Boolean(process.env.CRON_SECRET);
+  // Naming the casualties matters: "scheduled jobs will refuse to run" reads
+  // as minor until you know it means overdue recurring tasks never roll
+  // forward and nobody's morning briefing is ever built.
+  const cronDetail = hasCronSecret
+    ? "set"
+    : "NOT SET — the daily review, recurring-task roll-forward, morning briefings and the publish sweep all refuse to run";
   const hasAi = Boolean(process.env.OLLAMA_BASE_URL || process.env.ANTHROPIC_API_KEY || process.env.DEEPSEEK_API_KEY);
 
   let publishConfigured = false;
@@ -210,8 +221,32 @@ export default async function HealthPage() {
     }
   }
 
-  const allGood =
-    dbOk && pending.length === 0 && uploadsState === "ok" && appUrlState !== "bad" && problems.length === 0;
+  // The headline is DERIVED from the rows below, never asserted separately.
+  // The first version said "Everything the app needs is in place" while a red
+  // row sat underneath it — a summary that contradicts its own detail is worse
+  // than no summary, because it teaches you to stop reading.
+  const dbState: State = dbOk ? (dbMs > 500 ? "warn" : "ok") : "bad";
+  const rowStates: State[] = [
+    dbState,
+    ...schemaResults.map((r): State => (r.missing.length === 0 ? "ok" : "bad")),
+    appUrlState,
+    uploadsState,
+    hasCronSecret ? "ok" : "bad",
+    hasAi ? "ok" : "off",
+    publishConfigured ? "ok" : "off",
+    // Unattended publishing being ON is a state to notice, not a fault.
+    autoPublish ? "warn" : "off",
+    ...(counts && counts.failed > 0 ? (["bad"] as State[]) : []),
+    ...problems.map((): State => "bad"),
+  ];
+  const badCount = rowStates.filter((x) => x === "bad").length;
+  const warnCount = rowStates.filter((x) => x === "warn").length;
+  const headline =
+    badCount > 0
+      ? `${badCount} ${badCount === 1 ? "thing needs" : "things need"} attention.`
+      : warnCount > 0
+        ? `Working — ${warnCount} ${warnCount === 1 ? "thing is" : "things are"} worth a look.`
+        : "Everything the app needs is in place.";
 
   return (
     <div className="page-content max-w-[820px]">
@@ -219,7 +254,7 @@ export default async function HealthPage() {
         <div>
           <div className="page-title">Health</div>
           <div className="page-sub">
-            {allGood ? "Everything the app needs is in place." : "Some things need attention — see below."}
+            {headline}
           </div>
         </div>
         <Link href="/settings" className="btn btn-ghost btn-sm">← Settings</Link>
@@ -246,7 +281,7 @@ export default async function HealthPage() {
         <div className="hsec-body">
           <Row
             label="Connection"
-            state={dbOk ? (dbMs > 500 ? "warn" : "ok") : "bad"}
+            state={dbState}
             detail={dbOk ? `${dbMs} ms` : dbError || "unreachable — check DATABASE_URL"}
           />
         </div>
@@ -287,7 +322,7 @@ export default async function HealthPage() {
           <Row
             label="Cron secret"
             state={hasCronSecret ? "ok" : "bad"}
-            detail={hasCronSecret ? "set" : "not set — scheduled jobs will refuse to run"}
+            detail={cronDetail}
           />
           <Row
             label="AI provider"

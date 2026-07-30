@@ -396,6 +396,16 @@ export const tasks = pgTable(
     publishRef: text("publish_ref"),
     publishError: text("publish_error"),
     publishProfile: text("publish_profile"),
+    // ---- post composer (migration 0026) ----
+    // postCaption is WHAT GOES OUT; description stays internal context. Before
+    // this split, the publisher shipped the description verbatim and sliced it
+    // at 2200 chars for every channel — destroying X posts and leaking
+    // internal notes into public captions.
+    postCaption: text("post_caption"),
+    /** Hashtags/links, posted as the first comment (standard on Instagram). */
+    postFirstComment: text("post_first_comment"),
+    /** education | market_update | product | brand | promotion | community */
+    contentPillar: text("content_pillar"),
     // ---- campaigns / media planning (migration 0025) ----
     // A task has one PROJECT (which product) and at most one CAMPAIGN (which
     // push). They're orthogonal — a Diwali campaign spans several products.
@@ -418,6 +428,7 @@ export const tasks = pgTable(
     byOrder: index("tasks_order_idx").on(t.projectId, t.status, t.orderIndex),
     byPublish: index("tasks_publish_idx").on(t.publishAt),
     byCampaign: index("tasks_campaign_idx").on(t.campaignId),
+    byPillar: index("tasks_pillar_idx").on(t.contentPillar),
   }),
 );
 

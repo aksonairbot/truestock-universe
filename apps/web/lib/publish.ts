@@ -10,6 +10,7 @@
 
 import { getDb, tasks, taskComments, taskAttachments, eq, asc } from "@tu/db";
 import { publish, isPublishableChannel, isPublishConfigured } from "@/lib/upload-post";
+import { captionLimit, countChars, CHANNEL_LABEL } from "@/lib/content";
 import { mediaUrl } from "@/lib/media-token";
 import { log } from "@/lib/log";
 
@@ -40,6 +41,8 @@ type Runnable = {
   id: string;
   title: string;
   description: string | null;
+  postCaption?: string | null;
+  postFirstComment?: string | null;
   contentChannel: string | null;
   contentApprovedAt: Date | null;
   publishState: string;
@@ -77,15 +80,33 @@ export async function runPublish(
 
   const media = await collectMedia(task.id);
 
-  // The caption is what the writer wrote in the description; the task title
-  // ("Instagram post — Q2 results") is an internal label, not copy. Fall back
-  // to the title only when there is no body at all.
-  const caption = (task.description ?? "").trim() || task.title;
+  // Precedence: the composer's caption is the copy. Description is a
+  // FALLBACK ONLY for items written before the composer existed — it is
+  // internal context and shouldn't normally go out. Title last, as a label.
+  const caption = (task.postCaption ?? "").trim() || (task.description ?? "").trim() || task.title;
+
+  // Last line of defence. The composer refuses to save over-length copy, but a
+  // caption can also arrive from the pre-composer description fallback, which
+  // was never length-checked against this channel.
+  const limit = captionLimit(task.contentChannel);
+  if (limit > 0 && countChars(caption) > limit) {
+    const label = CHANNEL_LABEL[task.contentChannel] ?? task.contentChannel;
+    await db
+      .update(tasks)
+      .set({
+        publishState: "failed",
+        publishError: `Caption is ${countChars(caption)} characters; ${label} allows ${limit}.`,
+        updatedAt: new Date(),
+      })
+      .where(eq(tasks.id, task.id));
+    return { ok: false, error: `Caption is too long for ${label} — ${countChars(caption)}/${limit}. Trim it in Post copy.` };
+  }
 
   const result = await publish({
     channel: task.contentChannel,
     title: caption,
     description: task.description,
+    firstComment: task.postFirstComment ?? null,
     media,
     profile: task.publishProfile,
   });

@@ -75,6 +75,8 @@ export type PublishInput = {
   /** Long body — only meaningful for Reddit. */
   description?: string | null;
   media?: PublishMedia[];
+  /** Hashtags/links posted immediately after — standard on Instagram. */
+  firstComment?: string | null;
   /** Upload-post profile to post as; falls back to UPLOAD_POST_USER. */
   profile?: string | null;
   /** ISO-8601. When set, Upload-post holds the post until then. */
@@ -183,7 +185,11 @@ export async function publish(input: PublishInput): Promise<PublishResult> {
   const form = new FormData();
   form.append("user", profile);
   form.append("platform[]", platform);
-  form.append("title", input.title.slice(0, 2200));
+  // NOT sliced. A caption over the network's limit is a content problem the
+  // composer already refuses to save; silently trimming here is how the tail
+  // of an X post used to vanish with nobody noticing.
+  form.append("title", input.title);
+  if (input.firstComment) form.append("first_comment", input.firstComment.slice(0, 2200));
   if (input.description) form.append("description", input.description.slice(0, 10_000));
   if (input.scheduledAt) {
     form.append("scheduled_date", input.scheduledAt);
