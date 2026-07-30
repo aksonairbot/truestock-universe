@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { runDailyReview } from "@/lib/daily-review";
 import { generateKnowledgeDigest } from "@/lib/knowledge-digest";
 import { prewarmMorningBriefings } from "@/lib/briefing";
+import { runContentWatch } from "@/lib/content-watch";
 import { getDb, sql } from "@tu/db";
 import { log } from "@/lib/log";
 
@@ -59,7 +60,14 @@ export async function GET(req: NextRequest) {
       log.warn("cron.daily_review.briefing_prewarm_failed", { error: (e as Error).message });
       return { generated: 0, skipped: 0, failed: -1 };
     });
-    return NextResponse.json({ ok: true, ...result, digest, recurrenceRolled, briefings });
+    // The content watchdog rides the same 9 AM run. Wrapped like the others:
+    // a marketing warning failing must never take down the daily review.
+    const watch = await runContentWatch().catch((e) => {
+      log.warn("cron.daily_review.content_watch_failed", { error: (e as Error).message });
+      return { risks: -1, notified: 0, skipped: 0, overBudget: 0 };
+    });
+
+    return NextResponse.json({ ok: true, ...result, digest, recurrenceRolled, briefings, watch });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     log.error("cron.daily_review.error", { error: msg });

@@ -6506,3 +6506,131 @@ select.cmp-input {
   padding-left: 2px; border-left: 1px solid var(--border); padding-left: 10px;
 }
 @media (max-width: 860px) { .bulkbar-keys { display: none; } }
+
+/* ===========================================================================
+   MOTION SYSTEM
+   ---------------------------------------------------------------------------
+   Motion here is for orientation, never decoration. Three rules:
+     1. Entrances are fast (140–220ms) and travel a short distance (6–10px).
+        Anything slower reads as lag on a page you open forty times a day.
+     2. Easing is asymmetric — quick out of the gate, gentle to a stop. That
+        is what makes a transition feel physical rather than mechanical.
+     3. EVERY animation is disabled under prefers-reduced-motion. Not reduced:
+        off. Vestibular triggers are not a style preference.
+   =========================================================================== */
+:root {
+  /* Apple-ish: decelerating, no overshoot except where a bounce is meaningful */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+  --dur-1: 120ms;   /* state flips: hover, check, chip */
+  --dur-2: 180ms;   /* entrances, panels */
+  --dur-3: 260ms;   /* page-level surfaces */
+}
+
+@keyframes motion-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes motion-scale-in {
+  from { opacity: 0; transform: scale(0.97); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* Opt-in entrance. `animation-fill-mode: both` matters — without it a
+   staggered child flashes at full opacity before its delay elapses. */
+.motion-in {
+  animation: motion-in var(--dur-2) var(--ease-out) both;
+}
+.motion-scale-in {
+  animation: motion-scale-in var(--dur-2) var(--ease-out) both;
+}
+
+/* Stagger children without hand-writing a delay per element. Capped at 10 so
+   a hundred rows don't cascade for three seconds. */
+.motion-stagger > * { animation: motion-in var(--dur-2) var(--ease-out) both; }
+.motion-stagger > *:nth-child(1) { animation-delay: 0ms; }
+.motion-stagger > *:nth-child(2) { animation-delay: 24ms; }
+.motion-stagger > *:nth-child(3) { animation-delay: 48ms; }
+.motion-stagger > *:nth-child(4) { animation-delay: 72ms; }
+.motion-stagger > *:nth-child(5) { animation-delay: 96ms; }
+.motion-stagger > *:nth-child(6) { animation-delay: 120ms; }
+.motion-stagger > *:nth-child(7) { animation-delay: 144ms; }
+.motion-stagger > *:nth-child(8) { animation-delay: 168ms; }
+.motion-stagger > *:nth-child(9) { animation-delay: 192ms; }
+.motion-stagger > *:nth-child(n + 10) { animation-delay: 216ms; }
+
+/* Cards lift slightly on hover — the cue that a whole surface is clickable.
+   translateZ(0) keeps it on the compositor so it can't cause a repaint storm
+   on a page with forty of them. */
+.cmp-card, .tcard, .attn {
+  transition:
+    transform var(--dur-1) var(--ease-out),
+    border-color var(--dur-1) var(--ease-out),
+    box-shadow var(--dur-1) var(--ease-out);
+  will-change: transform;
+}
+.cmp-card:hover, .tcard:hover { transform: translateY(-1px) translateZ(0); }
+.tcard.tcard-dragging { transform: scale(0.98) rotate(-0.4deg); opacity: 0.85; }
+
+/* Column highlight while dragging — the drop target should feel magnetic. */
+.kcol { transition: background var(--dur-1) var(--ease-out), box-shadow var(--dur-1) var(--ease-out); }
+.kcol.kcol-over { box-shadow: inset 0 0 0 2px var(--accent); }
+
+/* Calendar cells and plan cells settle in when the month changes. */
+.cal-cell, .plan-cell { transition: background var(--dur-1) var(--ease-out); }
+
+/* THE ONE HARD RULE. Off, not reduced. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   "Needs attention" panel — what the watchdog found.
+   Amber, not red: these are things that will go wrong, not things that have.
+--------------------------------------------------------------------------- */
+.attn {
+  padding: 0; overflow: hidden; margin-bottom: 16px;
+  border-color: rgba(255, 159, 10, 0.32);
+}
+.attn-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 11px 15px; border-bottom: 1px solid var(--border);
+  font-size: 12.5px; font-weight: 600; color: var(--text);
+}
+.attn-dot {
+  width: 7px; height: 7px; border-radius: 999px; background: #ff9f0a;
+  box-shadow: 0 0 0 3px rgba(255,159,10,0.16);
+  animation: attn-pulse 2.4s var(--ease-in-out) infinite;
+}
+@keyframes attn-pulse {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(255,159,10,0.16); }
+  50%      { box-shadow: 0 0 0 6px rgba(255,159,10,0.04); }
+}
+.attn-n {
+  margin-left: auto; font-size: 11px; color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+.attn-list { list-style: none; margin: 0; padding: 4px 0; }
+.attn-row {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 7px 15px; color: inherit; text-decoration: none;
+  transition: background var(--dur-1) var(--ease-out);
+}
+.attn-row:hover { background: var(--bg); }
+.attn-tag {
+  font-size: 9px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase;
+  border: 1px solid; border-radius: 999px; padding: 1px 7px; flex-shrink: 0;
+}
+.attn-tag.is-failed { color: #ff453a; border-color: rgba(255,69,58,0.42); }
+.attn-tag.is-unapproved { color: #ff9f0a; border-color: rgba(255,159,10,0.4); }
+.attn-tag.is-no_copy { color: #ff9f0a; border-color: rgba(255,159,10,0.4); }
+.attn-tag.is-stalled { color: var(--text-3); border-color: var(--border); }
+.attn-title { font-size: 12.5px; color: var(--text); min-width: 0; }
+.attn-detail { font-size: 11.5px; color: var(--text-3); }
+.attn-who { margin-left: auto; font-size: 11px; color: var(--text-4); white-space: nowrap; }

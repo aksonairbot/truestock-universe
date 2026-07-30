@@ -49,6 +49,8 @@ const SCHEMA_CHECKS: Array<{
   feature: string;
   table?: string;
   taskColumns?: string[];
+  /** For migrations that add an enum value rather than a column. */
+  enumValue?: { type: string; value: string };
 }> = [
   { migration: "0021_task_links", feature: "Figma / social links on tasks", table: "task_links" },
   {
@@ -81,6 +83,11 @@ const SCHEMA_CHECKS: Array<{
     migration: "0027_post_variants",
     feature: "Per-network variants of one post",
     taskColumns: ["post_group_id"],
+  },
+  {
+    migration: "0028_content_watch",
+    feature: "Content watchdog notifications",
+    enumValue: { type: "notification_kind", value: "content_at_risk" },
   },
 ];
 
@@ -131,6 +138,7 @@ export default async function HealthPage() {
   let dbError = "";
   let taskColumns = new Set<string>();
   let tableNames = new Set<string>();
+  let enumValues = new Set<string>();
 
   try {
     const db = getDb();
@@ -139,6 +147,20 @@ export default async function HealthPage() {
       db.execute(sql`select column_name from information_schema.columns where table_schema = 'public' and table_name = 'tasks'`),
       db.execute(sql`select table_name from information_schema.tables where table_schema = 'public'`),
     ]);
+    // Enum values live in pg_enum, not information_schema — probed separately
+    // so a migration that only adds one is still verifiable here.
+    try {
+      const enumRes = await db.execute(
+        sql`select t.typname, e.enumlabel from pg_type t join pg_enum e on e.enumtypid = t.oid`,
+      );
+      for (const r of rowsOf(enumRes)) {
+        if (typeof r.typname === "string" && typeof r.enumlabel === "string") {
+          enumValues.add(`${r.typname}.${r.enumlabel}`);
+        }
+      }
+    } catch {
+      /* the schema rows below will show as missing, which is the right signal */
+    }
     dbMs = Date.now() - t0;
     for (const r of rowsOf(colRes)) if (typeof r.column_name === "string") taskColumns.add(r.column_name);
     for (const r of rowsOf(tblRes)) if (typeof r.table_name === "string") tableNames.add(r.table_name);
@@ -154,6 +176,9 @@ export default async function HealthPage() {
     const missing: string[] = [];
     if (c.table && !tableNames.has(c.table)) missing.push(`table ${c.table}`);
     for (const col of c.taskColumns ?? []) if (!taskColumns.has(col)) missing.push(`tasks.${col}`);
+    if (c.enumValue && !enumValues.has(`${c.enumValue.type}.${c.enumValue.value}`)) {
+      missing.push(`${c.enumValue.type} value '${c.enumValue.value}'`);
+    }
     return { ...c, missing };
   });
   const pending = schemaResults.filter((r) => r.missing.length > 0);
@@ -254,7 +279,7 @@ export default async function HealthPage() {
         : "Everything the app needs is in place.";
 
   return (
-    <div className="page-content max-w-[820px]">
+    <div className="page-content max-w-[820px] motion-stagger">
       <div className="page-head">
         <div>
           <div className="page-title">Health</div>

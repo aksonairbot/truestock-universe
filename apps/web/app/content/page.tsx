@@ -14,6 +14,7 @@ import { isAdmin, getDepartmentScope } from "@/lib/access";
 import { CONTENT_STAGES, CHANNEL_COLOR, CHANNEL_LABEL, STAGE_COLOR, STAGE_LABEL } from "@/lib/content";
 import { ContentBoard } from "./content-board";
 import { ContentFilter } from "./content-filter";
+import { findContentRisks, riskLabel } from "@/lib/content-watch";
 
 export const dynamic = "force-dynamic";
 
@@ -71,6 +72,11 @@ export default async function ContentPage({ searchParams }: PageProps) {
       ? sql`(${tasks.assigneeId} in (select id from users where department_id = ${deptScope}) or ${tasks.createdById} in (select id from users where department_id = ${deptScope}))`
       : sql`(${tasks.assigneeId} = ${me.id} or ${tasks.createdById} = ${me.id})`;
 
+  // The watchdog's findings, under the same data wall as the rest of the page.
+  // Same finder the daily cron uses, so the panel and the notification can
+  // never disagree about what is at risk.
+  const risks = await findContentRisks(scope, 12).catch(() => []);
+
   const campaignList = await db
     .select({ id: campaignsTbl.id, name: campaignsTbl.name })
     .from(campaignsTbl)
@@ -126,6 +132,8 @@ export default async function ContentPage({ searchParams }: PageProps) {
             <Link href="/tasks/new?content=1" className="btn btn-primary btn-sm">New content</Link>
           </div>
         </div>
+
+        <AttentionPanel risks={risks} />
 
         {boardItems.length === 0 ? (
           <div className="card text-center py-16 mt-4">
@@ -249,6 +257,8 @@ export default async function ContentPage({ searchParams }: PageProps) {
         </div>
       </div>
 
+      <AttentionPanel risks={risks} />
+
       {/* stage legend doubles as a pipeline summary */}
       <div className="content-legend">
         {CONTENT_STAGES.map((s) => (
@@ -260,7 +270,7 @@ export default async function ContentPage({ searchParams }: PageProps) {
         ))}
       </div>
 
-      <div className="cal">
+      <div className="cal motion-in">
         {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => (
           <div key={d} className="cal-dow">{d}</div>
         ))}
@@ -347,6 +357,39 @@ export default async function ContentPage({ searchParams }: PageProps) {
           <Link href="/tasks/new?content=1" className="btn btn-primary btn-sm">Capture your first post</Link>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+
+/**
+ * What the pipeline noticed on your behalf.
+ *
+ * Deliberately at the TOP and deliberately quiet when empty: a panel that is
+ * always there teaches you to scroll past it. It only appears when something
+ * genuinely needs a person.
+ */
+function AttentionPanel({ risks }: { risks: Awaited<ReturnType<typeof findContentRisks>> }) {
+  if (risks.length === 0) return null;
+  return (
+    <div className="card attn motion-in">
+      <div className="attn-head">
+        <span className="attn-dot" aria-hidden="true" />
+        Needs attention
+        <span className="attn-n">{risks.length}</span>
+      </div>
+      <ul className="attn-list">
+        {risks.map((r, i) => (
+          <li key={r.taskId} className="motion-in" style={{ animationDelay: `${Math.min(i, 8) * 28}ms` }}>
+            <Link href={`/tasks/${r.taskId}`} className="attn-row">
+              <span className={`attn-tag is-${r.reason}`}>{riskLabel(r.reason)}</span>
+              <span className="attn-title">{r.title}</span>
+              <span className="attn-detail">{r.detail}</span>
+              <span className="attn-who">{r.assigneeName ?? "unassigned"}</span>
+            </Link>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

@@ -130,7 +130,7 @@ export function ContentBoard({ items }: { items: BoardItem[] }) {
   }
 
   return (
-    <div className="kanban cboard">
+    <div className="kanban cboard motion-stagger">
       {CONTENT_STAGES.map((s) => {
         const col = grouped[s.value] ?? [];
         return (

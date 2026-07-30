@@ -118,7 +118,7 @@ export default async function CampaignsPage({ searchParams }: PageProps) {
           </div>
         </div>
       ) : (
-        <div className="cmp-grid mt-4">
+        <div className="cmp-grid mt-4 motion-stagger">
           {rows.map((c) => {
             const s = statsById.get(c.id);
             const allocated = BigInt(s?.allocated ?? "0");

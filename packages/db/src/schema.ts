@@ -246,6 +246,11 @@ export const notificationKindEnum = pgEnum("notification_kind", [
   "review_requested",   // task moved to "review" — notify managers/admins
   "review_approved",    // manager approved your task review
   "review_revision",    // manager requested revision on your task
+  // Machine-raised, not person-raised: the content watchdog warning that a
+  // post is due with no approver, has no copy, has stalled, or failed to
+  // publish. A separate kind so the inbox never implies a human is asking.
+  // The DB side is migration 0028 (ALTER TYPE ... ADD VALUE).
+  "content_at_risk",
 ]);
 
 // ---------- users ----------

@@ -124,7 +124,7 @@ export function BoardView({ rows, hrefParams }: { rows: BoardRow[]; hrefParams: 
   const rowHref = (id: string) => `/tasks?${hrefParams ? `${hrefParams}&` : ""}task=${id}`;
 
   return (
-    <div className="kanban">
+    <div className="kanban motion-stagger">
       {BOARD_COLUMNS.map((s) => {
         const items = grouped[s] ?? [];
         return (
