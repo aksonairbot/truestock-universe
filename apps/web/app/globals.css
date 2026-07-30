@@ -6264,3 +6264,24 @@ select.cmp-input {
 }
 .cmp-danger-note { font-size: 11px; color: var(--text-3); }
 .cfield-empty { font-size: 11.5px; color: var(--text-3); padding: 4px 0 8px; }
+
+/* Cadence planner: day-of-week chips + form header/hints. */
+.cmp-form-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.cmp-form-head strong { font-size: 13px; color: var(--text); font-weight: 600; }
+.cmp-form-hint { font-size: 11px; color: var(--text-3); }
+.cmp-days { display: flex; flex-direction: column; gap: 5px; }
+.cmp-days-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.cmp-day {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 44px; padding: 5px 10px;
+  font-size: 12px; font-weight: 500;
+  border: 1px solid var(--border); border-radius: 999px;
+  background: var(--bg); color: var(--text-3);
+  cursor: pointer; user-select: none;
+  transition: color 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+}
+.cmp-day:hover { color: var(--text); border-color: var(--border-2); }
+.cmp-day.is-on { color: var(--text); border-color: var(--accent); background: var(--accent-wash); }
+/* The checkbox itself is the state, but visually the chip is the control. */
+.cmp-day input { position: absolute; opacity: 0; width: 0; height: 0; }
+.cmp-day:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }

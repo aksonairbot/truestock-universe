@@ -15,7 +15,7 @@
 
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getDb, campaigns, tasks, users, projects, eq, and, sql, asc } from "@tu/db";
+import { getDb, campaigns, tasks, users, projects, eq, and, sql, asc, isNull } from "@tu/db";
 import { getCurrentUser } from "@/lib/auth";
 import { isAdmin, isPrivileged, getDepartmentScope } from "@/lib/access";
 import { CHANNEL_COLOR, CHANNEL_LABEL, STAGE_COLOR, STAGE_LABEL } from "@/lib/content";
@@ -29,6 +29,7 @@ import {
 } from "@/lib/campaigns";
 import { formatInrFromPaise } from "@/lib/format";
 import { CampaignEdit } from "./campaign-edit";
+import { CadenceForm } from "./cadence-form";
 
 export const dynamic = "force-dynamic";
 
@@ -73,7 +74,7 @@ export default async function CampaignPlanPage({ params }: PageProps) {
 
   if (!campaign) notFound();
 
-  const [items, owners] = await Promise.all([
+  const [items, owners, projectList] = await Promise.all([
     db
       .select({
         id: tasks.id,
@@ -102,6 +103,15 @@ export default async function CampaignPlanPage({ params }: PageProps) {
           .where(and(eq(users.isActive, true), sql`${users.role} <> 'agent'::user_role`))
           .orderBy(asc(users.name))
       : Promise.resolve([] as Array<{ id: string; name: string }>),
+
+    // Cadence generation needs a project to file the tasks under.
+    canPlan
+      ? db
+          .select({ slug: projects.slug, name: projects.name })
+          .from(projects)
+          .where(isNull(projects.archivedAt))
+          .orderBy(asc(projects.name))
+      : Promise.resolve([] as Array<{ slug: string; name: string }>),
   ]);
 
   // ---- budget roll-up ----
@@ -179,6 +189,20 @@ export default async function CampaignPlanPage({ params }: PageProps) {
       </div>
 
       {campaign.objective ? <div className="cmp-objective">{campaign.objective}</div> : null}
+
+      {/* Bulk-plan a run of slots. The single biggest time-saver for a team
+          shipping content on a weekly rhythm. */}
+      {canPlan && projectList.length > 0 ? (
+        <div className="mb-4">
+          <CadenceForm
+            campaignId={campaign.id}
+            startDate={campaign.startDate}
+            endDate={campaign.endDate}
+            projects={projectList}
+            users={owners}
+          />
+        </div>
+      ) : null}
 
       {/* ---- budget ---- */}
       <div className="card cmp-budget-card">

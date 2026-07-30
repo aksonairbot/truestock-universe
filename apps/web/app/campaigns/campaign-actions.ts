@@ -7,10 +7,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getDb, campaigns, tasks, eq } from "@tu/db";
+import { getDb, campaigns, tasks, projects, eq, and, sql, isNull } from "@tu/db";
 import { getCurrentUser } from "@/lib/auth";
 import { isPrivileged, requireTaskAccess } from "@/lib/access";
 import { isCampaignStatus, rupeesToPaise } from "@/lib/campaigns";
+import { isChannel, istDateTimeToUtc } from "@/lib/content";
 import { log } from "@/lib/log";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -151,4 +152,172 @@ export async function setTaskCampaign(formData: FormData): Promise<void> {
   revalidatePath("/tasks");
   revalidatePath("/campaigns");
   if (campaignId) revalidatePath(`/campaigns/${campaignId}`);
+}
+
+
+// ---------------------------------------------------------------------------
+// planCadence — the media planner's power tool.
+//
+// "Three reels a week for six weeks" is how content actually gets planned, and
+// creating eighteen near-identical tasks by hand is the reason people go back
+// to spreadsheets. This generates the whole run in one pass: pick a channel,
+// the weekdays, a time, and a window, and every slot appears on the calendar
+// as an idea.
+//
+// Every generated item starts at stage "idea" and unapproved — a cadence
+// creates PLACEHOLDERS, not approved content. The approval gate still stands
+// between these and anything going out.
+// ---------------------------------------------------------------------------
+
+/** Hard ceiling per run. A typo in the date range shouldn't create 400 tasks. */
+const MAX_CADENCE_ITEMS = 60;
+
+/** ISO date + n days, using UTC noon so DST/offsets can't shift the day. */
+function addDays(iso: string, n: number): string {
+  const d = new Date(`${iso}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+/** 0 = Sunday … 6 = Saturday, matching the form's checkbox values. */
+function dowOf(iso: string): number {
+  return new Date(`${iso}T12:00:00Z`).getUTCDay();
+}
+function shortLabel(iso: string): string {
+  return new Date(`${iso}T12:00:00Z`).toLocaleDateString("en-IN", {
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  });
+}
+
+export async function planCadence(formData: FormData): Promise<void> {
+  const me = await getCurrentUser();
+  // Planning a cadence creates work for other people — same bar as creating
+  // the campaign itself.
+  if (!isPrivileged(me)) throw new Error("Only admins and managers can plan a cadence.");
+
+  const campaignId = ((formData.get("campaignId") as string) ?? "").trim();
+  if (!UUID_RE.test(campaignId)) throw new Error("campaignId is required");
+
+  const channel = ((formData.get("channel") as string) ?? "").trim();
+  if (!isChannel(channel)) throw new Error("Pick a channel for the cadence.");
+
+  const startDate = ((formData.get("startDate") as string) ?? "").trim();
+  const endDate = ((formData.get("endDate") as string) ?? "").trim();
+  if (!DATE_RE.test(startDate) || !DATE_RE.test(endDate)) {
+    throw new Error("Give the cadence a start and end date.");
+  }
+  if (endDate < startDate) throw new Error("The cadence ends before it starts — check the dates.");
+
+  const days = formData
+    .getAll("days")
+    .map((d) => Number(d))
+    .filter((n) => Number.isInteger(n) && n >= 0 && n <= 6);
+  if (days.length === 0) throw new Error("Pick at least one day of the week.");
+  const daySet = new Set(days);
+
+  const time = ((formData.get("time") as string) ?? "10:00").trim();
+  if (!/^\d{2}:\d{2}$/.test(time)) throw new Error("Publish time is not valid.");
+
+  const prefix = ((formData.get("titlePrefix") as string) ?? "").trim().slice(0, 120);
+  if (!prefix) throw new Error("Give the items a title, e.g. \"Reel\" or \"Market recap\".");
+
+  const projectSlug = ((formData.get("projectSlug") as string) ?? "").trim();
+  if (!projectSlug) throw new Error("Pick a project — every task belongs to one.");
+
+  const assigneeRaw = ((formData.get("assigneeId") as string) ?? "").trim();
+  const assigneeId = UUID_RE.test(assigneeRaw) ? assigneeRaw : me.id;
+
+  const budgetPaise = rupeesToPaise((formData.get("budget") as string) ?? "");
+
+  const db = getDb();
+
+  const [campaign] = await db
+    .select({ id: campaigns.id, name: campaigns.name })
+    .from(campaigns)
+    .where(eq(campaigns.id, campaignId))
+    .limit(1);
+  if (!campaign) throw new Error("That campaign no longer exists.");
+
+  const [project] = await db
+    .select({ id: projects.id })
+    .from(projects)
+    .where(and(eq(projects.slug, projectSlug), isNull(projects.archivedAt)))
+    .limit(1);
+  if (!project) throw new Error("That project was not found.");
+
+  // Already-planned slots for this campaign+channel. Re-running a cadence is
+  // a normal thing to do (extending a run by two weeks), so colliding slots
+  // are SKIPPED rather than duplicated.
+  const existing = await db
+    .select({ publishAt: tasks.publishAt })
+    .from(tasks)
+    .where(and(eq(tasks.campaignId, campaignId), eq(tasks.contentChannel, channel), sql`${tasks.publishAt} is not null`));
+  const taken = new Set(
+    existing
+      .map((e) => (e.publishAt instanceof Date ? e.publishAt : new Date(e.publishAt!)))
+      .map((d) => d.toISOString()),
+  );
+
+  const rows: Array<typeof tasks.$inferInsert> = [];
+  let skipped = 0;
+
+  for (let iso = startDate; iso <= endDate; iso = addDays(iso, 1)) {
+    if (!daySet.has(dowOf(iso))) continue;
+
+    const publishAt = istDateTimeToUtc(iso, time);
+    if (Number.isNaN(publishAt.getTime())) continue;
+    if (taken.has(publishAt.toISOString())) {
+      skipped++;
+      continue;
+    }
+
+    rows.push({
+      projectId: project.id,
+      title: `${prefix} — ${shortLabel(iso)}`,
+      status: "todo",
+      priority: "med",
+      // The due date IS the publish day: that's when the work has to be
+      // finished. This deliberately bypasses the create-form's 2-week cap,
+      // which exists to keep ad-hoc tasks realistic and does not apply to
+      // content planned a quarter out.
+      dueDate: iso,
+      assigneeId,
+      contentChannel: channel,
+      contentStage: "idea",
+      publishAt,
+      campaignId,
+      budgetPaise,
+      createdById: me.id,
+    });
+
+    if (rows.length > MAX_CADENCE_ITEMS) {
+      throw new Error(
+        `That range would create more than ${MAX_CADENCE_ITEMS} items. Shorten the window or pick fewer days.`,
+      );
+    }
+  }
+
+  if (rows.length === 0) {
+    throw new Error(
+      skipped > 0
+        ? "Every slot in that range is already planned."
+        : "No dates in that range fall on the days you picked.",
+    );
+  }
+
+  await db.insert(tasks).values(rows);
+
+  log.info("campaign.cadence_planned", {
+    campaignId,
+    channel,
+    created: rows.length,
+    skipped,
+    actorId: me.id,
+  });
+
+  revalidatePath(`/campaigns/${campaignId}`);
+  revalidatePath("/campaigns");
+  revalidatePath("/content");
+  revalidatePath("/tasks");
 }
