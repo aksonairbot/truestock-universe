@@ -77,6 +77,11 @@ const SCHEMA_CHECKS: Array<{
     feature: "Post copy, first comment and content pillars",
     taskColumns: ["post_caption", "post_first_comment", "content_pillar"],
   },
+  {
+    migration: "0027_post_variants",
+    feature: "Per-network variants of one post",
+    taskColumns: ["post_group_id"],
+  },
 ];
 
 /**

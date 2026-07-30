@@ -15,6 +15,7 @@ import {
   taskLinks,
   eq,
   asc,
+  and,
   sql,
   isNull,
 } from "@tu/db";
@@ -37,6 +38,7 @@ import { ContentFields } from "./content-fields";
 import { ContentApproval } from "./content-approval";
 import { CampaignFields } from "./campaign-fields";
 import { PostComposer } from "./post-composer";
+import { VariantManager } from "./variant-manager";
 import { paiseToRupeeInput } from "@/lib/campaigns";
 import { campaigns as campaignsTbl } from "@tu/db";
 import { PublishPanel } from "./publish-panel";
@@ -112,6 +114,7 @@ export async function TaskPaneContent({ taskId }: { taskId: string }) {
       postCaption: tasks.postCaption,
       postFirstComment: tasks.postFirstComment,
       contentPillar: tasks.contentPillar,
+      postGroupId: tasks.postGroupId,
       campaignId: tasks.campaignId,
       budgetPaise: tasks.budgetPaise,
       createdAt: tasks.createdAt,
@@ -130,7 +133,7 @@ export async function TaskPaneContent({ taskId }: { taskId: string }) {
     .limit(1);
 
   if (!task) {
-    return (
+  return (
       <div className="card text-center py-8">
         <div className="text-text-2">Task not found.</div>
       </div>
@@ -234,6 +237,23 @@ export async function TaskPaneContent({ taskId }: { taskId: string }) {
     : todayIST.getTime();
   const ageDays = Math.max(0, Math.floor((endMs - createdMs) / 86400000));
 
+
+  // Sibling variants of the same idea. Cheap: partial index on post_group_id,
+  // and the query is skipped entirely for the ~all tasks that aren't grouped.
+  const siblings = task.postGroupId
+    ? await db
+        .select({
+          id: tasks.id,
+          title: tasks.title,
+          channel: tasks.contentChannel,
+          stage: tasks.contentStage,
+          publishState: tasks.publishState,
+          approvedAt: tasks.contentApprovedAt,
+        })
+        .from(tasks)
+        .where(and(eq(tasks.postGroupId, task.postGroupId), sql`${tasks.id} <> ${task.id}`))
+        .orderBy(asc(tasks.contentChannel))
+    : [];
 
   return (
     <div className="task-pane-inner">
@@ -356,6 +376,13 @@ export async function TaskPaneContent({ taskId }: { taskId: string }) {
         caption={task.postCaption ?? ""}
         firstComment={task.postFirstComment ?? ""}
         pillar={task.contentPillar}
+        disabled={task.status === "cancelled"}
+      />
+
+      <VariantManager
+        taskId={task.id}
+        channel={task.contentChannel}
+        siblings={siblings}
         disabled={task.status === "cancelled"}
       />
 

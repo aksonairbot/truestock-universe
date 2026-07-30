@@ -396,6 +396,12 @@ export const tasks = pgTable(
     publishRef: text("publish_ref"),
     publishError: text("publish_error"),
     publishProfile: text("publish_profile"),
+    // ---- per-network variants (migration 0027) ----
+    // Variants of one idea share a postGroupId. They are PEERS, not subtasks:
+    // each has its own channel, caption, slot, approval and publish state,
+    // because Instagram's version can be live while LinkedIn's is still in
+    // review. parentTaskId deliberately NOT reused — that means "subtask".
+    postGroupId: uuid("post_group_id"),
     // ---- post composer (migration 0026) ----
     // postCaption is WHAT GOES OUT; description stays internal context. Before
     // this split, the publisher shipped the description verbatim and sliced it
@@ -429,6 +435,7 @@ export const tasks = pgTable(
     byPublish: index("tasks_publish_idx").on(t.publishAt),
     byCampaign: index("tasks_campaign_idx").on(t.campaignId),
     byPillar: index("tasks_pillar_idx").on(t.contentPillar),
+    byPostGroup: index("tasks_post_group_idx").on(t.postGroupId),
   }),
 );
 
