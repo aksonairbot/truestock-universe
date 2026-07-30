@@ -15,7 +15,7 @@
 
 import Link from "next/link";
 import { Suspense } from "react";
-import { getDb, tasks, projects, users, eq, desc, or, and, ilike, sql } from "@tu/db";
+import { getDb, tasks, projects, users, campaigns as campaignsTbl, eq, desc, or, and, ilike, sql, asc, isNull } from "@tu/db";
 import { getCurrentUser } from "@/lib/auth";
 import { getActiveUsers, getProjectsList } from "@/lib/cached-queries";
 import { isAdmin, isPrivileged, getDepartmentScope } from "@/lib/access";
@@ -152,7 +152,7 @@ function isOverdue(t: { dueDate: string | Date | null; status: string }): boolea
 const PAGE_SIZE = 50;
 
 interface PageProps {
-  searchParams: Promise<{ view?: string; group?: string; q?: string; task?: string; page?: string; assignee?: string; priority?: string; project?: string; closed?: string }>;
+  searchParams: Promise<{ view?: string; group?: string; q?: string; task?: string; page?: string; assignee?: string; priority?: string; project?: string; campaign?: string; closed?: string }>;
 }
 
 const FILTER_PRIORITIES = ["low", "med", "high", "urgent"] as const;
@@ -161,7 +161,7 @@ const SLUG_RE = /^[a-z0-9-]+$/;
 
 export default async function TasksPage({ searchParams }: PageProps) {
   const t0 = Date.now();
-  const { view, group: groupRaw, q: qRaw, task: taskIdRaw, page: pageRaw, assignee: assigneeRaw, priority: priorityRaw, project: projectRaw, closed: closedRaw } = await searchParams;
+  const { view, group: groupRaw, q: qRaw, task: taskIdRaw, page: pageRaw, assignee: assigneeRaw, priority: priorityRaw, project: projectRaw, campaign: campaignRaw, closed: closedRaw } = await searchParams;
   const showClosed = (closedRaw ?? "").trim() === "1";
   const taskId = (taskIdRaw ?? "").trim() || null;
   const isBoard = view === "board";
@@ -175,7 +175,8 @@ export default async function TasksPage({ searchParams }: PageProps) {
   const assigneeParam = assigneeParamRaw === "me" || assigneeParamRaw === "none" || UUID_RE.test(assigneeParamRaw) ? assigneeParamRaw : "";
   const priorityParam = (FILTER_PRIORITIES as readonly string[]).includes((priorityRaw ?? "").trim()) ? (priorityRaw ?? "").trim() : "";
   const projectParam = SLUG_RE.test((projectRaw ?? "").trim()) ? (projectRaw ?? "").trim() : "";
-  const filtersActive = Boolean(assigneeParam || priorityParam || projectParam);
+  const campaignParam = UUID_RE.test((campaignRaw ?? "").trim()) ? (campaignRaw ?? "").trim() : "";
+  const filtersActive = Boolean(assigneeParam || priorityParam || projectParam || campaignParam);
 
   const tAuth0 = Date.now();
   const me = await getCurrentUser();
@@ -226,6 +227,9 @@ export default async function TasksPage({ searchParams }: PageProps) {
   const projectFilter = projectParam
     ? sql`${tasks.projectId} in (select id from projects where slug = ${projectParam})`
     : undefined;
+  // Campaign is a plain column on tasks — no subquery needed, and the partial
+  // index on campaign_id covers it.
+  const campaignFilter = campaignParam ? eq(tasks.campaignId, campaignParam) : undefined;
 
   // Closed-work visibility. Default: the list shows LIVE work only — 572 of
   // 575 tasks here are done/cancelled, and paging through 12 pages of finished
@@ -237,7 +241,7 @@ export default async function TasksPage({ searchParams }: PageProps) {
     ? sql`(${tasks.status} not in ('done'::task_status,'cancelled'::task_status) or (${tasks.status} = 'done'::task_status and ${tasks.completedAt} >= now() - interval '7 days'))`
     : sql`${tasks.status} not in ('done'::task_status,'cancelled'::task_status)`;
 
-  const baseConds = [searchFilter, scopeFilter, assigneeFilter, priorityFilter, projectFilter].filter(
+  const baseConds = [searchFilter, scopeFilter, assigneeFilter, priorityFilter, projectFilter, campaignFilter].filter(
     (c): c is NonNullable<typeof c> => Boolean(c),
   );
   const rowConds = showClosed ? baseConds : [...baseConds, visibleCond];
@@ -253,7 +257,7 @@ export default async function TasksPage({ searchParams }: PageProps) {
   const offset = (page - 1) * PAGE_SIZE;
   const tQ0 = Date.now();
 
-  const [rows, [statsRow], allUsers, projectsList] = await Promise.all([
+  const [rows, [statsRow], allUsers, projectsList, campaignList] = await Promise.all([
     db
       .select({
         id: tasks.id,
@@ -305,6 +309,13 @@ export default async function TasksPage({ searchParams }: PageProps) {
     getActiveUsers(),
     // Cross-request cached project list for the filter dropdown
     getProjectsList(),
+    // Live campaigns for the filter dropdown. Small table; the select hides
+    // itself entirely when this comes back empty.
+    db
+      .select({ id: campaignsTbl.id, name: campaignsTbl.name })
+      .from(campaignsTbl)
+      .where(isNull(campaignsTbl.archivedAt))
+      .orderBy(asc(campaignsTbl.name)),
   ]);
 
   const tQ1 = Date.now();
@@ -328,6 +339,7 @@ export default async function TasksPage({ searchParams }: PageProps) {
     if (assigneeParam) params.set("assignee", assigneeParam);
     if (priorityParam) params.set("priority", priorityParam);
     if (projectParam) params.set("project", projectParam);
+    if (campaignParam) params.set("campaign", campaignParam);
     if (showClosed) params.set("closed", "1");
     // preserve page unless explicitly overridden
     if (page > 1 && !("page" in extra)) params.set("page", String(page));
@@ -454,12 +466,14 @@ export default async function TasksPage({ searchParams }: PageProps) {
           assignee={assigneeParam}
           priority={priorityParam}
           project={projectParam}
+          campaign={campaignParam}
           showClosed={showClosed}
           users={allUsers}
           projects={projectsList}
+          campaigns={campaignList}
         />
         {!isBoard ? (
-          <GroupForm view={view} group={group} q={q} extra={{ assignee: assigneeParam, priority: priorityParam, project: projectParam, ...(showClosed ? { closed: "1" } : {}) }} />
+          <GroupForm view={view} group={group} q={q} extra={{ assignee: assigneeParam, priority: priorityParam, project: projectParam, ...(campaignParam ? { campaign: campaignParam } : {}), ...(showClosed ? { closed: "1" } : {}) }} />
         ) : null}
         {closedCount > 0 ? (
           <Link

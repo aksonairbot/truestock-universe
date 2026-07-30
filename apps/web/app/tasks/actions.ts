@@ -7,6 +7,7 @@ import { getCurrentUserId, getCurrentUser } from "@/lib/auth";
 import { isPrivileged, isAdmin, getDepartmentScope, requireTaskAccess } from "@/lib/access";
 import { log } from "@/lib/log";
 import { isChannel, istDateTimeToUtc } from "@/lib/content";
+import { rupeesToPaise } from "@/lib/campaigns";
 import { notifyAssigned, notifyTaskCompleted, notifyCommentOnAssigned, notifyMentions, notifyReviewRequested, notifyReviewOutcome } from "@/lib/notify";
 import { offsetToDeadline, deadlineToDateStr } from "@/lib/worktime";
 
@@ -242,6 +243,21 @@ export async function createTask(formData: FormData): Promise<string> {
     }
   }
 
+  // ---- optional campaign filing ----
+  // A campaign holds the ads and the posts AND the work behind them, so this
+  // is on the ordinary create path, not the content-only one. An unknown id
+  // is rejected rather than silently dropped — filing work under a campaign
+  // that doesn't exist would hide it from the plan it belongs to.
+  const campaignRaw = ((formData.get("campaignId") as string) ?? "").trim();
+  const budgetPaise = rupeesToPaise((formData.get("budget") as string) ?? "");
+  let campaignId: string | null = null;
+  if (campaignRaw) {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(campaignRaw)) {
+      throw new Error("That campaign id is not valid.");
+    }
+    campaignId = campaignRaw;
+  }
+
   const db = getDb();
   const [project] = await db
     .select({ id: projects.id })
@@ -274,6 +290,8 @@ export async function createTask(formData: FormData): Promise<string> {
       contentChannel,
       contentStage,
       publishAt,
+      campaignId,
+      budgetPaise,
       createdById: userId,
     })
     .returning({ id: tasks.id });
@@ -289,6 +307,10 @@ export async function createTask(formData: FormData): Promise<string> {
   revalidatePath("/tasks");
   revalidatePath("/projects");
   if (contentChannel) revalidatePath("/content");
+  if (campaignId) {
+    revalidatePath("/campaigns");
+    revalidatePath(`/campaigns/${campaignId}`);
+  }
   return created.id;
 }
 

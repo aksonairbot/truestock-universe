@@ -129,9 +129,42 @@ ssh "$SERVER" "cd $REMOTE && export \$(grep DATABASE_URL .env) && \
     psql \"\$DATABASE_URL\" -f \"\$f\" 2>&1 | grep -v 'already exists' || true; \
   done"
 
-# Step 5: Build on server
+# Step 5: Build on server.
+#
+# A failed build used to take the LIVE SITE DOWN (seen 2026-07-30, v1.25).
+# Why: `next build` overwrites .next before it runs the typecheck, and `set -e`
+# killed this script at this line — before the restart and before the rollback
+# block below, which only ever triggered on a failed SERVICE start, never on a
+# failed BUILD. The old process kept serving stale HTML pointing at chunk
+# hashes that no longer existed on disk, so every /_next/static/* returned 400:
+# pages rendered with zero JavaScript and nothing was clickable.
+#
+# So: snapshot the working .next first, and put it back if the new code doesn't
+# compile. A failed deploy now leaves the site exactly as it was.
 echo "[4/6] Building..."
-ssh "$SERVER" "cd $REMOTE && pnpm install --frozen-lockfile 2>/dev/null || pnpm install && pnpm build"
+ssh "$SERVER" "cd $REMOTE/apps/web && rm -rf .next.prev; if [ -d .next ]; then cp -a .next .next.prev; fi" || true
+
+if ! ssh "$SERVER" "cd $REMOTE && (pnpm install --frozen-lockfile 2>/dev/null || pnpm install) && pnpm build"; then
+    echo ""
+    echo "======================================"
+    echo "  ✗ BUILD FAILED — restoring previous build"
+    echo "======================================"
+    ssh "$SERVER" "cd $REMOTE/apps/web && if [ -d .next.prev ]; then rm -rf .next && mv .next.prev .next; fi" || true
+    ssh "$SERVER" "systemctl restart truestock-universe-web" || true
+    sleep 3
+    RESTORED=$(ssh "$SERVER" "systemctl is-active truestock-universe-web" || echo unknown)
+    echo ""
+    echo "  Site restored to the previous build. Service: $RESTORED"
+    echo "  Nothing new was deployed — fix the error above and run deploy.sh again."
+    echo ""
+    echo "  Note: server source files and DB migrations ARE already updated."
+    echo "  Migrations are written to be idempotent, so re-running is safe."
+    echo "======================================"
+    exit 1
+fi
+
+# New build is good — drop the snapshot so .next.prev can't grow stale or eat disk.
+ssh "$SERVER" "cd $REMOTE/apps/web && rm -rf .next.prev" || true
 
 # Step 6: Restart and verify
 echo "[5/6] Restarting service..."
@@ -157,7 +190,8 @@ if [ "$STATUS" = "active" ]; then
 else
     echo ""
     echo "======================================"
-    echo "  ✗ BUILD FAILED — service is $STATUS"
+    echo "  ✗ SERVICE FAILED TO START — service is $STATUS"
+    echo "  (the build compiled; the process did not come up)"
     echo "======================================"
 
     if [ -n "$LAST_TAG" ]; then

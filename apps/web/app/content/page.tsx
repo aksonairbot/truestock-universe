@@ -8,11 +8,12 @@
 // here inherits assignees, comments, links, attachments and approvals.
 
 import Link from "next/link";
-import { getDb, tasks, projects, users, eq, and, sql, asc } from "@tu/db";
+import { getDb, tasks, projects, users, campaigns as campaignsTbl, eq, and, sql, asc, isNull } from "@tu/db";
 import { getCurrentUser } from "@/lib/auth";
 import { isAdmin, getDepartmentScope } from "@/lib/access";
 import { CONTENT_STAGES, CHANNEL_COLOR, CHANNEL_LABEL, STAGE_COLOR, STAGE_LABEL } from "@/lib/content";
 import { ContentBoard } from "./content-board";
+import { ContentFilter } from "./content-filter";
 
 export const dynamic = "force-dynamic";
 
@@ -43,7 +44,7 @@ function monthLabel(ym: string): string {
 }
 
 interface PageProps {
-  searchParams: Promise<{ month?: string; view?: string }>;
+  searchParams: Promise<{ month?: string; view?: string; campaign?: string }>;
 }
 
 export default async function ContentPage({ searchParams }: PageProps) {
@@ -54,6 +55,10 @@ export default async function ContentPage({ searchParams }: PageProps) {
   // The board is the pipeline view; the calendar is the schedule view.
   // Neither is a subset of the other, so they are peers, not a toggle on one.
   const isBoard = sp.view === "board";
+  const campaignParam = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sp.campaign ?? "")
+    ? sp.campaign!
+    : "";
+  const campaignCond = campaignParam ? eq(tasks.campaignId, campaignParam) : sql`1=1`;
 
   const me = await getCurrentUser();
   const deptScope = getDepartmentScope(me);
@@ -65,6 +70,12 @@ export default async function ContentPage({ searchParams }: PageProps) {
     : deptScope
       ? sql`(${tasks.assigneeId} in (select id from users where department_id = ${deptScope}) or ${tasks.createdById} in (select id from users where department_id = ${deptScope}))`
       : sql`(${tasks.assigneeId} = ${me.id} or ${tasks.createdById} = ${me.id})`;
+
+  const campaignList = await db
+    .select({ id: campaignsTbl.id, name: campaignsTbl.name })
+    .from(campaignsTbl)
+    .where(isNull(campaignsTbl.archivedAt))
+    .orderBy(asc(campaignsTbl.name));
 
   // ---- board view: the whole live pipeline, not one month of it ----
   // A piece stuck in "script" for three weeks has no publish date yet, so
@@ -86,6 +97,7 @@ export default async function ContentPage({ searchParams }: PageProps) {
       .where(and(
         sql`${tasks.contentChannel} is not null`,
         sql`${tasks.status} <> 'cancelled'::task_status`,
+        campaignCond,
         scope,
       ))
       .orderBy(asc(tasks.publishAt), asc(tasks.createdAt))
@@ -107,9 +119,10 @@ export default async function ContentPage({ searchParams }: PageProps) {
           </div>
           <div className="flex items-center gap-2">
             <div className="cview">
-              <Link href="/content" className="cview-btn">Calendar</Link>
+              <Link href={campaignParam ? `/content?campaign=${campaignParam}` : "/content"} className="cview-btn">Calendar</Link>
               <span className="cview-btn is-on">Board</span>
             </div>
+            <ContentFilter campaign={campaignParam} campaigns={campaignList} view="board" />
             <Link href="/tasks/new?content=1" className="btn btn-primary btn-sm">New content</Link>
           </div>
         </div>
@@ -154,6 +167,7 @@ export default async function ContentPage({ searchParams }: PageProps) {
         sql`${tasks.contentChannel} is not null`,
         sql`${tasks.publishAt} >= ${monthStart.toISOString()}`,
         sql`${tasks.publishAt} < ${monthEnd.toISOString()}`,
+        campaignCond,
         scope,
       ))
       .orderBy(asc(tasks.publishAt)),
@@ -172,6 +186,7 @@ export default async function ContentPage({ searchParams }: PageProps) {
         sql`${tasks.contentChannel} is not null`,
         sql`${tasks.publishAt} is null`,
         sql`${tasks.status} not in ('done'::task_status,'cancelled'::task_status)`,
+        campaignCond,
         scope,
       ))
       .orderBy(asc(tasks.createdAt))
@@ -222,13 +237,14 @@ export default async function ContentPage({ searchParams }: PageProps) {
         <div className="flex items-center gap-2">
           <div className="cview">
             <span className="cview-btn is-on">Calendar</span>
-            <Link href="/content?view=board" className="cview-btn">Board</Link>
+            <Link href={`/content?view=board${campaignParam ? `&campaign=${campaignParam}` : ""}`} className="cview-btn">Board</Link>
           </div>
-          <Link href={`/content?month=${shiftMonth(month, -1)}`} className="btn btn-ghost btn-sm">←</Link>
+          <Link href={`/content?month=${shiftMonth(month, -1)}${campaignParam ? `&campaign=${campaignParam}` : ""}`} className="btn btn-ghost btn-sm">←</Link>
           {month !== thisMonth ? (
             <Link href="/content" className="btn btn-ghost btn-sm">This month</Link>
           ) : null}
-          <Link href={`/content?month=${shiftMonth(month, 1)}`} className="btn btn-ghost btn-sm">→</Link>
+          <Link href={`/content?month=${shiftMonth(month, 1)}${campaignParam ? `&campaign=${campaignParam}` : ""}`} className="btn btn-ghost btn-sm">→</Link>
+          <ContentFilter campaign={campaignParam} campaigns={campaignList} month={month === thisMonth ? undefined : month} />
           <Link href="/tasks/new?content=1" className="btn btn-primary btn-sm">New content</Link>
         </div>
       </div>

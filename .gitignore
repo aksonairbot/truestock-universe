@@ -27,3 +27,6 @@ build/
 # drizzle
 drizzle/meta/_journal.json.bak
 apps/web/tsconfig.tsbuildinfo
+
+# scratch folder for files Claude staged for deletion
+_to_delete/

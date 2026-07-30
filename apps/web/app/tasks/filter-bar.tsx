@@ -4,6 +4,11 @@
 // placeholders and got removed). Asana-style: assignee (with Me / Unassigned
 // shortcuts), priority, and project — all URL-persisted so filtered views
 // are shareable and survive refresh. Changing a filter resets pagination.
+//
+// Campaign was added 2026-07-29 — "show me everything in the Diwali push,
+// including the non-content work" is the question a media plan can't answer
+// on its own. The select only appears when campaigns exist, so teams that
+// don't run campaigns never see a dead control.
 
 "use client";
 
@@ -23,9 +28,11 @@ export function FilterBar({
   assignee,
   priority,
   project,
+  campaign,
   showClosed = false,
   users,
   projects,
+  campaigns = [],
 }: {
   view?: string;
   group: string;
@@ -33,15 +40,17 @@ export function FilterBar({
   assignee: string;
   priority: string;
   project: string;
+  campaign: string;
   showClosed?: boolean;
   users: Array<{ id: string; name: string }>;
   projects: Array<{ slug: string; name: string }>;
+  campaigns?: Array<{ id: string; name: string }>;
 }) {
   const router = useRouter();
-  const active = Boolean(assignee || priority || project);
+  const active = Boolean(assignee || priority || project || campaign);
 
-  function push(next: Partial<{ assignee: string; priority: string; project: string }>) {
-    const merged = { assignee, priority, project, ...next };
+  function push(next: Partial<{ assignee: string; priority: string; project: string; campaign: string }>) {
+    const merged = { assignee, priority, project, campaign, ...next };
     const params = new URLSearchParams();
     if (view) params.set("view", view);
     if (group !== "due") params.set("group", group);
@@ -49,6 +58,7 @@ export function FilterBar({
     if (merged.assignee) params.set("assignee", merged.assignee);
     if (merged.priority) params.set("priority", merged.priority);
     if (merged.project) params.set("project", merged.project);
+    if (merged.campaign) params.set("campaign", merged.campaign);
     if (showClosed) params.set("closed", "1");
     const qs = params.toString();
     router.push(qs ? `/tasks?${qs}` : "/tasks");
@@ -94,8 +104,21 @@ export function FilterBar({
           <option key={p.slug} value={p.slug}>{p.name}</option>
         ))}
       </select>
+      {campaigns.length > 0 ? (
+        <select
+          aria-label="Filter by campaign"
+          className={`filter-select ${campaign ? "on" : ""}`}
+          value={campaign}
+          onChange={(e) => push({ campaign: e.target.value })}
+        >
+          <option value="">Campaign: all</option>
+          {campaigns.map((c) => (
+            <option key={c.id} value={c.id}>{c.name}</option>
+          ))}
+        </select>
+      ) : null}
       {active ? (
-        <button type="button" className="btn btn-ghost btn-sm" onClick={() => push({ assignee: "", priority: "", project: "" })}>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => push({ assignee: "", priority: "", project: "", campaign: "" })}>
           Clear
         </button>
       ) : null}

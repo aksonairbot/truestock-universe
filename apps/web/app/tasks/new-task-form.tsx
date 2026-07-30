@@ -77,12 +77,17 @@ export function NewTaskForm({
   userRole,
   initialChannel = "",
   initialPublishDate = "",
+  initialCampaignId = "",
+  campaigns = [],
   contentMode = false,
 }: {
   projects: Project[];
   users: User[];
   currentUserId: string;
   userRole: string;
+  /** Live campaigns to file this under. Empty = the select is hidden. */
+  campaigns?: Array<{ id: string; name: string }>;
+  initialCampaignId?: string;
   /** Prefilled when arriving from /content — e.g. clicking a day in the calendar. */
   initialChannel?: string;
   initialPublishDate?: string;
@@ -104,10 +109,13 @@ export function NewTaskForm({
   // Content capture. Off by default: the create form is the hottest path in
   // the app and Amit has already had it slowed down once, so ordinary tasks
   // see one small text link and nothing else.
-  const [showPublish, setShowPublish] = useState(contentMode || Boolean(initialChannel));
+  const [showPublish, setShowPublish] = useState(
+    contentMode || Boolean(initialChannel) || Boolean(initialCampaignId),
+  );
   const [channel, setChannel] = useState(initialChannel);
   const [publishDate, setPublishDate] = useState(initialPublishDate);
   const [publishTime, setPublishTime] = useState("10:00");
+  const [campaignId, setCampaignId] = useState(initialCampaignId);
 
   const [suggestPending, startSuggest] = useTransition();
   const [submitPending, startSubmit] = useTransition();
@@ -384,14 +392,45 @@ export function NewTaskForm({
             onClick={() => setShowPublish(true)}
             className="text-[11px] text-text-3 hover:text-accent-2 underline underline-offset-2"
           >
-            Going out on a channel? Capture it as content
+            Part of a campaign, or going out on a channel? Add planning details
           </button>
         ) : (
           <div className="ncontent">
             <span className="text-[11px] text-text-3 uppercase tracking-wider font-medium block mb-1.5">
-              Publish <span className="normal-case text-text-4">(optional)</span>
+              Planning <span className="normal-case text-text-4">(optional)</span>
             </span>
             <div className="content-fields-row">
+              {campaigns.length > 0 ? (
+                <>
+                  <label className="content-field">
+                    <span className="content-field-label">Campaign</span>
+                    <select
+                      name="campaignId"
+                      value={campaignId}
+                      onChange={(e) => setCampaignId(e.target.value)}
+                      className="content-select"
+                    >
+                      <option value="">No campaign</option>
+                      {campaigns.map((c) => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                  {campaignId ? (
+                    <label className="content-field">
+                      <span className="content-field-label">Budget</span>
+                      <input
+                        type="text"
+                        name="budget"
+                        inputMode="decimal"
+                        placeholder="e.g. 25000"
+                        className="content-input"
+                      />
+                    </label>
+                  ) : null}
+                </>
+              ) : null}
+
               <label className="content-field">
                 <span className="content-field-label">Channel</span>
                 <select
@@ -434,7 +473,8 @@ export function NewTaskForm({
               ) : null}
             </div>
             <span className="text-[10px] text-text-4 block mt-1.5">
-              Starts as an idea on the content board. It needs approval before it can be scheduled.
+              A channel puts this on the content board as an idea — it needs approval before it can be
+              scheduled. A campaign files it into that plan and its budget.
             </span>
           </div>
         )}

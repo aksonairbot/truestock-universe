@@ -161,6 +161,14 @@ export async function TaskPaneContent({ taskId }: { taskId: string }) {
       ? db.select({ name: users.name }).from(users).where(eq(users.id, task.createdById)).limit(1)
       : Promise.resolve([undefined]),
     getActiveUsers(),
+
+    // Live campaigns to file this task under. Small table, cheap read.
+    db
+      .select({ id: campaignsTbl.id, name: campaignsTbl.name, status: campaignsTbl.status })
+      .from(campaignsTbl)
+      .where(isNull(campaignsTbl.archivedAt))
+      .orderBy(asc(campaignsTbl.name)),
+
     db
       .select({
         id: taskComments.id,

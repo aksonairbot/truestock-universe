@@ -173,7 +173,8 @@ export default async function CampaignPlanPage({ params }: PageProps) {
         </div>
         <div className="flex items-center gap-2">
           <Link href="/campaigns" className="btn btn-ghost btn-sm">← Campaigns</Link>
-          <Link href="/tasks/new?content=1" className="btn btn-primary btn-sm">Add item</Link>
+          <Link href={`/tasks?campaign=${campaign.id}`} className="btn btn-ghost btn-sm">All work</Link>
+          <Link href={`/tasks/new?content=1&campaign=${campaign.id}`} className="btn btn-primary btn-sm">Add item</Link>
         </div>
       </div>
 
@@ -310,7 +311,7 @@ export default async function CampaignPlanPage({ params }: PageProps) {
             Open any task and pick this campaign in its Campaign block — posts, ads, emails and the work
             behind them all belong here.
           </div>
-          <Link href="/tasks/new?content=1" className="btn btn-primary btn-sm">Capture the first item</Link>
+          <Link href={`/tasks/new?content=1&campaign=${campaign.id}`} className="btn btn-primary btn-sm">Capture the first item</Link>
         </div>
       ) : null}
 
