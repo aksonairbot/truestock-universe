@@ -28,6 +28,7 @@ import { GroupForm } from "./group-form";
 import { FilterBar } from "./filter-bar";
 import { BoardView } from "./board-view";
 import { TaskRowTitle } from "./task-row-title";
+import { SelectionProvider, SelectCheck, BulkBar } from "./selection";
 
 export const dynamic = "force-dynamic";
 
@@ -534,7 +535,13 @@ export default async function TasksPage({ searchParams }: PageProps) {
       ) : isBoard ? (
         <BoardView rows={rows} hrefParams={rowParamsQS} />
       ) : (
-        <ListView rows={rows} users={allUsers} group={group} rowHref={rowHrefForTask} canAssignOthers={canAssignOthers} />
+        // Selection wraps the SERVER-rendered rows: the provider is a client
+        // component, so a checkbox inside a server row can share its state
+        // with the action bar without making the rows client components.
+        <SelectionProvider allIds={rows.map((r) => r.id)} openPrefix={`/tasks?${rowParamsQS ? `${rowParamsQS}&` : ""}`}>
+          <ListView rows={rows} users={allUsers} group={group} rowHref={rowHrefForTask} canAssignOthers={canAssignOthers} />
+          <BulkBar users={allUsers} canAssignOthers={canAssignOthers} />
+        </SelectionProvider>
       )}
 
       {/* ------------------------- pagination ------------------------- */}
@@ -779,10 +786,17 @@ function TaskRow({
   const cancelled = t.status === "cancelled";
 
   return (
-    <div className={`arow ${done ? "is-done" : ""} ${cancelled ? "is-cancelled" : ""}`}>
+    <div
+      className={`arow ${done ? "is-done" : ""} ${cancelled ? "is-cancelled" : ""}`}
+      /* The keyboard focus ring is applied by class via this attribute — see
+         the note at the top of selection.tsx for why that beats making every
+         row a client component. */
+      data-task-id={t.id}
+    >
       {/* completion check — optimistic client control with a satisfying
           pop animation; guards cancelled tasks against accidental revival */}
       <div className="alist-cell-check">
+        <SelectCheck taskId={t.id} />
         <DoneCheck taskId={t.id} done={done} cancelled={cancelled} />
       </div>
 

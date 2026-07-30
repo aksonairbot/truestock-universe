@@ -840,7 +840,7 @@ select:focus {
 .alist-head,
 .arow {
   display: grid;
-  grid-template-columns: 32px minmax(220px, 1fr) 168px 150px 120px 72px 84px;
+  grid-template-columns: 54px minmax(220px, 1fr) 168px 150px 120px 72px 84px;
   gap: 10px;
   align-items: center;
   padding: 9px 16px;
@@ -1026,7 +1026,7 @@ select:focus {
 @media (max-width: 1100px) {
   .alist-head,
   .arow {
-    grid-template-columns: 32px minmax(180px, 1fr) 140px 110px 70px 80px;
+    grid-template-columns: 54px minmax(180px, 1fr) 140px 110px 70px 80px;
   }
   .alist-cell-project,
   .arow > .alist-cell-project {
@@ -1036,7 +1036,7 @@ select:focus {
 @media (max-width: 800px) {
   .alist-head,
   .arow {
-    grid-template-columns: 32px minmax(140px, 1fr) 100px 70px;
+    grid-template-columns: 54px minmax(140px, 1fr) 100px 70px;
   }
   .alist-cell-status,
   .alist-cell-prio {
@@ -5557,7 +5557,7 @@ select {
 @media (min-width: 1101px) {
   .alist-head,
   .arow {
-    grid-template-columns: 32px minmax(200px, 1fr) 168px 150px 120px 96px 78px;
+    grid-template-columns: 54px minmax(200px, 1fr) 168px 150px 120px 96px 78px;
   }
 }
 
@@ -6418,3 +6418,91 @@ select.cmp-input {
 .vman-pick-dot { width: 7px; height: 7px; border-radius: 999px; flex-shrink: 0; }
 .vman-foot { display: flex; align-items: center; gap: 8px; }
 .vman-foot .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* ---------------------------------------------------------------------------
+   Multi-select + bulk action bar.
+   The check cell holds two controls now (select, then done) — the row grid's
+   first column was widened from 32px to 54px at every breakpoint rather than
+   adding an eighth column, which would have meant four more numbers to keep
+   in sync.
+--------------------------------------------------------------------------- */
+.alist-cell-check { display: flex; align-items: center; gap: 6px; }
+
+.selchk { display: inline-flex; align-items: center; cursor: pointer; flex-shrink: 0; }
+.selchk input { position: absolute; opacity: 0; width: 0; height: 0; }
+.selchk-box {
+  width: 14px; height: 14px; border-radius: 4px;
+  border: 1.5px solid var(--border-2, var(--border));
+  background: var(--bg);
+  /* Quiet until the row is hovered or something is selected — a full column of
+     empty checkboxes makes a list look like a form. */
+  opacity: 0; transition: opacity 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+  position: relative;
+}
+.arow:hover .selchk-box,
+.alist-head:hover .selchk-box,
+.selchk.is-on .selchk-box,
+.selchk:focus-within .selchk-box { opacity: 1; }
+.selchk:hover .selchk-box { border-color: var(--accent); }
+.selchk.is-on .selchk-box { background: var(--accent); border-color: var(--accent); }
+.selchk.is-on .selchk-box::after {
+  content: ""; position: absolute; left: 3.5px; top: 1px;
+  width: 4px; height: 8px;
+  border-right: 2px solid #fff; border-bottom: 2px solid #fff;
+  transform: rotate(45deg);
+}
+.selchk:focus-within .selchk-box { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (hover: none) { .selchk-box { opacity: 0.5; } }
+
+.bulkbar {
+  position: sticky; bottom: 16px; z-index: 20;
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin: 12px auto 0; padding: 9px 14px; width: fit-content; max-width: 100%;
+  border: 1px solid var(--border-2, var(--border)); border-radius: 999px;
+  background: var(--panel);
+  box-shadow: 0 8px 28px rgba(0,0,0,0.34);
+  animation: bulkbar-in 0.16s ease-out;
+}
+@keyframes bulkbar-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) { .bulkbar { animation: none; } }
+.bulkbar.is-busy { opacity: 0.7; pointer-events: none; }
+.bulkbar-n { font-size: 12.5px; font-weight: 600; color: var(--text); white-space: nowrap; }
+.bulkbar-sel {
+  font-size: 12px; padding: 4px 24px 4px 9px;
+  border: 1px solid var(--border); border-radius: 8px;
+  background-color: var(--bg); color: var(--text-2);
+  appearance: none; -webkit-appearance: none;
+  background-image: var(--chev); background-repeat: no-repeat;
+  background-position: right 8px center; background-size: 9px;
+  cursor: pointer;
+}
+.bulkbar-sel:hover { color: var(--text); border-color: var(--border-2); }
+.bulkbar-link {
+  font-size: 12px; color: var(--text-3); background: none; border: 0;
+  cursor: pointer; padding: 2px 4px; border-radius: 6px;
+}
+.bulkbar-link:hover { color: var(--text); }
+.bulkbar-link.is-danger:hover { color: #ff453a; }
+.bulkbar-clear { margin-left: 2px; }
+.bulkbar-confirm { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: #ff453a; }
+.bulkbar-danger {
+  font-size: 12px; font-weight: 600; color: #fff; background: #ff453a;
+  border: 0; border-radius: 8px; padding: 4px 10px; cursor: pointer;
+}
+.bulkbar-danger:hover { filter: brightness(1.08); }
+
+/* Keyboard focus ring on a task row. Distinct from :hover so holding j reads
+   as navigation rather than a stuck mouse. */
+.arow.is-kbfocus {
+  background: var(--accent-wash);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.arow.is-kbfocus .selchk-box { opacity: 1; }
+.bulkbar-keys {
+  font-size: 10.5px; color: var(--text-4); white-space: nowrap;
+  padding-left: 2px; border-left: 1px solid var(--border); padding-left: 10px;
+}
+@media (max-width: 860px) { .bulkbar-keys { display: none; } }
