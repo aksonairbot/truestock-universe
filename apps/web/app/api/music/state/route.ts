@@ -17,7 +17,7 @@
 
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
-import { getQueue, getNowPlaying, getPlayerStatus, queuedCountFor, MAX_QUEUED_PER_PERSON } from "@/lib/music";
+import { getQueue, getNowPlaying, getPlayerStatus, queuedCountFor, canControlPlayback, MAX_QUEUED_PER_PERSON } from "@/lib/music";
 import { isYouTubeConfigured } from "@/lib/youtube";
 
 export const dynamic = "force-dynamic";
@@ -41,6 +41,9 @@ export async function GET() {
         myQueued,
         maxPerPerson: MAX_QUEUED_PER_PERSON,
         searchEnabled: isYouTubeConfigured(),
+        // Drives which buttons render. The actions check this themselves too —
+        // this field is for the UI's benefit, never the security boundary.
+        canControl: canControlPlayback(me),
       },
       // no-store: a cached jukebox is a jukebox showing the wrong song.
       { headers: { "Cache-Control": "no-store" } },
@@ -49,7 +52,19 @@ export async function GET() {
     // Never 500 a poll loop. An empty-but-valid payload lets the page keep
     // rendering its last good state instead of flashing an error every 4s.
     return NextResponse.json(
-      { now: null, queue: [], player: { online: false, isPaused: false, hostName: null }, myQueued: 0, maxPerPerson: MAX_QUEUED_PER_PERSON, searchEnabled: false },
+      {
+        now: null,
+        queue: [],
+        player: {
+          online: false, isPaused: false, hostName: null,
+          positionSeconds: null, durationSeconds: null, beatAgeSeconds: null,
+        },
+        myQueued: 0,
+        maxPerPerson: MAX_QUEUED_PER_PERSON,
+        searchEnabled: false,
+        // Fail closed: a poll that errored must not hand someone controls.
+        canControl: false,
+      },
       { headers: { "Cache-Control": "no-store" } },
     );
   }

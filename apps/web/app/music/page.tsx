@@ -17,6 +17,7 @@ import {
   queuedCountFor,
   playlistsByDay,
   dayLabel,
+  canControlPlayback,
   MAX_QUEUED_PER_PERSON,
 } from "@/lib/music";
 import { isYouTubeConfigured } from "@/lib/youtube";
@@ -46,7 +47,7 @@ export default async function MusicPage() {
         <div>
           <h1 className="page-title">Music</h1>
           <p className="page-sub">
-            Anyone can queue a song. Whatever gets the most boosts plays next.
+            Anyone can queue a song and boost what they want next. Whatever has the most boosts plays first.
           </p>
         </div>
       </div>
@@ -60,6 +61,7 @@ export default async function MusicPage() {
             myQueued,
             maxPerPerson: MAX_QUEUED_PER_PERSON,
             searchEnabled: isYouTubeConfigured(),
+            canControl: canControlPlayback(me),
           }}
         />
 

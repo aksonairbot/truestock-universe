@@ -154,7 +154,17 @@ export function PlayerClient({ initial }: { initial: State }) {
   // ---- heartbeat ----
   useEffect(() => {
     if (!started) return;
-    const beat = () => { void playerBeat().catch(() => {}); };
+    // Carry the real position with the beat, so every other screen can draw an
+    // honest progress bar instead of guessing from a start time.
+    const beat = () => {
+      let pos: number | undefined;
+      let dur: number | undefined;
+      try {
+        pos = playerRef.current?.getCurrentTime();
+        dur = playerRef.current?.getDuration();
+      } catch { /* player briefly unusable while a video swaps in */ }
+      void playerBeat(pos, dur).catch(() => {});
+    };
     beat();
     const t = setInterval(beat, BEAT_MS);
     return () => clearInterval(t);

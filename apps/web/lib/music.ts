@@ -28,7 +28,28 @@
 //      makes the second one lose a race rather than start a second song.
 
 import { getDb, musicTracks, musicVotes, musicPlayerState, users, eq, and, sql, desc, asc } from "@tu/db";
+import type { User } from "@tu/db";
+import { isPrivileged } from "./access";
 import { log } from "./log";
+
+/**
+ * WHO MAY TOUCH THE STEREO.
+ *
+ * Adding songs and boosting them stay open to everyone — that is the whole
+ * point of a shared queue, and Amit was explicit that both stay. What is
+ * restricted is *playback*: pause, next, volume, and the speaker window
+ * itself. The distinction is between putting a song forward and reaching over
+ * to the stereo while other people are listening to it.
+ *
+ * Deliberately its own named function rather than isPrivileged() sprinkled
+ * through the actions. When someone later asks for a "DJ" role, or for the
+ * host machine to own it regardless of role, this is the single line that
+ * changes — and it is impossible to miss one call site, because every check
+ * goes through here.
+ */
+export function canControlPlayback(user: User): boolean {
+  return isPrivileged(user);
+}
 
 /** Enough to line up a run; few enough that the queue keeps moving. */
 export const MAX_QUEUED_PER_PERSON = 3;
@@ -43,9 +64,6 @@ export const MAX_TRACK_SECONDS = 12 * 60;
 
 /** No beat for this long and we treat the speaker as switched off. */
 export const HEARTBEAT_STALE_MS = 25_000;
-
-/** Who counts as "in the room" — anyone who touched the jukebox recently. */
-const PARTICIPANT_WINDOW_MINUTES = 120;
 
 export interface QueueTrack {
   id: string;
@@ -63,12 +81,14 @@ export interface QueueTrack {
   createdAt: Date;
 }
 
-export interface NowPlaying extends QueueTrack {
-  skips: number;
-  skippedByMe: boolean;
-  /** How many skip votes it takes right now. */
-  skipThreshold: number;
-}
+/**
+ * Skip used to be a collective vote with a threshold that scaled to how many
+ * people were around. It is now an admin/manager action (plus "skip your own"),
+ * so the vote counting is gone. The `skip` kind survives in music_votes and its
+ * CHECK constraint on purpose — if the collective version is ever wanted back,
+ * the storage is still there and only the action changes.
+ */
+export type NowPlaying = QueueTrack;
 
 export interface PlayerStatus {
   /** Is a speaker page actually open and beating? */
@@ -76,6 +96,11 @@ export interface PlayerStatus {
   isPaused: boolean;
   hostName: string | null;
   lastBeatAt: Date | null;
+  /** Where the track is, as of the last heartbeat. Null when nothing's on. */
+  positionSeconds: number | null;
+  durationSeconds: number | null;
+  /** Seconds since that reading, so a screen can interpolate from it. */
+  beatAgeSeconds: number | null;
 }
 
 /** The IST calendar day, as YYYY-MM-DD. The jukebox's day boundary. */
@@ -143,20 +168,6 @@ export async function getQueue(meId: string, limit = 50): Promise<QueueTrack[]> 
   }));
 }
 
-/** How many skip votes it takes to move on, given who's around. */
-export async function currentSkipThreshold(): Promise<number> {
-  const db = getDb();
-  const [row] = await db
-    .select({ n: sql<number>`count(distinct user_id)::int` })
-    .from(musicVotes)
-    .where(sql`${musicVotes.createdAt} > now() - interval '${sql.raw(String(PARTICIPANT_WINDOW_MINUTES))} minutes'`);
-
-  const around = Number(row?.n) || 0;
-  // Half the room, but never fewer than two — one person should not be able to
-  // silently veto everyone else's choice.
-  return Math.max(2, Math.ceil(around / 2));
-}
-
 export async function getNowPlaying(meId: string): Promise<NowPlaying | null> {
   const db = getDb();
   const [row] = await db
@@ -164,9 +175,6 @@ export async function getNowPlaying(meId: string): Promise<NowPlaying | null> {
       ...BASE_COLUMNS,
       boosts: boostCountSql(),
       boostedByMe: myVoteSql(meId, "boost"),
-      skips: sql<number>`(select count(*)::int from music_votes v
-                          where v.track_id = ${musicTracks.id} and v.kind = 'skip')`,
-      skippedByMe: myVoteSql(meId, "skip"),
     })
     .from(musicTracks)
     .leftJoin(users, eq(musicTracks.addedById, users.id))
@@ -179,9 +187,6 @@ export async function getNowPlaying(meId: string): Promise<NowPlaying | null> {
     ...row,
     boosts: Number(row.boosts) || 0,
     boostedByMe: Boolean(row.boostedByMe),
-    skips: Number(row.skips) || 0,
-    skippedByMe: Boolean(row.skippedByMe),
-    skipThreshold: await currentSkipThreshold(),
     isMine: row.addedById === meId,
     createdAt: row.createdAt instanceof Date ? row.createdAt : new Date(row.createdAt),
   };
@@ -194,6 +199,8 @@ export async function getPlayerStatus(): Promise<PlayerStatus> {
       lastBeatAt: musicPlayerState.lastBeatAt,
       isPaused: musicPlayerState.isPaused,
       hostName: users.name,
+      positionSeconds: musicPlayerState.positionSeconds,
+      durationSeconds: musicPlayerState.durationSeconds,
     })
     .from(musicPlayerState)
     .leftJoin(users, eq(musicPlayerState.hostUserId, users.id))
@@ -201,11 +208,17 @@ export async function getPlayerStatus(): Promise<PlayerStatus> {
     .limit(1);
 
   const beat = row?.lastBeatAt ? new Date(row.lastBeatAt) : null;
+  const online = Boolean(beat && Date.now() - beat.getTime() < HEARTBEAT_STALE_MS);
   return {
-    online: Boolean(beat && Date.now() - beat.getTime() < HEARTBEAT_STALE_MS),
+    online,
     isPaused: Boolean(row?.isPaused),
     hostName: row?.hostName ?? null,
     lastBeatAt: beat,
+    // Only meaningful while something is actually connected. A stale position
+    // from an hour ago would drive a progress bar that looks live and isn't.
+    positionSeconds: online ? (row?.positionSeconds ?? null) : null,
+    durationSeconds: online ? (row?.durationSeconds ?? null) : null,
+    beatAgeSeconds: online && beat ? Math.max(0, (Date.now() - beat.getTime()) / 1000) : null,
   };
 }
 

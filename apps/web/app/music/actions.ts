@@ -19,7 +19,7 @@ import { isPrivileged } from "@/lib/access";
 import { parseYouTubeId, fetchTrackMeta, searchYouTube, type SearchHit } from "@/lib/youtube";
 import {
   advance,
-  currentSkipThreshold,
+  canControlPlayback,
   queuedCountFor,
   MAX_QUEUED_PER_PERSON,
   MAX_TRACK_SECONDS,
@@ -149,11 +149,15 @@ export async function boostTrack(formData: FormData): Promise<ActionResult> {
 }
 
 /**
- * Vote to move on from what's playing.
+ * Move on from what's playing.
  *
- * Your own track skips instantly — withdrawing your own choice needs no
- * committee. Everyone else's needs the room to agree, at a threshold that
- * scales with how many people are actually around.
+ * This is PLAYBACK CONTROL, so it belongs to admins and managers — skipping
+ * changes what a whole room is hearing right now, which is a different act
+ * from putting a song forward.
+ *
+ * The one exception is your own track. Withdrawing a choice you made yourself
+ * is not power over anyone else, and taking it away would mean queueing
+ * something you immediately regret leaves you having to ask a manager.
  */
 export async function skipVote(formData: FormData): Promise<ActionResult> {
   const me = await getCurrentUser();
@@ -166,31 +170,13 @@ export async function skipVote(formData: FormData): Promise<ActionResult> {
     .limit(1);
   if (!playing) return fail("Nothing's playing right now.");
 
-  if (playing.addedById === me.id) {
-    await advance("skipped");
-    log.info("music.self_skip", { trackId: playing.id, by: me.id });
-    refresh();
-    return ok;
+  const isMine = playing.addedById === me.id;
+  if (!isMine && !canControlPlayback(me)) {
+    return fail("Only admins and managers can skip. You can always skip a song you added yourself.");
   }
 
-  await db
-    .insert(musicVotes)
-    .values({ trackId: playing.id, userId: me.id, kind: "skip" })
-    .onConflictDoNothing();
-
-  const [countRow] = await db
-    .select({ n: sql<number>`count(*)::int` })
-    .from(musicVotes)
-    .where(and(eq(musicVotes.trackId, playing.id), eq(musicVotes.kind, "skip")));
-
-  const skips = Number(countRow?.n) || 0;
-  const threshold = await currentSkipThreshold();
-
-  if (skips >= threshold) {
-    await advance("skipped");
-    log.info("music.skipped", { trackId: playing.id, skips, threshold });
-  }
-
+  await advance("skipped");
+  log.info("music.skipped", { trackId: playing.id, by: me.id, own: isMine });
   refresh();
   return ok;
 }
@@ -233,12 +219,26 @@ export async function searchTracks(query: string): Promise<SearchHit[]> {
  * "I'm still here." Also claims host, so the queue page can say who's driving.
  * Called every few seconds by the open player page.
  */
-export async function playerBeat(): Promise<{ ok: true }> {
+export async function playerBeat(position?: number, duration?: number): Promise<{ ok: boolean }> {
   const me = await getCurrentUser();
+  // A server action is a public endpoint. The speaker page is admin/manager
+  // only, but that is a route guard, and a route guard stops navigation, not
+  // a POST. Without this line anyone could claim to be the office speaker.
+  if (!canControlPlayback(me)) return { ok: false };
+
   const db = getDb();
+  const clean = (n: number | undefined) =>
+    typeof n === "number" && Number.isFinite(n) && n >= 0 && n < 86_400 ? Math.floor(n) : null;
+
   await db
     .update(musicPlayerState)
-    .set({ lastBeatAt: new Date(), hostUserId: me.id, updatedAt: new Date() })
+    .set({
+      lastBeatAt: new Date(),
+      hostUserId: me.id,
+      positionSeconds: clean(position),
+      durationSeconds: clean(duration),
+      updatedAt: new Date(),
+    })
     .where(eq(musicPlayerState.id, "office"));
   return { ok: true };
 }
@@ -249,7 +249,8 @@ export async function playerBeat(): Promise<{ ok: true }> {
  * playing, so a double-fire from the player's state events is harmless.
  */
 export async function playerAdvance(outcome: "played" | "skipped" = "played"): Promise<ActionResult> {
-  await getCurrentUser();
+  const me = await getCurrentUser();
+  if (!canControlPlayback(me)) return fail("Only admins and managers can control playback.");
   await advance(outcome);
   refresh();
   return ok;
@@ -257,7 +258,8 @@ export async function playerAdvance(outcome: "played" | "skipped" = "played"): P
 
 /** Pause the room. Distinct from "no speaker connected", which is not a choice. */
 export async function togglePause(): Promise<ActionResult> {
-  await getCurrentUser();
+  const me = await getCurrentUser();
+  if (!canControlPlayback(me)) return fail("Only admins and managers can control playback.");
   const db = getDb();
   await db
     .update(musicPlayerState)

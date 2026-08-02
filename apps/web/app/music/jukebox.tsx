@@ -1,20 +1,24 @@
 // apps/web/app/music/jukebox.tsx
 //
-// The queue, as everyone else sees it. Add something, boost what you want
-// next, vote to move on from what's playing.
+// The queue, as everyone sees it.
 //
-// This is a live surface, so it polls — see the API route for why not sockets.
-// Two details that make it feel alive rather than merely correct:
+// WHO CAN DO WHAT — this is the shape Amit asked for, and the split matters:
 //
-//   • OPTIMISTIC BOOSTS. The count moves the instant you click, then the poll
-//     confirms it. A vote button that waits a round-trip before responding
-//     feels broken even when it isn't, and this is a toy — it has to feel good
-//     or people stop using it.
+//   Everyone:            add a song, boost one, remove their own, skip their own
+//   Admins and managers: pause, next, volume, and the speaker window
 //
-//   • THE QUEUE ANIMATES INTO ITS NEW ORDER. When a boost moves a song up,
-//     seeing it move is the entire feedback. Rows are keyed by track id so
-//     React reuses the DOM node and the CSS transition has something to
-//     animate; keying by index would make them teleport.
+// The line is between PUTTING A SONG FORWARD and REACHING OVER TO THE STEREO
+// while other people are listening to it. Boosting is the former — it's an
+// opinion about what should come next. Skipping is the latter, because it
+// changes what a whole room is hearing right now.
+//
+// The buttons below are hidden accordingly, but hiding a button is a courtesy,
+// not a control: every one of these actions carries its own server-side check.
+//
+// EVERYONE GETS THE PLAYER PANEL, though — the green display, the marquee with
+// whose song it is, the bars, and a live progress bar. Read-only for most
+// people, but you can see exactly what the room is listening to and how far
+// through it is. That was the point: less control, not less visibility.
 
 "use client";
 
@@ -34,18 +38,21 @@ interface Track {
   boostedByMe: boolean;
   isMine: boolean;
 }
-interface Now extends Track {
-  skips: number;
-  skippedByMe: boolean;
-  skipThreshold: number;
-}
 interface State {
-  now: Now | null;
+  now: Track | null;
   queue: Track[];
-  player: { online: boolean; isPaused: boolean; hostName: string | null };
+  player: {
+    online: boolean;
+    isPaused: boolean;
+    hostName: string | null;
+    positionSeconds: number | null;
+    durationSeconds: number | null;
+    beatAgeSeconds: number | null;
+  };
   myQueued: number;
   maxPerPerson: number;
   searchEnabled: boolean;
+  canControl: boolean;
 }
 interface Hit {
   videoId: string;
@@ -55,31 +62,31 @@ interface Hit {
 }
 
 const POLL_MS = 4000;
+const TICK_MS = 500;
+
+function fmt(seconds: number | null): string {
+  if (seconds === null || !Number.isFinite(seconds) || seconds < 0) return "--:--";
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
 
 /**
  * Whose song this is, as a thing you can see rather than a suffix.
  *
  * The first version buried the name at the end of "channel · 3:42 · Priya",
  * which reads as metadata. It isn't — knowing a colleague put this on is most
- * of what makes a shared queue feel like a room rather than a playlist. So it
- * gets an initial disc and its own slot.
+ * of what makes a shared queue feel like a room rather than a playlist.
  */
 function Who({ name, isMine }: { name: string | null; isMine: boolean }) {
   if (!name) return null;
   const initial = name.trim().charAt(0).toUpperCase() || "?";
   return (
-    <span className={`jb-by ${isMine ? "is-mine" : ""}`} title={isMine ? `You added this` : `${name} added this`}>
+    <span className={`jb-by ${isMine ? "is-mine" : ""}`} title={isMine ? "You added this" : `${name} added this`}>
       <span className="jb-by-dot" aria-hidden="true">{initial}</span>
       {isMine ? "you" : name.split(/\s+/)[0]}
     </span>
   );
-}
-
-function fmt(seconds: number | null): string {
-  if (!seconds || seconds <= 0) return "";
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${m}:${String(s).padStart(2, "0")}`;
 }
 
 export function Jukebox({ initial }: { initial: State }) {
@@ -88,26 +95,55 @@ export function Jukebox({ initial }: { initial: State }) {
   const [hits, setHits] = useState<Hit[] | null>(null);
   const [searching, setSearching] = useState(false);
   const [busy, start] = useTransition();
-  // Boosts applied locally but not yet confirmed by a poll. Keyed by track id
-  // so a poll landing mid-click can't clobber the optimistic value.
   const [pending, setPending] = useState<Record<string, boolean>>({});
+  // Interpolated playhead. Resynced on every poll, ticked locally between them
+  // so the bar moves smoothly rather than jumping every four seconds.
+  const [pos, setPos] = useState<number | null>(null);
   const toast = useToast();
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const applyState = useCallback((d: State) => {
+    setState(d);
+    setPending({});
+    const p = d.player.positionSeconds;
+    setPos(p === null ? null : p + (d.player.beatAgeSeconds ?? 0));
+  }, []);
+
+  const load = useCallback(async () => {
+    try {
+      const r = await fetch("/api/music/state", { cache: "no-store" });
+      if (!r.ok) return;
+      applyState((await r.json()) as State);
+    } catch {
+      // A dropped poll is a stale second, not an error worth showing.
+    }
+  }, [applyState]);
+
+  useEffect(() => {
+    const t = setInterval(load, POLL_MS);
+    const onFocus = () => load();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      clearInterval(t);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [load]);
+
+  // The local tick between beats.
+  useEffect(() => {
+    if (pos === null || state.player.isPaused || !state.now) return;
+    const t = setInterval(() => setPos((p) => (p === null ? null : p + TICK_MS / 1000)), TICK_MS);
+    return () => clearInterval(t);
+  }, [pos === null, state.player.isPaused, state.now?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * Open the speaker in a real detached window, not a tab.
    *
    * The bug this fixes: /music/player is its own route, so clicking back to
-   * /music unmounted the player and the music stopped. A tab is something you
-   * navigate away from without thinking; a window sized like a hi-fi is
-   * something you park in the corner of the screen and leave alone.
-   *
-   * The window NAME matters as much as the size — calling window.open again
-   * with the same name focuses the window that's already there instead of
-   * opening a second speaker, which would mean two songs at once.
-   *
-   * Still an <a href>, so ctrl/cmd-click and middle-click behave normally and
-   * it degrades to an ordinary link if a popup blocker intervenes.
+   * /music unmounted the player and the music stopped. The window NAME matters
+   * as much as the size — calling open() again with the same name focuses the
+   * window already there instead of starting a second speaker, which would
+   * mean two songs at once.
    */
   function openSpeaker(e: React.MouseEvent<HTMLAnchorElement>) {
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
@@ -126,30 +162,6 @@ export function Jukebox({ initial }: { initial: State }) {
     }
     w.focus();
   }
-
-  const load = useCallback(async () => {
-    try {
-      const r = await fetch("/api/music/state", { cache: "no-store" });
-      if (!r.ok) return;
-      const d = (await r.json()) as State;
-      setState(d);
-      setPending({}); // The server has spoken; drop the optimistic layer.
-    } catch {
-      // A dropped poll is a stale second, not an error worth showing.
-    }
-  }, []);
-
-  useEffect(() => {
-    const t = setInterval(load, POLL_MS);
-    // Poll harder right after the tab regains focus — you've probably been
-    // away and the queue has moved on without you.
-    const onFocus = () => load();
-    window.addEventListener("focus", onFocus);
-    return () => {
-      clearInterval(t);
-      window.removeEventListener("focus", onFocus);
-    };
-  }, [load]);
 
   function submitUrl(e: React.FormEvent) {
     e.preventDefault();
@@ -210,7 +222,8 @@ export function Jukebox({ initial }: { initial: State }) {
       const res = await boostTrack(fd);
       if (!res.ok) {
         setPending((p) => {
-          const { [t.id]: _drop, ...rest } = p;
+          const rest = { ...p };
+          delete rest[t.id];
           return rest;
         });
         toast(res.error, { tone: "error" });
@@ -222,7 +235,7 @@ export function Jukebox({ initial }: { initial: State }) {
   function skip() {
     start(async () => {
       const res = await skipVote(new FormData());
-      if (!res.ok) toast(res.error, { tone: "error" });
+      if (!res.ok) toast(res.error, { tone: "error", duration: 7000 });
       load();
     });
   }
@@ -237,83 +250,85 @@ export function Jukebox({ initial }: { initial: State }) {
     });
   }
 
-  const { now, queue, player } = state;
+  const { now, queue, player, canControl } = state;
   const atLimit = state.myQueued >= state.maxPerPerson;
+  const live = Boolean(now) && player.online && !player.isPaused;
+  const total = player.durationSeconds ?? now?.durationSeconds ?? null;
+  const shownPos = pos === null ? null : total ? Math.min(pos, total) : pos;
+  const pct = shownPos !== null && total ? Math.max(0, Math.min(100, (shownPos / total) * 100)) : 0;
+
+  const marquee = now
+    ? `${now.title}${now.channelTitle ? `  ·  ${now.channelTitle}` : ""}  ·  queued by ${now.addedByName ?? "someone"}`
+    : "nothing playing  ·  add something below";
 
   return (
     <div className="jb">
-      {/* ---------------- now playing ---------------- */}
-      <section className={`jb-now ${now ? "is-live" : "is-quiet"}`}>
-        {now ? (
-          <>
-            {now.thumbnailUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={now.thumbnailUrl} alt="" className="jb-now-art" />
-            ) : (
-              <div className="jb-now-art jb-art-blank" />
-            )}
-            <div className="jb-now-meta">
-              <div className="jb-now-label">
-                <span className="jb-eq" aria-hidden="true"><i /><i /><i /></span>
-                Now playing
-              </div>
-              <div className="jb-now-title">{now.title}</div>
-              <div className="jb-now-sub">
-                {now.channelTitle}
-              </div>
-              {now.addedByName ? (
-                <div className="jb-now-by">
-                  <Who name={now.addedByName} isMine={now.isMine} /> put this on
-                </div>
-              ) : null}
-            </div>
-            <div className="jb-now-actions">
-              <button
-                type="button"
-                className={`btn btn-ghost btn-sm ${now.skippedByMe ? "is-active" : ""}`}
-                onClick={skip}
-                disabled={busy || now.skippedByMe}
-                title={now.isMine ? "It's yours — this skips it straight away" : "Vote to move on"}
-              >
-                {now.isMine
-                  ? "Skip mine"
-                  : now.skippedByMe
-                    ? `Skip voted (${now.skips}/${now.skipThreshold})`
-                    : `Skip (${now.skips}/${now.skipThreshold})`}
-              </button>
-            </div>
-          </>
+      {/* ---------------- now playing: the little Winamp ---------------- */}
+      <section className={`jbw ${live ? "is-live" : ""}`}>
+        {now?.thumbnailUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={now.thumbnailUrl} alt="" className="jbw-art" />
         ) : (
-          <div className="jb-now-meta">
-            <div className="jb-now-title jb-quiet-title">
-              {player.online ? "Nothing playing — queue something." : "The speaker isn't running."}
-            </div>
-            <div className="jb-now-sub">
-              {player.online
-                ? "The player is connected and waiting for the queue."
-                : "Someone needs to open the player page on the machine that's plugged into the speaker."}
-            </div>
-          </div>
+          <div className="jbw-art jbw-art-blank" aria-hidden="true" />
         )}
+
+        <div className="jbw-lcd">
+          <div className="jbw-marquee">
+            <span className={`jbw-marquee-in ${live ? "is-rolling" : ""}`}>
+              {marquee}&nbsp;&nbsp;✦&nbsp;&nbsp;{marquee}&nbsp;&nbsp;✦&nbsp;&nbsp;
+            </span>
+          </div>
+
+          <div className="jbw-mid">
+            <span className="jbw-time">{fmt(shownPos)}</span>
+            {/* Ornament, not analysis. The audio lives in a cross-origin
+                iframe on another machine entirely — there is nothing here to
+                measure, and these bars are a mood rather than a reading. */}
+            <div className={`jbw-viz ${live ? "is-on" : ""}`} aria-hidden="true">
+              {Array.from({ length: 12 }, (_, i) => <i key={i} style={{ ["--b" as string]: String(i) }} />)}
+            </div>
+            <span className="jbw-total">{fmt(total)}</span>
+          </div>
+
+          <div className="jbw-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(pct)}>
+            <i style={{ width: `${pct}%` }} />
+          </div>
+        </div>
+
+        <div className="jbw-side">
+          {now ? <Who name={now.addedByName} isMine={now.isMine} /> : null}
+          {/* Everyone can withdraw their OWN song. Skipping someone else's is
+              playback control and belongs to admins and managers. */}
+          {now && (canControl || now.isMine) ? (
+            <button type="button" className="btn btn-ghost btn-sm" onClick={skip} disabled={busy}>
+              {now.isMine && !canControl ? "Skip mine" : "Skip"}
+            </button>
+          ) : null}
+        </div>
       </section>
 
       {/* ---------------- speaker status ---------------- */}
       <div className="jb-status">
         <span className={`jb-dot ${player.online ? "is-on" : "is-off"}`} aria-hidden="true" />
         {player.online ? (
-          <>Speaker connected{player.hostName ? <> · {player.hostName}&rsquo;s machine</> : null}</>
+          <>
+            {player.isPaused ? "Paused" : "Playing"}
+            {player.hostName ? <> · {player.hostName}&rsquo;s machine</> : null}
+          </>
         ) : (
           <>No speaker connected</>
         )}
-        <a
-          href="/music/player"
-          target="seekpeak-speaker"
-          rel="noopener"
-          className="jb-status-link"
-          onClick={openSpeaker}
-        >
-          {player.online ? "Show the player →" : "Open the player →"}
-        </a>
+        {canControl ? (
+          <a
+            href="/music/player"
+            target="seekpeak-speaker"
+            rel="noopener"
+            className="jb-status-link"
+            onClick={openSpeaker}
+          >
+            {player.online ? "Show the player →" : "Open the player →"}
+          </a>
+        ) : null}
       </div>
 
       {/* ---------------- add ---------------- */}
@@ -380,7 +395,6 @@ export function Jukebox({ initial }: { initial: State }) {
         <ul className="jb-queue">
           {queue.map((t, i) => {
             const boosted = pending[t.id] ?? t.boostedByMe;
-            // Show the optimistic delta so the number moves with the button.
             const shown = t.boosts + (boosted === t.boostedByMe ? 0 : boosted ? 1 : -1);
             return (
               <li key={t.id} className="jb-row" style={{ ["--i" as string]: String(i) }}>
@@ -399,14 +413,14 @@ export function Jukebox({ initial }: { initial: State }) {
                     {t.durationSeconds ? <span className="jb-row-dur">{fmt(t.durationSeconds)}</span> : null}
                   </div>
                 </div>
-                {t.isMine ? (
+                {t.isMine || canControl ? (
                   <button
                     type="button"
                     className="jb-remove"
                     onClick={() => remove(t)}
                     disabled={busy}
                     aria-label="Remove from queue"
-                    title="Remove"
+                    title={t.isMine ? "Remove yours" : "Remove"}
                   >
                     ×
                   </button>

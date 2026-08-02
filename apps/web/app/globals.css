@@ -6815,56 +6815,81 @@ select.cmp-input {
   align-items: start;
 }
 
-/* ---- now playing ---- */
-.jb-now {
-  display: flex; align-items: center; gap: 16px;
-  padding: 16px 18px; border-radius: 16px;
-  border: 1px solid var(--border);
-  background: var(--panel);
-  position: relative; overflow: hidden;
+/* ---- now playing: the little Winamp everyone gets ----
+   Most people can no longer touch playback, so this had to become MORE
+   informative rather than less: the green display, the marquee naming whose
+   song it is, the bars, and a live progress bar. Less control, not less
+   visibility. Controls are gated in the markup; the actions check too. */
+.jbw {
+  --wa-lcd: #05070a;
+  --wa-green: #00e830;
+  --wa-dim: #0a7a1c;
+  display: flex; align-items: stretch; gap: 12px;
+  padding: 12px; border-radius: 14px;
+  border: 1px solid var(--border); background: var(--panel);
+  transition: border-color var(--dur-2) var(--ease-out);
 }
-.jb-now.is-live {
-  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+.jbw.is-live {
+  border-color: color-mix(in srgb, var(--accent) 38%, var(--border));
   background:
-    radial-gradient(120% 140% at 0% 0%, color-mix(in srgb, var(--accent) 11%, transparent), transparent 60%),
+    radial-gradient(120% 160% at 0% 0%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 62%),
     var(--panel);
 }
-.jb-now.is-quiet { opacity: 0.85; }
-.jb-now-art {
-  width: 92px; height: 52px; flex: none;
-  border-radius: 9px; object-fit: cover; background: var(--panel-2);
+.jbw-art {
+  width: 96px; height: 54px; flex: none;
+  border-radius: 8px; object-fit: cover; background: var(--panel-2);
 }
-.jb-art-blank { background: var(--panel-2); }
-.jb-now-meta { flex: 1; min-width: 0; }
-.jb-now-label {
-  display: inline-flex; align-items: center; gap: 7px;
-  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.07em;
-  color: var(--accent); font-weight: 700; margin-bottom: 5px;
-}
-.jb-now-title {
-  font-size: 15px; font-weight: 600; color: var(--text);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.jb-quiet-title { color: var(--text-2); font-weight: 500; }
-.jb-now-sub {
-  font-size: 12px; color: var(--text-3); margin-top: 3px;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.jb-now-actions { flex: none; }
+.jbw-art-blank { background: var(--panel-2); }
 
-/* The equaliser. Three bars, deliberately out of phase — a synchronised
-   equaliser reads as a loading spinner, not as sound. */
-.jb-eq { display: inline-flex; align-items: flex-end; gap: 2px; height: 11px; }
-.jb-eq i {
-  display: block; width: 2.5px; border-radius: 1px;
-  background: currentColor; height: 30%;
-  animation: jb-bounce 900ms ease-in-out infinite;
+.jbw-lcd {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column; justify-content: center; gap: 6px;
+  background: var(--wa-lcd); border-radius: 8px;
+  border: 1px solid #14202a;
+  padding: 8px 11px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
 }
-.jb-eq i:nth-child(2) { animation-duration: 640ms; animation-delay: 120ms; }
-.jb-eq i:nth-child(3) { animation-duration: 1080ms; animation-delay: 260ms; }
-@keyframes jb-bounce {
-  0%, 100% { height: 28%; }
-  50%      { height: 100%; }
+.jbw-marquee { overflow: hidden; white-space: nowrap; height: 15px; }
+.jbw-marquee-in {
+  display: inline-block; font-size: 11.5px; line-height: 15px;
+  color: var(--wa-green); text-shadow: 0 0 6px rgba(0, 232, 48, 0.35);
+}
+.jbw-marquee-in.is-rolling { animation: wa-roll 26s linear infinite; }
+
+.jbw-mid { display: flex; align-items: center; gap: 10px; }
+.jbw-time, .jbw-total {
+  font-size: 11px; color: var(--wa-green); font-variant-numeric: tabular-nums; flex: none;
+  text-shadow: 0 0 5px rgba(0, 232, 48, 0.3);
+}
+.jbw-total { color: var(--wa-dim); text-shadow: none; margin-left: auto; }
+
+.jbw-viz { display: flex; align-items: flex-end; gap: 2px; height: 13px; flex: none; }
+.jbw-viz i {
+  display: block; width: 2.5px; height: 12%;
+  background: linear-gradient(180deg, #7dff9a 0%, var(--wa-green) 50%, var(--wa-dim) 100%);
+}
+.jbw-viz.is-on i { animation: wa-bars 900ms ease-in-out infinite alternate; }
+.jbw-viz.is-on i:nth-child(3n)   { animation-duration: 640ms; }
+.jbw-viz.is-on i:nth-child(3n+1) { animation-duration: 1120ms; }
+.jbw-viz.is-on i { animation-delay: calc(var(--b) * -137ms); }
+
+.jbw-bar { height: 3px; background: #10202a; border-radius: 2px; overflow: hidden; }
+.jbw-bar i {
+  display: block; height: 100%; background: var(--wa-green);
+  box-shadow: 0 0 6px rgba(0, 232, 48, 0.55);
+  /* Matches the local tick, so it glides instead of stepping. */
+  transition: width 500ms linear;
+}
+
+.jbw-side {
+  flex: none; display: flex; flex-direction: column; align-items: flex-end;
+  justify-content: center; gap: 7px;
+}
+
+@media (max-width: 620px) {
+  .jbw { flex-wrap: wrap; }
+  .jbw-art { width: 100%; height: 120px; }
+  .jbw-side { flex-direction: row; width: 100%; justify-content: space-between; }
 }
 
 /* ---- speaker status ---- */
@@ -6993,7 +7018,6 @@ select.cmp-input {
   background: color-mix(in srgb, var(--accent) 22%, transparent);
   color: var(--accent);
 }
-.jb-now-by { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 11.5px; color: var(--text-3); }
 .jb-row-sub { display: flex; align-items: center; gap: 8px; }
 .jb-row-chan { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .jb-row-dur { flex: none; font-variant-numeric: tabular-nums; }
@@ -7212,14 +7236,14 @@ select.cmp-input {
   .jb-history { border-left: 0; padding-left: 0; border-top: 1px solid var(--border); padding-top: 18px; position: static; max-height: none; }
 }
 @media (max-width: 560px) {
-  .jb-now-art { width: 64px; height: 36px; }
-  .jb-now { flex-wrap: wrap; }
 }
 
 /* Motion here is informative, so it degrades rather than vanishing: the
    equaliser holds a static mid-height instead of freezing at 28%. */
 @media (prefers-reduced-motion: reduce) {
-  .jb-eq i { animation: none; height: 62%; }
+  .jbw-viz.is-on i { animation: none; height: 55%; }
+  .jbw-marquee-in.is-rolling { animation: none; }
+  .jbw-bar i { transition: none; }
   .jb-dot.is-on { animation: none; }
   .jb-row { animation: none; }
   .jb-hit { animation: none; }

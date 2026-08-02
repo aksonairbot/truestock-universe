@@ -5,8 +5,9 @@
 // it should not be re-rendering a queue UI, polling badges, or holding a
 // sidebar open while it does that.
 
+import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
-import { getQueue, getNowPlaying, getPlayerStatus } from "@/lib/music";
+import { getQueue, getNowPlaying, getPlayerStatus, canControlPlayback } from "@/lib/music";
 import { PlayerClient } from "./player-client";
 
 export const dynamic = "force-dynamic";
@@ -18,6 +19,10 @@ export const metadata = {
 
 export default async function MusicPlayerPage() {
   const me = await getCurrentUser();
+  // The speaker is playback control, so it belongs to admins and managers.
+  // This is the route guard; the actions carry their own checks, because a
+  // route guard stops navigation and does nothing about a direct POST.
+  if (!canControlPlayback(me)) redirect("/music");
 
   const [now, queue, player] = await Promise.all([
     getNowPlaying(me.id),

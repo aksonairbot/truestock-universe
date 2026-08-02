@@ -121,6 +121,14 @@ const SCHEMA_CHECKS: Array<{
       { table: "music_player_state", column: "last_beat_at" },
     ],
   },
+  {
+    migration: "0032_music_position",
+    feature: "Live playback position on every screen",
+    otherColumns: [
+      { table: "music_player_state", column: "position_seconds" },
+      { table: "music_player_state", column: "duration_seconds" },
+    ],
+  },
 ];
 
 /**

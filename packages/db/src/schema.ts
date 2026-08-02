@@ -378,6 +378,11 @@ export const musicPlayerState = pgTable("music_player_state", {
   lastBeatAt: timestamp("last_beat_at", { withTimezone: true }),
   hostUserId: uuid("host_user_id"),
   isPaused: boolean("is_paused").notNull().default(false),
+  // Where the track actually is, reported by the speaker's heartbeat (0032).
+  // Null when nothing is connected — a progress bar reading 0:00 would be a
+  // confident lie about a track that might be halfway through.
+  positionSeconds: integer("position_seconds"),
+  durationSeconds: integer("duration_seconds"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
