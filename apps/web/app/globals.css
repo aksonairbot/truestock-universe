@@ -7484,3 +7484,57 @@ select.cmp-input {
   .jb-hit { animation: none; }
   .jb-boost:hover:not(:disabled) { transform: none; }
 }
+
+
+/* ---------------------------------------------------------------------------
+   Rating page.
+
+   Restrained on purpose. This is someone reading an assessment of themselves,
+   and the visual language of scoreboards — big numbers, progress bars, colour
+   grading toward green — would turn facts into a verdict. Numbers are stated
+   plainly and the sentence next to each one does the work.
+--------------------------------------------------------------------------- */
+.rate-wrap { max-width: 760px; display: flex; flex-direction: column; gap: 18px; }
+.rate-sec { padding: 0; overflow: hidden; }
+.rate-head { padding: 18px 22px 14px; border-bottom: 1px solid var(--border); }
+.rate-h { font-size: 14px; font-weight: 600; color: var(--text); margin: 0; }
+.rate-sub { font-size: 12.5px; line-height: 1.6; color: var(--text-2); margin: 6px 0 0; max-width: 62ch; }
+.rate-body { padding: 16px 22px; }
+.rate-empty { font-size: 13px; line-height: 1.65; color: var(--text-2); margin: 0; max-width: 58ch; }
+
+.rate-list { list-style: none; margin: 0; padding: 0; }
+.rate-item {
+  display: flex; gap: 18px; align-items: flex-start;
+  padding: 15px 22px; border-bottom: 1px solid var(--border);
+}
+.rate-item:last-child { border-bottom: 0; }
+
+.rate-fig {
+  flex: none; width: 118px; display: flex; flex-direction: column; gap: 2px;
+  padding-left: 11px; border-left: 2px solid var(--border-2);
+}
+/* Amber marks "there is something to do here", never red. Nobody's own record
+   should be rendered in the colour the app uses for failures. */
+.rate-item.is-attention .rate-fig { border-left-color: var(--warning); }
+.rate-val { font-size: 20px; font-weight: 650; color: var(--text); line-height: 1.15; font-variant-numeric: tabular-nums; }
+.rate-item.is-attention .rate-val { color: var(--warning); }
+.rate-lab { font-size: 11px; line-height: 1.4; color: var(--text-3); }
+
+.rate-say { flex: 1; min-width: 0; }
+.rate-say p { margin: 0; font-size: 13px; line-height: 1.6; color: var(--text-2); max-width: 58ch; }
+.rate-cta {
+  display: inline-block; margin-top: 8px; font-size: 12px; font-weight: 600;
+  color: var(--accent); text-decoration: none;
+}
+.rate-cta:hover { text-decoration: underline; }
+
+.rate-foot {
+  padding: 14px 22px; border-top: 1px solid var(--border); background: var(--panel-2);
+  font-size: 12.5px; line-height: 1.6; color: var(--text-2);
+}
+.rate-foot strong { color: var(--text); font-weight: 600; }
+
+@media (max-width: 620px) {
+  .rate-item { flex-direction: column; gap: 10px; }
+  .rate-fig { width: auto; }
+}

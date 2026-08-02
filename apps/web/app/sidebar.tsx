@@ -137,6 +137,9 @@ export default function Sidebar({
         <NavLink href="/me/month" active={isActive("/me/month")} icon={<IcCalendar />}>
           Month
         </NavLink>
+        <NavLink href="/rating" active={isActive("/rating")} icon={<IcRating />}>
+          Rating
+        </NavLink>
         <NavLink href="/tasks" active={isActive("/tasks")} icon={<IcTasks />}>
           Tasks <Kbd>G T</Kbd>
         </NavLink>
@@ -404,6 +407,18 @@ function IcChat() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
       <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2v10z" />
+    </svg>
+  );
+}
+
+function IcRating() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" width="16" height="16"
+         strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 19h16" />
+      <rect x="5.5" y="12" width="3.6" height="5" rx="1" />
+      <rect x="10.2" y="8.5" width="3.6" height="8.5" rx="1" />
+      <rect x="14.9" y="5" width="3.6" height="12" rx="1" />
     </svg>
   );
 }
