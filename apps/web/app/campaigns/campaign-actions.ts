@@ -24,12 +24,20 @@ import { isPrivileged, requireTaskAccess } from "@/lib/access";
 import { isCampaignStatus, parseRupees } from "@/lib/campaigns";
 import { isChannel, istDateTimeToUtc } from "@/lib/content";
 import { log } from "@/lib/log";
+import { ok, fail } from "@/lib/action-result";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
-/** What every user-facing action returns. `ok:false` carries a sentence. */
-export type ActionResult = { ok: true } | { ok: false; error: string };
+/**
+ * What every user-facing action returns. `ok:false` carries a sentence.
+ *
+ * This type was born here and now lives in lib/action-result.ts, because the
+ * same lesson applied to the content, composer, publish, variant and link
+ * actions too. Re-exported so nothing that already imports it from here breaks.
+ */
+import type { ActionResult } from "@/lib/action-result";
+export type { ActionResult };
 
 function readDates(
   formData: FormData,
@@ -164,9 +172,9 @@ export async function archiveCampaign(formData: FormData): Promise<void> {
  * belongs to is part of doing the work. The task access check is what keeps
  * this honest — you can only file a task you can already see.
  */
-export async function setTaskCampaign(formData: FormData): Promise<void> {
+export async function setTaskCampaign(formData: FormData): Promise<ActionResult> {
   const taskId = ((formData.get("taskId") as string) ?? "").trim();
-  if (!taskId) throw new Error("taskId is required");
+  if (!taskId) return fail("This form lost track of which task it belongs to. Reload the page.");
 
   const me = await getCurrentUser();
   await requireTaskAccess(taskId, me);
@@ -174,21 +182,21 @@ export async function setTaskCampaign(formData: FormData): Promise<void> {
   const campaignRaw = ((formData.get("campaignId") as string) ?? "").trim();
   let campaignId: string | null = null;
   if (campaignRaw) {
-    if (!UUID_RE.test(campaignRaw)) throw new Error("That campaign id is not valid.");
+    if (!UUID_RE.test(campaignRaw)) return fail("That campaign id is not valid.");
     const db0 = getDb();
     const [exists] = await db0
       .select({ id: campaigns.id })
       .from(campaigns)
       .where(eq(campaigns.id, campaignRaw))
       .limit(1);
-    if (!exists) throw new Error("That campaign no longer exists.");
+    if (!exists) return fail("That campaign no longer exists — reload the page to see the current list.");
     campaignId = campaignRaw;
   }
 
   const budgetRaw = ((formData.get("budget") as string) ?? "").trim();
   const budgetPaise = parseRupees(budgetRaw);
   if (budgetPaise === null) {
-    throw new Error(`"${budgetRaw}" isn't an amount I can read. Try 50000, 1.5L or 2 Cr.`);
+    return fail(`"${budgetRaw}" isn't an amount I can read. Try 50000, 50,000, 1.5L or 2 Cr.`);
   }
 
   const db = getDb();
@@ -202,6 +210,7 @@ export async function setTaskCampaign(formData: FormData): Promise<void> {
   revalidatePath("/tasks");
   revalidatePath("/campaigns");
   if (campaignId) revalidatePath(`/campaigns/${campaignId}`);
+  return ok;
 }
 
 

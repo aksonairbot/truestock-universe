@@ -5,10 +5,19 @@ import { getDb, projects, tasks, users, eq, and, or, asc, desc, inArray, sql, } 
 import { getCurrentUser } from "@/lib/auth";
 import { isAdmin, getDepartmentScope } from "@/lib/access";
 import { createTask as _createTask } from "../../tasks/actions";
+import { ActionForm } from "@/components/action-form";
+import type { ActionResult } from "@/lib/action-result";
 
-async function createTaskAction(formData: FormData): Promise<void> {
+/**
+ * The quick-add strip. createTask returns its refusal rather than throwing it,
+ * so this adapter has to forward it — dropping the result would make a
+ * rejected quick-add look exactly like a successful one: form clears, nothing
+ * appears, no explanation.
+ */
+async function createTaskAction(formData: FormData): Promise<ActionResult> {
   "use server";
-  await _createTask(formData);
+  const res = await _createTask(formData);
+  return res.ok ? { ok: true } : { ok: false, error: res.error };
 }
 import { ProjectBanner } from "../project-banner";
 import { ProjectIconUpload } from "../project-icon-upload";
@@ -148,7 +157,7 @@ export default async function ProjectDetailPage({ params }: PageProps) {
       </div>
 
       {/* quick add */}
-      <form action={createTaskAction} className="card mb-5 flex flex-wrap items-end gap-3">
+      <ActionForm action={createTaskAction} className="card mb-5 flex flex-wrap items-end gap-3" resetOnSuccess>
         <input type="hidden" name="projectSlug" value={project.slug} />
         <input type="hidden" name="status" value="todo" />
         <input type="hidden" name="priority" value="med" />
@@ -174,7 +183,7 @@ export default async function ProjectDetailPage({ params }: PageProps) {
           />
         </label>
         <button type="submit" className="btn btn-primary">Add</button>
-      </form>
+      </ActionForm>
 
       <div className="project-with-pulse">
       <div className="project-with-pulse-main">

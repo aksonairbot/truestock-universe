@@ -14,6 +14,11 @@
 //    real Undo. A bulk edit that can't be reversed is a bulk mistake waiting
 //    to happen — and "I meant to select four, not forty" is the normal way
 //    this goes wrong.
+//
+// 3. Refusals are RETURNED, not thrown. Next.js redacts thrown server-action
+//    messages in production, so "Some of those tasks aren't yours to change"
+//    used to reach the person as a generic "couldn't apply that" — which is
+//    exactly the sentence that leaves someone re-clicking the same button.
 
 "use server";
 
@@ -38,24 +43,39 @@ export type TaskSnapshot = {
   assigneeId: string | null;
 };
 
-function readIds(formData: FormData): string[] {
+// These carry an explicit `ok` flag rather than relying on `error` being
+// absent. TypeScript narrows a union on a LITERAL discriminant; it will not
+// narrow on `if (x.error)`, because an empty string is a valid string and the
+// falsy branch therefore proves nothing about the other members.
+
+/** Either the ids, or the sentence explaining why there aren't any usable ones. */
+type IdsOrRefusal = { ok: true; ids: string[] } | { ok: false; error: string };
+
+function readIds(formData: FormData): IdsOrRefusal {
   const ids = formData
     .getAll("taskIds")
     .flatMap((v) => String(v).split(","))
     .map((s) => s.trim())
     .filter((s) => UUID_RE.test(s));
   const unique = Array.from(new Set(ids));
-  if (unique.length === 0) throw new Error("Nothing selected.");
-  if (unique.length > MAX_BULK) throw new Error(`Select at most ${MAX_BULK} tasks at a time.`);
-  return unique;
+  if (unique.length === 0) return { ok: false, error: "Nothing selected." };
+  if (unique.length > MAX_BULK) {
+    return { ok: false, error: `That's ${unique.length} tasks; ${MAX_BULK} is the most in one go.` };
+  }
+  return { ok: true, ids: unique };
 }
 
+type AccessOrRefusal = { ok: true; prev: TaskSnapshot[] } | { ok: false; error: string };
+
 /**
- * Same visibility rules as /tasks, resolved in one pass. Throws if ANY id is
+ * Same visibility rules as /tasks, resolved in one pass. Refuses if ANY id is
  * out of scope rather than quietly applying to the subset — a partial bulk
  * edit that reports success is worse than a refusal.
  */
-async function assertBulkAccess(ids: string[], me: Awaited<ReturnType<typeof getCurrentUser>>): Promise<TaskSnapshot[]> {
+async function assertBulkAccess(
+  ids: string[],
+  me: Awaited<ReturnType<typeof getCurrentUser>>,
+): Promise<AccessOrRefusal> {
   const db = getDb();
   const rows = await db
     .select({
@@ -69,7 +89,9 @@ async function assertBulkAccess(ids: string[], me: Awaited<ReturnType<typeof get
     .from(tasks)
     .where(inArray(tasks.id, ids));
 
-  if (rows.length !== ids.length) throw new Error("Some of those tasks no longer exist.");
+  if (rows.length !== ids.length) {
+    return { ok: false, error: "Some of those tasks no longer exist. Reload the list and try again." };
+  }
 
   if (!isAdmin(me)) {
     const dept = getDepartmentScope(me);
@@ -84,20 +106,25 @@ async function assertBulkAccess(ids: string[], me: Awaited<ReturnType<typeof get
       const inDept =
         deptIds.size > 0 &&
         ((r.assigneeId && deptIds.has(r.assigneeId)) || (r.createdById && deptIds.has(r.createdById)));
-      if (!mine && !inDept) throw new Error("Some of those tasks aren't yours to change.");
+      if (!mine && !inDept) return { ok: false, error: "Some of those tasks aren't yours to change." };
     }
   }
 
-  return rows.map((r) => ({
-    id: r.id,
-    status: r.status as string,
-    priority: r.priority as string,
-    dueDate: r.dueDate ?? null,
-    assigneeId: r.assigneeId ?? null,
-  }));
+  return {
+    ok: true,
+    prev: rows.map((r) => ({
+      id: r.id,
+      status: r.status as string,
+      priority: r.priority as string,
+      dueDate: r.dueDate ?? null,
+      assigneeId: r.assigneeId ?? null,
+    })),
+  };
 }
 
-export type BulkResult = { updated: number; prev: TaskSnapshot[] };
+export type BulkResult =
+  | { ok: true; updated: number; prev: TaskSnapshot[] }
+  | { ok: false; error: string };
 
 /**
  * Apply one field change across the selection.
@@ -105,12 +132,17 @@ export type BulkResult = { updated: number; prev: TaskSnapshot[] };
  * `op` is validated against a fixed list — never used to build a column name.
  */
 export async function bulkUpdateTasks(formData: FormData): Promise<BulkResult> {
-  const ids = readIds(formData);
+  const read = readIds(formData);
+  if (!read.ok) return read;
+  const ids = read.ids;
+
   const op = ((formData.get("op") as string) ?? "").trim();
   const value = ((formData.get("value") as string) ?? "").trim();
 
   const me = await getCurrentUser();
-  const prev = await assertBulkAccess(ids, me);
+  const access = await assertBulkAccess(ids, me);
+  if (!access.ok) return access;
+  const prev = access.prev;
 
   const db = getDb();
   const now = new Date();
@@ -118,7 +150,9 @@ export async function bulkUpdateTasks(formData: FormData): Promise<BulkResult> {
 
   switch (op) {
     case "status": {
-      if (!(STATUSES as readonly string[]).includes(value)) throw new Error(`Unknown status: ${value}`);
+      if (!(STATUSES as readonly string[]).includes(value)) {
+        return { ok: false, error: `"${value}" isn't a status SeekPeak knows.` };
+      }
       patch = {
         status: value,
         // Mirror updateTaskStatus's stamping so bulk and single-row edits can't
@@ -132,25 +166,27 @@ export async function bulkUpdateTasks(formData: FormData): Promise<BulkResult> {
       break;
     }
     case "priority": {
-      if (!(PRIORITIES as readonly string[]).includes(value)) throw new Error(`Unknown priority: ${value}`);
+      if (!(PRIORITIES as readonly string[]).includes(value)) {
+        return { ok: false, error: `"${value}" isn't a priority SeekPeak knows.` };
+      }
       patch = { priority: value };
       break;
     }
     case "dueDate": {
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new Error("Pick a real date.");
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return { ok: false, error: "Pick a real date." };
       patch = { dueDate: value };
       break;
     }
     case "assignee": {
       // Assigning other people is an admin/manager decision everywhere else in
       // the app; bulk is not a loophole.
-      if (!isPrivileged(me)) throw new Error("Only admins and managers can reassign tasks.");
-      if (value && !UUID_RE.test(value)) throw new Error("That assignee is not valid.");
+      if (!isPrivileged(me)) return { ok: false, error: "Only admins and managers can reassign tasks." };
+      if (value && !UUID_RE.test(value)) return { ok: false, error: "That assignee is not valid." };
       patch = { assigneeId: value || null };
       break;
     }
     default:
-      throw new Error(`Unknown bulk operation: ${op}`);
+      return { ok: false, error: `"${op}" isn't a bulk operation SeekPeak knows.` };
   }
 
   await db
@@ -162,22 +198,28 @@ export async function bulkUpdateTasks(formData: FormData): Promise<BulkResult> {
 
   revalidatePath("/tasks");
   revalidatePath("/");
-  return { updated: ids.length, prev };
+  return { ok: true, updated: ids.length, prev };
 }
+
+export type RestoreResult = { ok: true; restored: number } | { ok: false; error: string };
 
 /**
  * Put a set of tasks back exactly as they were. Used by Undo, so it restores
  * all four mutable fields rather than guessing which one changed.
  */
-export async function bulkRestoreTasks(snapshots: TaskSnapshot[]): Promise<{ restored: number }> {
-  if (!Array.isArray(snapshots) || snapshots.length === 0) return { restored: 0 };
-  if (snapshots.length > MAX_BULK) throw new Error("Too many tasks to restore at once.");
+export async function bulkRestoreTasks(snapshots: TaskSnapshot[]): Promise<RestoreResult> {
+  if (!Array.isArray(snapshots) || snapshots.length === 0) return { ok: true, restored: 0 };
+  if (snapshots.length > MAX_BULK) return { ok: false, error: "Too many tasks to restore at once." };
 
   const ids = snapshots.map((s) => s.id).filter((s) => UUID_RE.test(s));
-  if (ids.length !== snapshots.length) throw new Error("Bad restore payload.");
+  if (ids.length !== snapshots.length) return { ok: false, error: "That undo payload is not valid." };
 
   const me = await getCurrentUser();
-  await assertBulkAccess(ids, me);
+  // assertBulkAccess RETURNS its refusal now. Ignoring the return value would
+  // turn the authorisation check on the undo path into a no-op — undo restores
+  // arbitrary client-supplied task ids, so this check is load-bearing.
+  const access = await assertBulkAccess(ids, me);
+  if (!access.ok) return access;
 
   const db = getDb();
   const now = new Date();
@@ -209,5 +251,5 @@ export async function bulkRestoreTasks(snapshots: TaskSnapshot[]): Promise<{ res
   log.info("tasks.bulk_restore", { count: snapshots.length, actorId: me.id });
   revalidatePath("/tasks");
   revalidatePath("/");
-  return { restored: snapshots.length };
+  return { ok: true, restored: snapshots.length };
 }

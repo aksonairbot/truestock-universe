@@ -247,25 +247,33 @@ export function BulkBar({
     start(async () => {
       try {
         const res = await bulkUpdateTasks(fd);
+        // The refusal comes back as a VALUE — Next redacts thrown messages in
+        // production, which is how "Some of those tasks aren't yours to
+        // change" used to arrive as a shrug.
+        if (!res.ok) {
+          toast(res.error, { tone: "error" });
+          return;
+        }
+        const { updated, prev } = res;
         ctx!.clear();
         setConfirmCancel(false);
         // Real undo, from the snapshots the action returned. A bulk edit you
         // can't reverse is a bulk mistake waiting to happen.
-        toast(`${res.updated} task${res.updated === 1 ? "" : "s"} → ${label}`, {
+        toast(`${updated} task${updated === 1 ? "" : "s"} → ${label}`, {
           undo: () => {
             start(async () => {
               try {
-                await bulkRestoreTasks(res.prev as TaskSnapshot[]);
-                toast("Reverted.");
+                const back = await bulkRestoreTasks(prev as TaskSnapshot[]);
+                toast(back.ok ? "Reverted." : back.error, back.ok ? undefined : { tone: "error" });
               } catch {
                 toast("Couldn't revert — reload and check.", { tone: "error" });
               }
             });
           },
         });
-      } catch (e) {
-        // Next redacts server-action messages in production, so keep this
-        // generic and let the specific guards live in the UI above.
+      } catch {
+        // Only a genuine fault reaches here now, and its message is redacted
+        // anyway — so say something true rather than something specific.
         toast("Couldn't apply that to the selection.", { tone: "error" });
       }
     });

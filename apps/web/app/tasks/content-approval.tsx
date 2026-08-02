@@ -13,6 +13,7 @@
 // when the same person ticks both.
 
 import { approveContent, revokeContentApproval } from "./content-actions";
+import { ActionForm } from "@/components/action-form";
 
 function fmtIst(d: Date): string {
   return new Intl.DateTimeFormat("en-IN", {
@@ -65,12 +66,12 @@ export function ContentApproval({
         </div>
 
         {canApprove && !disabled ? (
-          <form action={revokeContentApproval} className="capprove-form">
+          <ActionForm action={revokeContentApproval} className="capprove-form">
             <input type="hidden" name="taskId" value={taskId} />
             <button type="submit" className="btn btn-ghost btn-sm">
               Withdraw approval
             </button>
-          </form>
+          </ActionForm>
         ) : null}
       </div>
     );
@@ -86,7 +87,7 @@ export function ContentApproval({
       </div>
 
       {disabled ? null : canApprove ? (
-        <form action={approveContent} className="capprove-form">
+        <ActionForm action={approveContent} className="capprove-form">
           <input type="hidden" name="taskId" value={taskId} />
           <label className="capprove-check">
             <input type="checkbox" name="complianceChecked" defaultChecked={complianceChecked} />
@@ -102,7 +103,7 @@ export function ContentApproval({
           <button type="submit" className="btn btn-primary btn-sm">
             Approve
           </button>
-        </form>
+        </ActionForm>
       ) : (
         <div className="capprove-hint">Ask an admin or manager to sign this off.</div>
       )}

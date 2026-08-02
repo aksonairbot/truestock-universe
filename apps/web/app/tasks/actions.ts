@@ -7,7 +7,7 @@ import { getCurrentUserId, getCurrentUser } from "@/lib/auth";
 import { isPrivileged, isAdmin, getDepartmentScope, requireTaskAccess } from "@/lib/access";
 import { log } from "@/lib/log";
 import { isChannel, istDateTimeToUtc } from "@/lib/content";
-import { rupeesToPaise } from "@/lib/campaigns";
+import { parseRupees } from "@/lib/campaigns";
 import { notifyAssigned, notifyTaskCompleted, notifyCommentOnAssigned, notifyMentions, notifyReviewRequested, notifyReviewOutcome } from "@/lib/notify";
 import { offsetToDeadline, deadlineToDateStr } from "@/lib/worktime";
 
@@ -186,8 +186,20 @@ async function spawnRecurrenceCycle(db: ReturnType<typeof getDb>, taskId: string
 
 // ---------------------------------------------------------------------------
 // createTask — bound to /tasks/new form
+//
+// REFUSALS COME BACK AS A VALUE, NOT AS A THROW.
+// Next.js redacts thrown server-action messages in production, so every
+// sentence below — "Due date cannot exceed 10 working days", "Only admins and
+// managers can assign tasks to other people" — used to reach the person as a
+// generic failure, on the one form in the app where they have just typed a
+// title, a description and a due date they are about to lose.
+//
+// The two shared date helpers still throw, because eleven other actions call
+// them; their message is caught and forwarded here rather than duplicated.
 // ---------------------------------------------------------------------------
-export async function createTask(formData: FormData): Promise<string> {
+export type CreateTaskResult = { ok: true; taskId: string } | { ok: false; error: string };
+
+export async function createTask(formData: FormData): Promise<CreateTaskResult> {
   const title = ((formData.get("title") as string) ?? "").trim();
   const description = ((formData.get("description") as string) ?? "").trim() || null;
   const projectSlug = ((formData.get("projectSlug") as string) ?? "").trim();
@@ -197,9 +209,9 @@ export async function createTask(formData: FormData): Promise<string> {
   const assigneeIdRaw = ((formData.get("assigneeId") as string) ?? "").trim() || null;
   const recurrenceRaw = ((formData.get("recurrence") as string) ?? "none").trim();
 
-  if (!title) throw new Error("title is required");
-  if (!projectSlug) throw new Error("project is required");
-  if (!dueDateInput) throw new Error("due date is required");
+  if (!title) return { ok: false, error: "Give the task a title." };
+  if (!projectSlug) return { ok: false, error: "Pick a project." };
+  if (!dueDateInput) return { ok: false, error: "Set a due date." };
   const status = isTaskStatus(statusRaw) ? statusRaw : "todo";
   const priority = isTaskPriority(priorityRaw) ? priorityRaw : "med";
   const recurrence: TaskRecurrence = isTaskRecurrence(recurrenceRaw) ? recurrenceRaw : "none";
@@ -207,15 +219,25 @@ export async function createTask(formData: FormData): Promise<string> {
   // Convert due input: accept "3d", "8h", "2d 4h" or legacy YYYY-MM-DD
   let dueDate: string | null = null;
   if (dueDateInput) {
-    if (/^\d{4}-\d{2}-\d{2}$/.test(dueDateInput)) {
-      validateDueDateStr(dueDateInput);
-      dueDate = dueDateInput;
-    } else {
-      const parsed = parseDueInput(dueDateInput);
-      if (parsed.totalHours > MAX_DUE_HOURS) {
-        throw new Error(`Due date cannot exceed ${MAX_DUE_DAYS} working days. You entered ~${Math.ceil(parsed.totalHours / HOURS_PER_DAY)}d.`);
+    try {
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dueDateInput)) {
+        validateDueDateStr(dueDateInput);
+        dueDate = dueDateInput;
+      } else {
+        const parsed = parseDueInput(dueDateInput);
+        if (parsed.totalHours > MAX_DUE_HOURS) {
+          return {
+            ok: false,
+            error: `Due date cannot exceed ${MAX_DUE_DAYS} working days. You entered ~${Math.ceil(parsed.totalHours / HOURS_PER_DAY)}d.`,
+          };
+        }
+        dueDate = deadlineToDateStr(offsetToDeadline(dueDateInput));
       }
-      dueDate = deadlineToDateStr(offsetToDeadline(dueDateInput));
+    } catch (e) {
+      // validateDueDateStr / parseDueInput write the message for the person —
+      // "Due date cannot be in the past.", 'Could not understand due date
+      // "tomorrow"'. Forward it instead of flattening it to "invalid date".
+      return { ok: false, error: (e as Error).message };
     }
   }
 
@@ -233,13 +255,19 @@ export async function createTask(formData: FormData): Promise<string> {
   let publishAt: Date | null = null;
 
   if (contentChannelRaw) {
-    if (!isChannel(contentChannelRaw)) throw new Error(`Unknown channel: ${contentChannelRaw}`);
+    if (!isChannel(contentChannelRaw)) {
+      return { ok: false, error: `"${contentChannelRaw}" isn't a channel SeekPeak knows.` };
+    }
     contentChannel = contentChannelRaw;
     contentStage = "idea";
     if (publishDateRaw) {
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(publishDateRaw)) throw new Error("Publish date must be a real date.");
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(publishDateRaw)) {
+        return { ok: false, error: "Publish date must be a real date." };
+      }
       publishAt = istDateTimeToUtc(publishDateRaw, publishTimeRaw);
-      if (Number.isNaN(publishAt.getTime())) throw new Error("Publish date/time is not valid.");
+      if (Number.isNaN(publishAt.getTime())) {
+        return { ok: false, error: "That publish date and time don't make a valid moment." };
+      }
     }
   }
 
@@ -249,11 +277,18 @@ export async function createTask(formData: FormData): Promise<string> {
   // is rejected rather than silently dropped — filing work under a campaign
   // that doesn't exist would hide it from the plan it belongs to.
   const campaignRaw = ((formData.get("campaignId") as string) ?? "").trim();
-  const budgetPaise = rupeesToPaise((formData.get("budget") as string) ?? "");
+  // parseRupees, not the throwing rupeesToPaise wrapper — a budget typed as
+  // "2 lakhs" is a conversation, not a crash. This is the exact shape of the
+  // bug that made campaign creation fail with a blank error card.
+  const budgetRaw = ((formData.get("budget") as string) ?? "").trim();
+  const budgetPaise = parseRupees(budgetRaw);
+  if (budgetPaise === null) {
+    return { ok: false, error: `"${budgetRaw}" isn't an amount I can read. Try 50000, 50,000, 1.5L or 2 Cr.` };
+  }
   let campaignId: string | null = null;
   if (campaignRaw) {
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(campaignRaw)) {
-      throw new Error("That campaign id is not valid.");
+      return { ok: false, error: "That campaign id is not valid." };
     }
     campaignId = campaignRaw;
   }
@@ -264,7 +299,7 @@ export async function createTask(formData: FormData): Promise<string> {
     .from(projects)
     .where(eq(projects.slug, projectSlug))
     .limit(1);
-  if (!project) throw new Error(`project not found`);
+  if (!project) return { ok: false, error: "That project no longer exists. Reload the page and pick another." };
 
   const me = await getCurrentUser();
   const userId = me.id;
@@ -273,7 +308,7 @@ export async function createTask(formData: FormData): Promise<string> {
   // Everyone else (member / viewer / agent) is locked to self-assignment.
   const assigneeId = assigneeIdRaw ?? userId;
   if (!isPrivileged(me) && assigneeId !== userId) {
-    throw new Error("Only admins and managers can assign tasks to other people.");
+    return { ok: false, error: "Only admins and managers can assign tasks to other people." };
   }
 
   const [created] = await db
@@ -296,7 +331,7 @@ export async function createTask(formData: FormData): Promise<string> {
     })
     .returning({ id: tasks.id });
 
-  if (!created) throw new Error("insert returned no row");
+  if (!created) return { ok: false, error: "The task was not saved. Try again." };
   log.info("task.created", { taskId: created.id, projectSlug, status, priority, assigneeId, recurrence });
   if (assigneeId && assigneeId !== userId) {
     notifyInBackground(
@@ -311,7 +346,7 @@ export async function createTask(formData: FormData): Promise<string> {
     revalidatePath("/campaigns");
     revalidatePath(`/campaigns/${campaignId}`);
   }
-  return created.id;
+  return { ok: true, taskId: created.id };
 }
 
 // ---------------------------------------------------------------------------

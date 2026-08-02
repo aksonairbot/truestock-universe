@@ -5,6 +5,7 @@
 // aren't burdened with marketing fields they'll never use.
 
 import { updateTaskContent } from "./content-actions";
+import { ActionForm } from "@/components/action-form";
 import { CONTENT_CHANNELS, CONTENT_STAGES, CHANNEL_COLOR, STAGE_COLOR, utcToIstParts } from "@/lib/content";
 
 export function ContentFields({
@@ -25,7 +26,7 @@ export function ContentFields({
   const isContent = Boolean(channel);
 
   return (
-    <form action={updateTaskContent} className={`content-fields ${isContent ? "is-content" : ""}`}>
+    <ActionForm action={updateTaskContent} className={`content-fields ${isContent ? "is-content" : ""}`}>
       <input type="hidden" name="taskId" value={taskId} />
 
       <div className="content-fields-row">
@@ -92,6 +93,6 @@ export function ContentFields({
           </button>
         ) : null}
       </div>
-    </form>
+    </ActionForm>
   );
 }

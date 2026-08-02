@@ -8,6 +8,7 @@
 // worse than admitting we can't.
 
 import { publishNow, resetPublishState } from "./publish-actions";
+import { ActionForm } from "@/components/action-form";
 import { isPublishableChannel } from "@/lib/upload-post";
 import { CHANNEL_LABEL } from "@/lib/content";
 
@@ -68,10 +69,10 @@ export function PublishPanel({
           ) : null}
         </div>
         {canPublish && !disabled ? (
-          <form action={resetPublishState} className="cpub-form">
+          <ActionForm action={resetPublishState} className="cpub-form">
             <input type="hidden" name="taskId" value={taskId} />
             <button type="submit" className="btn btn-ghost btn-sm">Clear</button>
-          </form>
+          </ActionForm>
         ) : null}
       </div>
     );
@@ -114,16 +115,16 @@ export function PublishPanel({
       {!canPublish || disabled ? null : (
         <div className="cpub-actions">
           {auto && approved && configured ? (
-            <form action={publishNow} className="cpub-form">
+            <ActionForm action={publishNow} className="cpub-form">
               <input type="hidden" name="taskId" value={taskId} />
               <button type="submit" className="btn btn-primary btn-sm">
                 {failed ? "Retry publish" : "Publish now"}
               </button>
-            </form>
+            </ActionForm>
           ) : null}
 
           {approved ? (
-            <form action={resetPublishState} className="cpub-form">
+            <ActionForm action={resetPublishState} className="cpub-form">
               <input type="hidden" name="taskId" value={taskId} />
               <input type="hidden" name="markPublished" value="true" />
               <input
@@ -133,7 +134,7 @@ export function PublishPanel({
                 className="cpub-url"
               />
               <button type="submit" className="btn btn-ghost btn-sm">Mark published</button>
-            </form>
+            </ActionForm>
           ) : null}
         </div>
       )}

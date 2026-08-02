@@ -13,24 +13,27 @@ import { getCurrentUser } from "@/lib/auth";
 import { requireTaskAccess } from "@/lib/access";
 import { isChannel, CHANNEL_LABEL } from "@/lib/content";
 import { log } from "@/lib/log";
+import { ok, fail, type ActionResult } from "@/lib/action-result";
 
 /** Enough for every network we support, and a guard against a scripted flood. */
 const MAX_VARIANTS_PER_CALL = 10;
 
-export async function createVariants(formData: FormData): Promise<void> {
+export async function createVariants(formData: FormData): Promise<ActionResult> {
   const taskId = ((formData.get("taskId") as string) ?? "").trim();
-  if (!taskId) throw new Error("taskId is required");
+  if (!taskId) return fail("This form lost track of which task it belongs to. Reload the page.");
 
   const me = await getCurrentUser();
   const source = await requireTaskAccess(taskId, me);
-  if (!source.contentChannel) throw new Error("Set a channel on this post before creating variants.");
+  if (!source.contentChannel) return fail("Set a channel on this post before creating variants.");
 
   const requested = formData
     .getAll("channels")
     .map((c) => String(c).trim())
     .filter((c) => isChannel(c));
-  if (requested.length === 0) throw new Error("Pick at least one channel.");
-  if (requested.length > MAX_VARIANTS_PER_CALL) throw new Error("Too many channels at once.");
+  if (requested.length === 0) return fail("Pick at least one channel.");
+  if (requested.length > MAX_VARIANTS_PER_CALL) {
+    return fail(`That's ${requested.length} channels at once; ${MAX_VARIANTS_PER_CALL} is the most in one go.`);
+  }
 
   const db = getDb();
 
@@ -41,7 +44,7 @@ export async function createVariants(formData: FormData): Promise<void> {
   if (!groupId) {
     const [row] = await db.execute(sql`select gen_random_uuid() as id`) as unknown as Array<{ id: string }>;
     groupId = row?.id ?? null;
-    if (!groupId) throw new Error("Could not create a post group.");
+    if (!groupId) return fail("Could not create a post group. Try again.");
     await db.update(tasks).set({ postGroupId: groupId, updatedAt: new Date() }).where(eq(tasks.id, taskId));
   }
 
@@ -55,7 +58,7 @@ export async function createVariants(formData: FormData): Promise<void> {
 
   const toCreate = requested.filter((c) => !taken.has(c));
   if (toCreate.length === 0) {
-    throw new Error("Those channels already have a variant in this group.");
+    return fail("Those channels already have a variant in this group.");
   }
 
   const rows = toCreate.map((channel) => ({
@@ -101,6 +104,7 @@ export async function createVariants(formData: FormData): Promise<void> {
   revalidatePath("/tasks");
   revalidatePath("/content");
   if (source.campaignId) revalidatePath(`/campaigns/${source.campaignId}`);
+  return ok;
 }
 
 /**
@@ -110,13 +114,14 @@ export async function createVariants(formData: FormData): Promise<void> {
  * approved, or live. Removing it from the group is an editorial decision
  * ("this one isn't part of that push any more"), never a delete.
  */
-export async function unlinkVariant(formData: FormData): Promise<void> {
+export async function unlinkVariant(formData: FormData): Promise<ActionResult> {
   const taskId = ((formData.get("taskId") as string) ?? "").trim();
-  if (!taskId) throw new Error("taskId is required");
+  if (!taskId) return fail("This form lost track of which task it belongs to. Reload the page.");
 
   const me = await getCurrentUser();
   const task = await requireTaskAccess(taskId, me);
-  if (!task.postGroupId) return;
+  // Already standalone. Nothing to undo, and nothing to complain about.
+  if (!task.postGroupId) return ok;
 
   const db = getDb();
   const groupId = task.postGroupId;
@@ -139,4 +144,5 @@ export async function unlinkVariant(formData: FormData): Promise<void> {
   log.info("post.variant_unlinked", { taskId, groupId, actorId: me.id });
   revalidatePath(`/tasks/${taskId}`);
   revalidatePath("/content");
+  return ok;
 }

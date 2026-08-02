@@ -88,7 +88,15 @@ export function ContentBoard({ items }: { items: BoardItem[] }) {
     fd.set("stage", stage);
     start(async () => {
       try {
-        await setContentStage(fd);
+        // setContentStage RETURNS its refusal now rather than throwing it —
+        // Next redacts thrown server-action messages in production. A rejected
+        // move that isn't checked here would leave the optimistic override in
+        // place and the card would sit in a column the server never agreed to.
+        const res = await setContentStage(fd);
+        if (!res.ok) {
+          onFail();
+          toast(res.error, { tone: "error" });
+        }
       } catch {
         onFail();
         toast("Couldn't move that — change reverted.", { tone: "error" });

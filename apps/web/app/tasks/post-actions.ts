@@ -15,17 +15,18 @@ import { getCurrentUser } from "@/lib/auth";
 import { requireTaskAccess } from "@/lib/access";
 import { captionLimit, countChars, isPillar, CHANNEL_LABEL } from "@/lib/content";
 import { log } from "@/lib/log";
+import { ok, fail, type ActionResult } from "@/lib/action-result";
 
 /** Generous ceiling for the channels with no real limit (blog, email). */
 const HARD_MAX = 63206;
 
-export async function updatePostContent(formData: FormData): Promise<void> {
+export async function updatePostContent(formData: FormData): Promise<ActionResult> {
   const taskId = ((formData.get("taskId") as string) ?? "").trim();
-  if (!taskId) throw new Error("taskId is required");
+  if (!taskId) return fail("This form lost track of which task it belongs to. Reload the page.");
 
   const me = await getCurrentUser();
   const task = await requireTaskAccess(taskId, me);
-  if (!task.contentChannel) throw new Error("This task is not a content item.");
+  if (!task.contentChannel) return fail("This task isn't a content item — give it a channel first.");
 
   const caption = (formData.get("caption") as string) ?? "";
   const firstComment = (formData.get("firstComment") as string) ?? "";
@@ -38,12 +39,14 @@ export async function updatePostContent(formData: FormData): Promise<void> {
   // form post can always arrive without the client — and the whole point of
   // this field is that nothing gets quietly cut.
   if (limit > 0 && used > limit) {
-    throw new Error(
+    return fail(
       `${CHANNEL_LABEL[task.contentChannel] ?? task.contentChannel} allows ${limit} characters; this is ${used}. Trim ${used - limit}.`,
     );
   }
-  if (used > HARD_MAX) throw new Error("That caption is longer than any network accepts.");
-  if (countChars(firstComment) > 2200) throw new Error("The first comment is too long (max 2200).");
+  if (used > HARD_MAX) return fail("That caption is longer than any network accepts.");
+  if (countChars(firstComment) > 2200) {
+    return fail(`The first comment allows 2200 characters; this is ${countChars(firstComment)}.`);
+  }
 
   const pillar = isPillar(pillarRaw) ? pillarRaw : null;
 
@@ -63,4 +66,5 @@ export async function updatePostContent(formData: FormData): Promise<void> {
   revalidatePath(`/tasks/${taskId}`);
   revalidatePath("/content");
   if (task.campaignId) revalidatePath(`/campaigns/${task.campaignId}`);
+  return ok;
 }

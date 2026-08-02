@@ -20,6 +20,7 @@
 
 import { useState } from "react";
 import { updatePostContent } from "./post-actions";
+import { ActionForm } from "@/components/action-form";
 import {
   CONTENT_PILLARS,
   PILLAR_COLOR,
@@ -59,7 +60,7 @@ export function PostComposer({
   const allowFirstComment = CHANNEL_SUPPORTS_FIRST_COMMENT.has(channel);
 
   return (
-    <form action={updatePostContent} className="pcomp">
+    <ActionForm action={updatePostContent} className="pcomp">
       <input type="hidden" name="taskId" value={taskId} />
 
       <div className="pcomp-head">
@@ -159,6 +160,6 @@ export function PostComposer({
           {allowFirstComment && fc.trim() ? <div className="pcomp-preview-fc">{fc}</div> : null}
         </div>
       ) : null}
-    </form>
+    </ActionForm>
   );
 }

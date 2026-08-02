@@ -12,15 +12,16 @@ import { requireTaskAccess, isPrivileged } from "@/lib/access";
 import { notifyReviewOutcome } from "@/lib/notify";
 import { isChannel, isStage, istDateTimeToUtc } from "@/lib/content";
 import { log } from "@/lib/log";
+import { ok, fail, type ActionResult } from "@/lib/action-result";
 
 /**
  * Set / update the content fields on a task. An empty channel converts the
  * item back into a plain task (clearing stage + publish slot) so nothing is
  * stranded half-content.
  */
-export async function updateTaskContent(formData: FormData): Promise<void> {
+export async function updateTaskContent(formData: FormData): Promise<ActionResult> {
   const taskId = ((formData.get("taskId") as string) ?? "").trim();
-  if (!taskId) throw new Error("taskId is required");
+  if (!taskId) return fail("This form lost track of which task it belongs to. Reload the page.");
 
   const me = await getCurrentUser();
   await requireTaskAccess(taskId, me);
@@ -42,22 +43,22 @@ export async function updateTaskContent(formData: FormData): Promise<void> {
     revalidatePath(`/tasks/${taskId}`);
     revalidatePath("/tasks");
     revalidatePath("/content");
-    return;
+    return ok;
   }
 
-  if (!isChannel(channelRaw)) throw new Error(`Unknown channel: ${channelRaw}`);
+  if (!isChannel(channelRaw)) return fail(`"${channelRaw}" isn't a channel SeekPeak knows.`);
   const stage = isStage(stageRaw) ? stageRaw : "idea";
 
   let publishAt: Date | null = null;
   if (dateRaw) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateRaw)) throw new Error("Publish date must be a real date.");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateRaw)) return fail("Publish date must be a real date.");
     publishAt = istDateTimeToUtc(dateRaw, timeRaw);
-    if (Number.isNaN(publishAt.getTime())) throw new Error("Publish date/time is not valid.");
+    if (Number.isNaN(publishAt.getTime())) return fail("That publish date and time don't make a valid moment.");
   }
 
   // "Scheduled" without a slot is a lie the calendar can't render.
   if ((stage === "scheduled" || stage === "published") && !publishAt) {
-    throw new Error("Pick a publish date before moving this to Scheduled or Published.");
+    return fail("Pick a publish date before moving this to Scheduled or Published.");
   }
 
   // Approval gate: nothing goes out without a named approver on record.
@@ -71,7 +72,7 @@ export async function updateTaskContent(formData: FormData): Promise<void> {
     .limit(1);
 
   if ((stage === "scheduled" || stage === "published") && !before?.approvedAt) {
-    throw new Error("This needs approval before it can be scheduled or published.");
+    return fail("This needs approval before it can be scheduled or published.");
   }
 
   // Changing the CHANNEL is a material change — the thing that was approved
@@ -91,23 +92,24 @@ export async function updateTaskContent(formData: FormData): Promise<void> {
   revalidatePath(`/tasks/${taskId}`);
   revalidatePath("/tasks");
   revalidatePath("/content");
+  return ok;
 }
 
 /** Move a content item one step along the pipeline (used by the board). */
-export async function setContentStage(formData: FormData): Promise<void> {
+export async function setContentStage(formData: FormData): Promise<ActionResult> {
   const taskId = ((formData.get("taskId") as string) ?? "").trim();
   const stageRaw = ((formData.get("stage") as string) ?? "").trim();
-  if (!taskId) throw new Error("taskId is required");
-  if (!isStage(stageRaw)) throw new Error(`Unknown stage: ${stageRaw}`);
+  if (!taskId) return fail("This form lost track of which task it belongs to. Reload the page.");
+  if (!isStage(stageRaw)) return fail(`"${stageRaw}" isn't a stage SeekPeak knows.`);
 
   const me = await getCurrentUser();
   const task = await requireTaskAccess(taskId, me);
-  if (!task.contentChannel) throw new Error("This task is not a content item.");
+  if (!task.contentChannel) return fail("This task isn't a content item — give it a channel first.");
   if ((stageRaw === "scheduled" || stageRaw === "published") && !task.publishAt) {
-    throw new Error("Pick a publish date before moving this to Scheduled or Published.");
+    return fail("Pick a publish date before moving this to Scheduled or Published.");
   }
   if ((stageRaw === "scheduled" || stageRaw === "published") && !task.contentApprovedAt) {
-    throw new Error("This needs approval before it can be scheduled or published.");
+    return fail("This needs approval before it can be scheduled or published.");
   }
 
   const db = getDb();
@@ -115,6 +117,7 @@ export async function setContentStage(formData: FormData): Promise<void> {
   log.info("content.stage_changed", { taskId, stage: stageRaw, actorId: me.id });
   revalidatePath("/content");
   revalidatePath(`/tasks/${taskId}`);
+  return ok;
 }
 
 
@@ -123,19 +126,19 @@ export async function setContentStage(formData: FormData): Promise<void> {
 // approval also appears in the task's own history, notifies the assignee, and
 // stamps the queryable columns the compliance record depends on.
 // ---------------------------------------------------------------------------
-export async function approveContent(formData: FormData): Promise<void> {
+export async function approveContent(formData: FormData): Promise<ActionResult> {
   const taskId = ((formData.get("taskId") as string) ?? "").trim();
   const complianceRaw = formData.get("complianceChecked");
   const note = ((formData.get("note") as string) ?? "").trim().slice(0, 500);
-  if (!taskId) throw new Error("taskId is required");
+  if (!taskId) return fail("This form lost track of which task it belongs to. Reload the page.");
 
   const me = await getCurrentUser();
   if (!isPrivileged(me)) {
-    throw new Error("Only admins and managers can approve content.");
+    return fail("Only admins and managers can approve content.");
   }
 
   const task = await requireTaskAccess(taskId, me);
-  if (!task.contentChannel) throw new Error("This task is not a content item.");
+  if (!task.contentChannel) return fail("This task isn't a content item — give it a channel first.");
 
   const complianceChecked = complianceRaw === "on" || complianceRaw === "true";
   const now = new Date();
@@ -175,16 +178,17 @@ export async function approveContent(formData: FormData): Promise<void> {
   revalidatePath(`/tasks/${taskId}`);
   revalidatePath("/tasks");
   revalidatePath("/content");
+  return ok;
 }
 
 /** Withdraw a sign-off — e.g. the creative changed after approval. */
-export async function revokeContentApproval(formData: FormData): Promise<void> {
+export async function revokeContentApproval(formData: FormData): Promise<ActionResult> {
   const taskId = ((formData.get("taskId") as string) ?? "").trim();
-  if (!taskId) throw new Error("taskId is required");
+  if (!taskId) return fail("This form lost track of which task it belongs to. Reload the page.");
 
   const me = await getCurrentUser();
   if (!isPrivileged(me)) {
-    throw new Error("Only admins and managers can withdraw approval.");
+    return fail("Only admins and managers can withdraw approval.");
   }
   const task = await requireTaskAccess(taskId, me);
 
@@ -221,4 +225,5 @@ export async function revokeContentApproval(formData: FormData): Promise<void> {
   log.info("content.approval_revoked", { taskId, actorId: me.id });
   revalidatePath(`/tasks/${taskId}`);
   revalidatePath("/content");
+  return ok;
 }

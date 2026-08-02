@@ -5,6 +5,7 @@
 // a post or ad all live here.
 
 import { addTaskLink, removeTaskLink } from "./link-actions";
+import { ActionForm } from "@/components/action-form";
 
 export interface TaskLinkRow {
   id: string;
@@ -49,13 +50,13 @@ export function TaskLinks({
                   {l.label ?? hostOf(l.url)}
                 </a>
                 {!disabled ? (
-                  <form action={removeTaskLink} className="tlink-remove-form">
+                  <ActionForm action={removeTaskLink} className="tlink-remove-form">
                     <input type="hidden" name="linkId" value={l.id} />
                     <input type="hidden" name="taskId" value={taskId} />
                     <button type="submit" className="tlink-remove" aria-label="Remove link" title="Remove link">
                       ×
                     </button>
-                  </form>
+                  </ActionForm>
                 ) : null}
               </li>
             );
@@ -64,7 +65,7 @@ export function TaskLinks({
       ) : null}
 
       {!disabled ? (
-        <form action={addTaskLink} className="tlink-add">
+        <ActionForm action={addTaskLink} className="tlink-add" resetOnSuccess>
           <input type="hidden" name="taskId" value={taskId} />
           <input
             name="url"
@@ -82,7 +83,7 @@ export function TaskLinks({
             <option value="other">Other</option>
           </select>
           <button type="submit" className="btn btn-ghost btn-sm">Add link</button>
-        </form>
+        </ActionForm>
       ) : null}
     </div>
   );

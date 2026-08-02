@@ -161,15 +161,21 @@ export function NewTaskForm({
     const fd = new FormData(formRef.current);
 
     startSubmit(async () => {
-      // Catch validation throws (bad due-date syntax, >10 working days, missing
-      // fields) and show them inline — an uncaught rejection here escalated to
-      // the root error boundary and destroyed everything the user had typed.
+      // createTask RETURNS its refusal. It used to throw, and this handler
+      // showed err.message — which Next redacts in production, so the person
+      // saw a generic sentence instead of "Due date cannot be in the past."
+      // on the one form where a rejection costs them everything they typed.
       setSubmitError(null);
       let taskId: string;
       try {
-        taskId = await createTask(fd);
-      } catch (err) {
-        setSubmitError(err instanceof Error ? err.message : "Could not create the task. Please check the fields and try again.");
+        const res = await createTask(fd);
+        if (!res.ok) {
+          setSubmitError(res.error);
+          return;
+        }
+        taskId = res.taskId;
+      } catch {
+        setSubmitError("Could not create the task. Please check the fields and try again.");
         return;
       }
 

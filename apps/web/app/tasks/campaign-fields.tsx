@@ -8,6 +8,7 @@
 // half the work it depends on.
 
 import { setTaskCampaign } from "../campaigns/campaign-actions";
+import { ActionForm } from "@/components/action-form";
 import { CAMPAIGN_STATUS_COLOR } from "@/lib/campaigns";
 
 export function CampaignFields({
@@ -36,7 +37,7 @@ export function CampaignFields({
   }
 
   return (
-    <form action={setTaskCampaign} className="content-fields is-content">
+    <ActionForm action={setTaskCampaign} className="content-fields is-content">
       <input type="hidden" name="taskId" value={taskId} />
       <div className="content-fields-row">
         <label className="content-field">
@@ -77,6 +78,6 @@ export function CampaignFields({
           <button type="submit" className="btn btn-ghost btn-sm content-save">Update</button>
         ) : null}
       </div>
-    </form>
+    </ActionForm>
   );
 }

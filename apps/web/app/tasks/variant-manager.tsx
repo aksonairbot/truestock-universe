@@ -13,6 +13,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { createVariants, unlinkVariant } from "./variant-actions";
+import { ActionForm } from "@/components/action-form";
 import { CONTENT_CHANNELS, CHANNEL_COLOR, CHANNEL_LABEL, STAGE_COLOR, STAGE_LABEL } from "@/lib/content";
 
 export interface Sibling {
@@ -84,13 +85,13 @@ export function VariantManager({
           })}
 
           {!disabled ? (
-            <form action={unlinkVariant} className="vman-unlink">
+            <ActionForm action={unlinkVariant} className="vman-unlink">
               <input type="hidden" name="taskId" value={taskId} />
               <button type="submit" className="btn btn-ghost btn-sm">
                 Remove this post from the group
               </button>
               <span className="vman-note">The post stays; it just stops being part of this set.</span>
-            </form>
+            </ActionForm>
           ) : null}
         </div>
       ) : null}
@@ -100,7 +101,7 @@ export function VariantManager({
           {siblings.length > 0 ? "Add another network" : "Also post this to other networks"}
         </button>
       ) : (
-        <form action={createVariants} className="vman-form">
+        <ActionForm action={createVariants} className="vman-form">
           <input type="hidden" name="taskId" value={taskId} />
           <div className="vman-h">Create a variant for</div>
           <div className="vman-picks">
@@ -131,7 +132,7 @@ export function VariantManager({
             unapproved idea. Copy that&rsquo;s too long for a network shows red in its composer —
             trim it there rather than here.
           </div>
-        </form>
+        </ActionForm>
       )}
     </div>
   );
