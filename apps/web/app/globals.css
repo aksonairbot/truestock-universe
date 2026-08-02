@@ -6815,6 +6815,18 @@ select.cmp-input {
   align-items: start;
 }
 
+/* Preview banner. Deliberately loud — an admin who forgets they're in preview
+   and reports "the skip button has disappeared" costs more than a bit of amber. */
+.jb-preview {
+  display: flex; align-items: center; gap: 9px; flex-wrap: wrap;
+  margin-bottom: 12px; padding: 9px 13px; border-radius: 10px;
+  font-size: 12.5px; line-height: 1.5; color: var(--warning);
+  border: 1px dashed color-mix(in srgb, var(--warning) 45%, transparent);
+  background: color-mix(in srgb, var(--warning) 8%, transparent);
+}
+.jb-preview-eye { font-size: 13px; }
+.jb-preview-exit { margin-left: auto; color: var(--warning); font-weight: 600; text-decoration: underline; }
+
 /* ---- now playing: the little Winamp everyone gets ----
    Most people can no longer touch playback, so this had to become MORE
    informative rather than less: the green display, the marquee naming whose
@@ -6910,6 +6922,9 @@ select.cmp-input {
   100% { box-shadow: 0 0 0 0 transparent; }
 }
 .jb-status-link { margin-left: auto; color: var(--accent); text-decoration: none; }
+/* The second link must not also claim margin-left:auto, or the two fight. */
+.jb-status-link.jb-status-alt { margin-left: 14px; color: var(--text-3); }
+.jb-status-link.jb-status-alt:hover { color: var(--text-2); }
 .jb-status-link:hover { text-decoration: underline; }
 
 /* ---- add ---- */

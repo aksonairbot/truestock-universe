@@ -31,8 +31,29 @@ export const metadata = {
   description: "The office jukebox",
 };
 
-export default async function MusicPage() {
+/**
+ * `?as=member` renders the page as someone with no playback control.
+ *
+ * Admins need to be able to check what everyone else actually sees, and the
+ * alternatives are all bad: keeping a second account around, demoting
+ * yourself (which the app rightly refuses), or asking a colleague to describe
+ * their screen.
+ *
+ * SAFE BY CONSTRUCTION: preview can only ever REMOVE capability. It is ANDed
+ * with the real permission, so it cannot grant control to someone who doesn't
+ * have it — a member adding ?as=member to the URL gets exactly what they had.
+ * And the server actions enforce the real permission regardless of what any
+ * page decided to render, so a forged preview flag buys nothing.
+ */
+export default async function MusicPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ as?: string }>;
+}) {
   const me = await getCurrentUser();
+  const sp = await searchParams;
+  const previewAsMember = sp.as === "member";
+  const canControl = canControlPlayback(me) && !previewAsMember;
 
   const [now, queue, player, myQueued, mine, days] = await Promise.all([
     getNowPlaying(me.id),
@@ -64,7 +85,10 @@ export default async function MusicPage() {
             myQueued,
             maxPerPerson: MAX_QUEUED_PER_PERSON,
             searchEnabled: isYouTubeConfigured(),
-            canControl: canControlPlayback(me),
+            canControl,
+            // Only true for someone who really does have control and chose to
+            // look without it — that is what makes the banner honest.
+            previewing: previewAsMember && canControlPlayback(me),
           }}
         />
 

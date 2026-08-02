@@ -63,6 +63,8 @@ interface State {
   maxPerPerson: number;
   searchEnabled: boolean;
   canControl: boolean;
+  /** True only when someone WITH control is deliberately looking without it. */
+  previewing?: boolean;
 }
 interface Hit {
   videoId: string;
@@ -121,13 +123,17 @@ export function Jukebox({ initial }: { initial: State }) {
 
   const load = useCallback(async () => {
     try {
-      const r = await fetch("/api/music/state", { cache: "no-store" });
+      // Carry the preview flag into the poll, or the controls reappear four
+      // seconds after the admin opens it.
+      const qs = initial.previewing ? "?as=member" : "";
+      const r = await fetch(`/api/music/state${qs}`, { cache: "no-store" });
       if (!r.ok) return;
-      applyState((await r.json()) as State);
+      const d = (await r.json()) as State;
+      applyState({ ...d, previewing: initial.previewing });
     } catch {
       // A dropped poll is a stale second, not an error worth showing.
     }
-  }, [applyState]);
+  }, [applyState, initial.previewing]);
 
   useEffect(() => {
     const t = setInterval(load, POLL_MS);
@@ -279,6 +285,14 @@ export function Jukebox({ initial }: { initial: State }) {
 
   return (
     <div className="jb">
+      {state.previewing ? (
+        <div className="jb-preview" role="status">
+          <span className="jb-preview-eye" aria-hidden="true">👁</span>
+          Viewing as a member — playback controls hidden. Everything else here is exactly what they see.
+          <a href="/music" className="jb-preview-exit">Exit preview</a>
+        </div>
+      ) : null}
+
       {/* ---------------- now playing: the little Winamp ---------------- */}
       <section className={`jbw ${live ? "is-live" : ""}`}>
         {now?.thumbnailUrl ? (
@@ -343,6 +357,11 @@ export function Jukebox({ initial }: { initial: State }) {
             onClick={openSpeaker}
           >
             {player.online ? "Show the player →" : "Open the player →"}
+          </a>
+        ) : null}
+        {canControl ? (
+          <a href="/music?as=member" className="jb-status-link jb-status-alt">
+            View as a member
           </a>
         ) : null}
       </div>
