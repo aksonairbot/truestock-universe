@@ -6644,3 +6644,30 @@ select.cmp-input {
   background: rgba(255, 69, 58, 0.07);
   animation: motion-in var(--dur-2) var(--ease-out) both;
 }
+.attn-tag.is-missed { color: #ff453a; border-color: rgba(255,69,58,0.42); }
+
+/* Notification preference toggle. A switch, not a checkbox — this is a thing
+   you turn on and off, not a form field you fill in. */
+.notif-row { display: flex; align-items: flex-start; gap: 16px; }
+.notif-copy { flex: 1; min-width: 0; }
+.notif-title { font-size: 13px; color: var(--text); font-weight: 500; }
+.notif-sub { font-size: 12px; color: var(--text-2); line-height: 1.5; margin-top: 3px; }
+.notif-toggle {
+  flex-shrink: 0; position: relative;
+  width: 42px; height: 24px; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--bg);
+  cursor: pointer; padding: 0;
+  transition: background var(--dur-1) var(--ease-out), border-color var(--dur-1) var(--ease-out);
+}
+.notif-toggle.is-on { background: var(--accent); border-color: var(--accent); }
+.notif-knob {
+  position: absolute; top: 2px; left: 2px;
+  width: 18px; height: 18px; border-radius: 999px; background: var(--text-3);
+  transition: transform var(--dur-2) var(--ease-spring), background var(--dur-1) var(--ease-out);
+}
+.notif-toggle.is-on .notif-knob { transform: translateX(18px); background: #fff; }
+.notif-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}

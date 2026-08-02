@@ -9,8 +9,15 @@
 //     60 seconds, so a flurry of edits doesn't spam.
 //   • Mention parsing: `@firstname` (case-insensitive, word-boundary). Only
 //     matches active users. Multiple mentions in one comment → multiple rows.
+//
+// DELIVERY happens here, at the single chokepoint every notification passes
+// through — so a new notification kind gets outbound for free and can't be
+// forgotten. It is fire-and-forget by design: a Twilio outage must never fail
+// the task assignment that triggered it, and the row is already safely in the
+// database, which is what the app itself reads. See lib/outbound.ts.
 
 import { getDb, users, notifications, eq, and, sql } from "@tu/db";
+import { deliverMany } from "./outbound";
 
 const RECENT_WINDOW_MS = 60_000;
 
@@ -43,13 +50,18 @@ async function insertWithDedupe(opts: {
     if (recent.length > 0) return;
   }
 
-  await db.insert(notifications).values({
-    userId: opts.userId,
-    kind: opts.kind,
-    taskId: opts.taskId ?? null,
-    actorId: opts.actorId ?? null,
-    body: opts.body.slice(0, 500),
-  });
+  const [created] = await db
+    .insert(notifications)
+    .values({
+      userId: opts.userId,
+      kind: opts.kind,
+      taskId: opts.taskId ?? null,
+      actorId: opts.actorId ?? null,
+      body: opts.body.slice(0, 500),
+    })
+    .returning({ id: notifications.id });
+
+  if (created) void deliverMany([created.id]);
 }
 
 // ---------------------------------------------------------------------------
@@ -150,7 +162,8 @@ export async function notifyMentions(opts: {
     actorId: opts.actorId,
     body: `mentioned you on "${opts.taskTitle}"`,
   }));
-  await db.insert(notifications).values(rows);
+  const created = await db.insert(notifications).values(rows).returning({ id: notifications.id });
+  if (created.length > 0) void deliverMany(created.map((c) => c.id));
 }
 
 /**

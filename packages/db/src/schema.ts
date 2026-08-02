@@ -269,6 +269,13 @@ export const users = pgTable(
     avatarUrl: text("avatar_url"),
     role: userRoleEnum("role").notNull().default("member"),
     phone: text("phone"),  // E.164 format e.g. +919876543210 — for WhatsApp
+    // Personal off switch for messages OUTSIDE the app (migration 0029).
+    // Deliberately not named per channel — the transport changed from WhatsApp
+    // to email during development, and a column named after a transport would
+    // have needed a migration to follow it. What the person is expressing is
+    // "message me outside the app". Default on, but each transport's own
+    // master switch is off, so nothing sends until one is turned on.
+    notifyOutbound: boolean("notify_outbound").notNull().default(true),
     managerId: uuid("manager_id"),
     departmentId: uuid("department_id"),
     /** Product access list — array of product slugs OR ["*"] for all. JSONB
@@ -873,6 +880,8 @@ export const notifications = pgTable(
     actorId: uuid("actor_id").references(() => users.id, { onDelete: "set null" }),
     body: text("body").notNull(),
     readAt: timestamp("read_at", { withTimezone: true }),
+    /** When this actually left the building (WhatsApp). Null = never sent. */
+    deliveredAt: timestamp("delivered_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => ({

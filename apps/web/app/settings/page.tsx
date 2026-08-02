@@ -1,6 +1,8 @@
 import { getCurrentUser } from "@/lib/auth";
 import Link from "next/link";
 import AppearanceSection from "./appearance-section";
+import { NotifySection } from "./notify-section";
+import { isOutboundEnabled, outboundStatus } from "@/lib/outbound";
 
 export const dynamic = "force-dynamic";
 
@@ -45,6 +47,13 @@ export default async function SettingsPage() {
 
         {/* Appearance section (client component for theme toggle) */}
         <AppearanceSection />
+
+        <NotifySection
+          enabled={user.notifyOutbound ?? true}
+          channel={outboundStatus().active}
+          reachable={outboundStatus().active === "whatsapp" ? Boolean(user.phone) : Boolean(user.email)}
+          outboundLive={isOutboundEnabled()}
+        />
 
         {/* Preferences section */}
         <section className="card">

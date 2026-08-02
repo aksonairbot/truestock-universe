@@ -8,6 +8,7 @@ import { runDailyReview } from "@/lib/daily-review";
 import { generateKnowledgeDigest } from "@/lib/knowledge-digest";
 import { prewarmMorningBriefings } from "@/lib/briefing";
 import { runContentWatch } from "@/lib/content-watch";
+import { deliverPending } from "@/lib/outbound";
 import { getDb, sql } from "@tu/db";
 import { log } from "@/lib/log";
 
@@ -67,7 +68,14 @@ export async function GET(req: NextRequest) {
       return { risks: -1, notified: 0, skipped: 0, overBudget: 0 };
     });
 
-    return NextResponse.json({ ok: true, ...result, digest, recurrenceRolled, briefings, watch });
+    // Catch-up: anything created overnight was suppressed by quiet hours.
+    // 9 AM is the first moment it's polite to send, which is exactly now.
+    const delivered = await deliverPending().catch((e) => {
+      log.warn("cron.daily_review.deliver_pending_failed", { error: (e as Error).message });
+      return { sent: 0, skipped: 0 };
+    });
+
+    return NextResponse.json({ ok: true, ...result, digest, recurrenceRolled, briefings, watch, delivered });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     log.error("cron.daily_review.error", { error: msg });

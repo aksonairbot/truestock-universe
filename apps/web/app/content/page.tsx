@@ -77,6 +77,16 @@ export default async function ContentPage({ searchParams }: PageProps) {
   // never disagree about what is at risk.
   const risks = await findContentRisks(scope, 12).catch(() => []);
 
+  // Whether ANY content exists, so the calendar's empty state can distinguish
+  // "you have none" from "none in this month" — it said "Nothing in the
+  // content calendar yet" while an item sat in another month, which is a lie
+  // that sends someone off to create a duplicate.
+  const [contentTotalRow] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(tasks)
+    .where(and(sql`${tasks.contentChannel} is not null`, sql`${tasks.status} <> 'cancelled'::task_status`, scope));
+  const contentTotal = contentTotalRow?.n ?? 0;
+
   const campaignList = await db
     .select({ id: campaignsTbl.id, name: campaignsTbl.name })
     .from(campaignsTbl)
@@ -348,7 +358,17 @@ export default async function ContentPage({ searchParams }: PageProps) {
         </>
       ) : null}
 
-      {scheduled.length === 0 && unscheduled.length === 0 ? (
+      {scheduled.length === 0 && unscheduled.length === 0 && contentTotal > 0 ? (
+        <div className="card text-center py-10 mt-4">
+          <div className="text-text-2 mb-1">Nothing scheduled in {monthLabel(month)}.</div>
+          <div className="text-text-3 text-[12px]">
+            You have {contentTotal} content {contentTotal === 1 ? "item" : "items"} in other months — use ← → to
+            find {contentTotal === 1 ? "it" : "them"}.
+          </div>
+        </div>
+      ) : null}
+
+      {scheduled.length === 0 && unscheduled.length === 0 && contentTotal === 0 ? (
         <div className="card text-center py-16 mt-4">
           <div className="text-text-2 mb-2">Nothing in the content calendar yet.</div>
           <div className="text-text-3 text-[12px] mb-3">

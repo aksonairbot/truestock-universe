@@ -24,6 +24,7 @@
 
 import { getDb, tasks, users, notifications, campaigns, eq, and, sql, asc } from "@tu/db";
 import { log } from "./log";
+import { deliverMany } from "./outbound";
 
 /** How far ahead we look. Two days is enough warning to actually fix it. */
 const AT_RISK_HOURS = 48;
@@ -43,12 +44,13 @@ export type ContentRisk = {
   assigneeId: string | null;
   assigneeName: string | null;
   /** What's wrong, in the order it needs fixing. */
-  reason: "failed" | "unapproved" | "no_copy" | "stalled";
+  reason: "failed" | "missed" | "unapproved" | "no_copy" | "stalled";
   detail: string;
 };
 
 const REASON_LABEL: Record<ContentRisk["reason"], string> = {
   failed: "Publish failed",
+  missed: "Slot has passed",
   unapproved: "Not approved yet",
   no_copy: "No copy written",
   stalled: "Stuck in this stage",
@@ -125,7 +127,25 @@ export async function findContentRisks(scope = sql`1=1`, limit = 50): Promise<Co
       continue;
     }
 
-    const dueSoon = Boolean(base.publishAt);
+    // A slot in the PAST with nothing published is the most urgent state there
+    // is, and it is NOT "goes out soon". The first version said "soon" for
+    // anything with a slot, which reads as nonsense next to a date last week.
+    const slot = base.publishAt;
+    const overdue = Boolean(slot && slot.getTime() < Date.now());
+    const dueSoon = Boolean(slot) && !overdue;
+
+    if (overdue) {
+      const when = slot!.toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "Asia/Kolkata" });
+      out.push({
+        ...base,
+        reason: "missed",
+        detail: !r.approvedAt
+          ? `Its ${when} slot has passed and it was never approved.`
+          : `Its ${when} slot has passed and nothing was published.`,
+      });
+      continue;
+    }
+
     if (dueSoon && !r.approvedAt) {
       out.push({ ...base, reason: "unapproved", detail: "Goes out soon and still has no approver." });
       continue;
@@ -179,13 +199,17 @@ export async function runContentWatch(): Promise<{
   const db = getDb();
   let notified = 0;
   let skipped = 0;
+  // Collected and delivered in one pass at the end, so a slow Twilio call
+  // can't stretch out the loop that is writing rows.
+  const created: string[] = [];
 
   const risks = await findContentRisks(sql`1=1`, 200);
 
-  // Approvers are only needed if something is actually waiting on approval —
-  // don't query the users table for nothing.
+  // Approvers are needed when something waits on approval, AND as the fallback
+  // for anything with no assignee — otherwise an unassigned risk would resolve
+  // to an empty target list and be silently dropped.
   let approvers: Array<{ id: string }> = [];
-  if (risks.some((r) => r.reason === "unapproved")) {
+  if (risks.some((r) => r.reason === "unapproved" || !r.assigneeId)) {
     approvers = await db
       .select({ id: users.id })
       .from(users)
@@ -208,12 +232,16 @@ export async function runContentWatch(): Promise<{
           skipped++;
           continue;
         }
-        await db.insert(notifications).values({
-          userId,
-          kind: "content_at_risk",
-          taskId: r.taskId,
-          body: `${riskLabel(r.reason)}: "${r.title.slice(0, 80)}" — ${r.detail}`,
-        });
+        const [row] = await db
+          .insert(notifications)
+          .values({
+            userId,
+            kind: "content_at_risk",
+            taskId: r.taskId,
+            body: `${riskLabel(r.reason)}: "${r.title.slice(0, 80)}" — ${r.detail}`,
+          })
+          .returning({ id: notifications.id });
+        if (row) created.push(row.id);
         notified++;
       } catch (e) {
         // A single bad notification must not abort the daily job.
@@ -261,15 +289,24 @@ export async function runContentWatch(): Promise<{
         skipped++;
         continue;
       }
-      await db.insert(notifications).values({
-        userId: c.ownerId,
-        kind: "content_at_risk",
-        body: `Campaign over budget: "${c.name.slice(0, 60)}" — line items now exceed the budget you set.`,
-      });
+      const [row] = await db
+        .insert(notifications)
+        .values({
+          userId: c.ownerId,
+          kind: "content_at_risk",
+          body: `Campaign over budget: "${c.name.slice(0, 60)}" — line items now exceed the budget you set.`,
+        })
+        .returning({ id: notifications.id });
+      if (row) created.push(row.id);
       notified++;
     }
   } catch (e) {
     log.warn("content_watch.budget_check_failed", { error: (e as Error).message });
+  }
+
+  if (created.length > 0) {
+    const out = await deliverMany(created);
+    log.info("content_watch.delivered", out);
   }
 
   log.info("content_watch.done", { risks: risks.length, notified, skipped, overBudget });

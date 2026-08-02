@@ -27,6 +27,7 @@ import { getDb, sql } from "@tu/db";
 import { getCurrentUser } from "@/lib/auth";
 import { isAdmin } from "@/lib/access";
 import { isPublishConfigured, isAutoPublishEnabled } from "@/lib/upload-post";
+import { outboundStatus, isOutboundEnabled, inQuietHours } from "@/lib/outbound";
 import { access } from "fs/promises";
 import { constants as FS } from "node:fs";
 
@@ -49,6 +50,8 @@ const SCHEMA_CHECKS: Array<{
   feature: string;
   table?: string;
   taskColumns?: string[];
+  /** Columns on a table other than `tasks`. */
+  otherColumns?: Array<{ table: string; column: string }>;
   /** For migrations that add an enum value rather than a column. */
   enumValue?: { type: string; value: string };
 }> = [
@@ -88,6 +91,14 @@ const SCHEMA_CHECKS: Array<{
     migration: "0028_content_watch",
     feature: "Content watchdog notifications",
     enumValue: { type: "notification_kind", value: "content_at_risk" },
+  },
+  {
+    migration: "0029_outbound",
+    feature: "Outbound delivery and the personal off switch",
+    otherColumns: [
+      { table: "users", column: "notify_outbound" },
+      { table: "notifications", column: "delivered_at" },
+    ],
   },
 ];
 
@@ -139,6 +150,7 @@ export default async function HealthPage() {
   let taskColumns = new Set<string>();
   let tableNames = new Set<string>();
   let enumValues = new Set<string>();
+  let otherColumns = new Set<string>();
 
   try {
     const db = getDb();
@@ -147,6 +159,22 @@ export default async function HealthPage() {
       db.execute(sql`select column_name from information_schema.columns where table_schema = 'public' and table_name = 'tasks'`),
       db.execute(sql`select table_name from information_schema.tables where table_schema = 'public'`),
     ]);
+    // Columns on tables other than `tasks`, for migrations that touch users
+    // or notifications.
+    try {
+      const otherRes = await db.execute(
+        sql`select table_name, column_name from information_schema.columns
+            where table_schema = 'public' and table_name in ('users', 'notifications')`,
+      );
+      for (const r of rowsOf(otherRes)) {
+        if (typeof r.table_name === "string" && typeof r.column_name === "string") {
+          otherColumns.add(`${r.table_name}.${r.column_name}`);
+        }
+      }
+    } catch {
+      /* reported as missing below, which is the right signal */
+    }
+
     // Enum values live in pg_enum, not information_schema — probed separately
     // so a migration that only adds one is still verifiable here.
     try {
@@ -176,6 +204,9 @@ export default async function HealthPage() {
     const missing: string[] = [];
     if (c.table && !tableNames.has(c.table)) missing.push(`table ${c.table}`);
     for (const col of c.taskColumns ?? []) if (!taskColumns.has(col)) missing.push(`tasks.${col}`);
+    for (const oc of c.otherColumns ?? []) {
+      if (!otherColumns.has(`${oc.table}.${oc.column}`)) missing.push(`${oc.table}.${oc.column}`);
+    }
     if (c.enumValue && !enumValues.has(`${c.enumValue.type}.${c.enumValue.value}`)) {
       missing.push(`${c.enumValue.type} value '${c.enumValue.value}'`);
     }
@@ -211,6 +242,11 @@ export default async function HealthPage() {
     ? "set"
     : "NOT SET — the daily review, recurring-task roll-forward, morning briefings and the publish sweep all refuse to run";
   const hasAi = Boolean(process.env.OLLAMA_BASE_URL || process.env.ANTHROPIC_API_KEY || process.env.DEEPSEEK_API_KEY);
+
+  const outbound = outboundStatus();
+  const waConfigured = outbound.configured.length > 0;
+  const waLive = isOutboundEnabled();
+  const quiet = inQuietHours();
 
   let publishConfigured = false;
   let autoPublish = false;
@@ -263,6 +299,8 @@ export default async function HealthPage() {
     uploadsState,
     hasCronSecret ? "ok" : "bad",
     hasAi ? "ok" : "off",
+    waConfigured ? "ok" : "off",
+    waLive ? "warn" : "off",
     publishConfigured ? "ok" : "off",
     // Unattended publishing being ON is a state to notice, not a fault.
     autoPublish ? "warn" : "off",
@@ -359,6 +397,33 @@ export default async function HealthPage() {
             state={hasAi ? "ok" : "off"}
             detail={hasAi ? "configured" : "none configured — Suggest and briefings are unavailable"}
           />
+        </div>
+      </div>
+
+      <div className="card mb-4">
+        <div className="hsec-head">Outbound messages</div>
+        <div className="hsec-body">
+          <Row
+            label="Provider credentials"
+            state={waConfigured ? "ok" : "off"}
+            detail={waConfigured ? outbound.configured.join(", ") : "none set — nothing can be sent"}
+          />
+          <Row
+            label="Delivery"
+            state={waLive ? "warn" : "off"}
+            detail={
+              waLive
+                ? `ON via ${outbound.active} — assignments and risks are sent outside the app`
+                : 'off — set EMAIL_ENABLED="true" (or WHATSAPP_ENABLED) to switch it on'
+            }
+          />
+          {waLive && outbound.active === "whatsapp" ? (
+            <Row
+              label="Quiet hours (21:30–08:00 IST)"
+              state="ok"
+              detail={quiet ? "active right now — messages are held until 8am" : "not active"}
+            />
+          ) : null}
         </div>
       </div>
 
