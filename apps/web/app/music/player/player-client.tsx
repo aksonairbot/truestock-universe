@@ -124,6 +124,9 @@ function qualityLabel(q: string | null): string {
   return map[q] ?? "---";
 }
 
+/** The classic ten-band labels. Decorative — see the EQ note in the JSX. */
+const EQ_BANDS = ["60", "170", "310", "600", "1K", "3K", "6K", "12K", "14K", "16K"];
+
 export function PlayerClient({ initial, mode }: { initial: State; mode: "speaker" | "viewer" }) {
   const isSpeaker = mode === "speaker";
 
@@ -140,6 +143,8 @@ export function PlayerClient({ initial, mode }: { initial: State; mode: "speaker
   const mountRef = useRef<HTMLDivElement>(null);
   const loadedRef = useRef<string | null>(null);
   const advancingRef = useRef(false);
+  /** Last paused-state we pushed, so state changes don't spam the server. */
+  const sentPausedRef = useRef<boolean | null>(null);
 
   const refresh = useCallback(async (): Promise<State | null> => {
     try {
@@ -246,7 +251,23 @@ export function PlayerClient({ initial, mode }: { initial: State; mode: "speaker
           },
           onStateChange: (e: { data: number }) => {
             if (e.data === window.YT?.PlayerState.ENDED) void advanceNow("played");
-            setPlaying(e.data === window.YT?.PlayerState.PLAYING);
+            const isPlaying = e.data === window.YT?.PlayerState.PLAYING;
+            setPlaying(isPlaying);
+
+            // THE SPEAKER IS THE SOURCE OF TRUTH, and this is the line that
+            // makes that real. Whoever is driving can pause with our button OR
+            // with YouTube's own controls, which are on screen and which they
+            // will absolutely use — so the pause has to be detected rather
+            // than assumed. We push the state UP to the room; we never let the
+            // room push back, or the admin's pause gets undone on the next
+            // poll. That was the "admin can't pause" bug exactly.
+            if (isSpeaker && (isPlaying || e.data === window.YT?.PlayerState.PAUSED)) {
+              const paused = !isPlaying;
+              if (sentPausedRef.current !== paused) {
+                sentPausedRef.current = paused;
+                void setRoomPaused(paused).catch(() => {});
+              }
+            }
           },
           onError: () => {
             if (isSpeaker) {
@@ -307,14 +328,9 @@ export function PlayerClient({ initial, mode }: { initial: State; mode: "speaker
           await advanceNow("played");
           return;
         }
-        // Both directions. Only pausing meant a room left paused could never
-        // resume from a poll, and any local play was silently undone.
-        const st = playerRef.current.getPlayerState();
-        if (d.player.isPaused && st === window.YT?.PlayerState.PLAYING) {
-          playerRef.current.pauseVideo();
-        } else if (!d.player.isPaused && st === window.YT?.PlayerState.PAUSED) {
-          playerRef.current.playVideo();
-        }
+        // Deliberately does NOTHING about play/pause. The speaker WRITES the
+        // flag; re-applying it here would mean the poll fighting whoever is
+        // standing at the machine. Viewers follow the flag — see below.
         return;
       }
 
@@ -341,21 +357,15 @@ export function PlayerClient({ initial, mode }: { initial: State; mode: "speaker
     try { playerRef.current?.setVolume(v); } catch { /* mid-swap */ }
   }
   /**
-   * ONE pause, not two.
-   *
-   * This used to drive only the local player while the server's `is_paused`
-   * flag sat untouched — so the sync loop below re-applied the server's stale
-   * opinion four seconds later and the music paused itself again, over and
-   * over. The button now sets the room's state explicitly and moves the local
-   * player to match, so the two can't disagree.
+   * Just move the player. The server flag follows from onStateChange, so this
+   * button and YouTube's own controls behave identically — which they must,
+   * because both are on screen and both get used.
    */
   function playPause() {
     const p = playerRef.current;
     if (!p) return;
-    const wantPaused = playing;
-    if (wantPaused) p.pauseVideo();
+    if (playing) p.pauseVideo();
     else p.playVideo();
-    void setRoomPaused(wantPaused).then(refresh);
   }
 
   const { now, queue, player } = state;
@@ -465,6 +475,45 @@ export function PlayerClient({ initial, mode }: { initial: State; mode: "speaker
           )}
         </div>
       </div>
+
+      {/* ============ equaliser ============
+          Viewer-only, and PURELY DECORATIVE — stated here so nobody later
+          wires a band to something and is surprised it does nothing. The audio
+          is in a cross-origin iframe on another machine; there is no signal to
+          analyse and no filter we could apply if there were. It exists because
+          the viewer has no transport row, which left a hole where Winamp's
+          most recognisable window used to sit, and because a room full of
+          people watching a queue should have something to look at. The sliders
+          drift while the track plays and settle when it stops. */}
+      {!isSpeaker ? (
+        <div className="wa-win wa-eqwin" aria-hidden="true">
+          <div className="wa-tb">
+            <i className="wa-grip" />
+            <span className="wa-tb-name">EQUALIZER</span>
+            <i className="wa-grip" />
+            <span className="wa-tb-mode">AUTO</span>
+          </div>
+          <div className="wa-body">
+            <div className={`wa-eq ${playing ? "is-on" : ""}`}>
+              <div className="wa-eq-pre">
+                <div className="wa-eq-slot"><i className="wa-eq-thumb" /></div>
+                <span className="wa-eq-lab">PRE</span>
+              </div>
+              <div className="wa-eq-bands">
+                {EQ_BANDS.map((b, i) => (
+                  <div key={b} className="wa-eq-band" style={{ ["--b" as string]: String(i) }}>
+                    <div className="wa-eq-slot"><i className="wa-eq-thumb" /></div>
+                    <span className="wa-eq-lab">{b}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className={`wa-viz wa-viz-big ${playing ? "is-on" : ""}`}>
+              {Array.from({ length: 40 }, (_, i) => <i key={i} style={{ ["--b" as string]: String(i) }} />)}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {note ? <div className="wa-note">{note}</div> : null}
 
