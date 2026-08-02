@@ -264,6 +264,17 @@ export default async function HealthPage() {
     : "NOT SET — the daily review, recurring-task roll-forward, morning briefings and the publish sweep all refuse to run";
   const hasAi = Boolean(process.env.OLLAMA_BASE_URL || process.env.ANTHROPIC_API_KEY || process.env.DEEPSEEK_API_KEY);
 
+  // Presence only, never the value — the whole point of this page is that you
+  // can confirm a credential arrived without ever putting it on a screen.
+  // A missing key is deliberately "off", not "bad": the jukebox works without
+  // one via YouTube's public oEmbed endpoint. This only adds duration and
+  // search. Reporting it as a failure would send someone hunting for a problem
+  // that isn't there.
+  const hasYouTubeKey = Boolean(process.env.YOUTUBE_API_KEY);
+  const youtubeDetail = hasYouTubeKey
+    ? "set — track length and in-app search are available"
+    : "not set — the jukebox still works (titles and artwork come from YouTube's public oEmbed), but there's no search box and no length limit on what people queue";
+
   const outbound = outboundStatus();
   const waConfigured = outbound.configured.length > 0;
   const waLive = isOutboundEnabled();
@@ -417,6 +428,11 @@ export default async function HealthPage() {
             label="AI provider"
             state={hasAi ? "ok" : "off"}
             detail={hasAi ? "configured" : "none configured — Suggest and briefings are unavailable"}
+          />
+          <Row
+            label="YouTube API key"
+            state={hasYouTubeKey ? "ok" : "off"}
+            detail={youtubeDetail}
           />
         </div>
       </div>
