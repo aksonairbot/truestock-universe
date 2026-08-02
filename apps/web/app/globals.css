@@ -7331,7 +7331,6 @@ select.cmp-input {
   .wa-viz.is-on i { animation: none; height: 52%; }
   .wa-seek i { transition: none; }
 }
-}
 
 @media (max-width: 1000px) {
   .jb-layout { grid-template-columns: minmax(0, 1fr); }

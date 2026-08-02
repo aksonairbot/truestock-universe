@@ -256,7 +256,34 @@ export async function playerAdvance(outcome: "played" | "skipped" = "played"): P
   return ok;
 }
 
-/** Pause the room. Distinct from "no speaker connected", which is not a choice. */
+/**
+ * Pause or resume the room. Distinct from "no speaker connected", which is
+ * not a choice anyone made.
+ *
+ * EXPLICIT, NOT A TOGGLE — and that is the bug fix. A toggle only works if
+ * the caller already knows the current state, and the speaker page did not:
+ * its play/pause button drove the local YouTube player while `is_paused` sat
+ * untouched in the database. The sync loop then dutifully re-applied the
+ * server's opinion on the next poll, so pressing play gave you about four
+ * seconds of music before it paused itself again, forever. Setting the value
+ * outright means the button and the flag cannot drift apart.
+ */
+export async function setRoomPaused(paused: boolean): Promise<ActionResult> {
+  const me = await getCurrentUser();
+  if (!canControlPlayback(me)) return fail("Only admins and managers can control playback.");
+  const db = getDb();
+  await db
+    .update(musicPlayerState)
+    .set({ isPaused: Boolean(paused), updatedAt: new Date() })
+    .where(eq(musicPlayerState.id, "office"));
+  refresh();
+  return ok;
+}
+
+/**
+ * Kept because a stuck `is_paused` is exactly the state this fixes, and a
+ * one-button escape hatch is worth having. Prefer setRoomPaused.
+ */
 export async function togglePause(): Promise<ActionResult> {
   const me = await getCurrentUser();
   if (!canControlPlayback(me)) return fail("Only admins and managers can control playback.");

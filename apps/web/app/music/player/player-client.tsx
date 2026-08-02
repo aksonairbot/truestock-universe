@@ -33,7 +33,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { playerBeat, playerAdvance, togglePause } from "../actions";
+import { playerBeat, playerAdvance, setRoomPaused } from "../actions";
 
 interface Now {
   id: string;
@@ -307,7 +307,14 @@ export function PlayerClient({ initial, mode }: { initial: State; mode: "speaker
           await advanceNow("played");
           return;
         }
-        if (d.player.isPaused) playerRef.current.pauseVideo();
+        // Both directions. Only pausing meant a room left paused could never
+        // resume from a poll, and any local play was silently undone.
+        const st = playerRef.current.getPlayerState();
+        if (d.player.isPaused && st === window.YT?.PlayerState.PLAYING) {
+          playerRef.current.pauseVideo();
+        } else if (!d.player.isPaused && st === window.YT?.PlayerState.PAUSED) {
+          playerRef.current.playVideo();
+        }
         return;
       }
 
@@ -333,11 +340,22 @@ export function PlayerClient({ initial, mode }: { initial: State; mode: "speaker
     setVol(v);
     try { playerRef.current?.setVolume(v); } catch { /* mid-swap */ }
   }
+  /**
+   * ONE pause, not two.
+   *
+   * This used to drive only the local player while the server's `is_paused`
+   * flag sat untouched — so the sync loop below re-applied the server's stale
+   * opinion four seconds later and the music paused itself again, over and
+   * over. The button now sets the room's state explicitly and moves the local
+   * player to match, so the two can't disagree.
+   */
   function playPause() {
     const p = playerRef.current;
     if (!p) return;
-    if (playing) p.pauseVideo();
+    const wantPaused = playing;
+    if (wantPaused) p.pauseVideo();
     else p.playVideo();
+    void setRoomPaused(wantPaused).then(refresh);
   }
 
   const { now, queue, player } = state;
@@ -434,7 +452,6 @@ export function PlayerClient({ initial, mode }: { initial: State; mode: "speaker
               <button type="button" className="wa-b" onClick={playPause} title={playing ? "Pause" : "Play"}>
                 {playing ? "❚❚" : "▶"}
               </button>
-              <button type="button" className="wa-b" onClick={() => { void togglePause().then(refresh); }} title="Pause the room">■</button>
               <button type="button" className="wa-b" onClick={() => { void advanceNow("skipped"); }} disabled={!now} title="Next">▶▶|</button>
               <span className="wa-ctl-sp" />
               <span className={`wa-lamp ${player.online ? "is-on" : ""}`} title="Speaker connected" />
