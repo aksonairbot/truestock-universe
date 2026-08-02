@@ -17,7 +17,10 @@
 
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
-import { getQueue, getNowPlaying, getPlayerStatus, queuedCountFor, canControlPlayback, MAX_QUEUED_PER_PERSON } from "@/lib/music";
+import {
+  getQueue, getNowPlaying, getPlayerStatus, queuedCountFor, myRecentTracks,
+  canControlPlayback, MAX_QUEUED_PER_PERSON,
+} from "@/lib/music";
 import { isYouTubeConfigured } from "@/lib/youtube";
 
 export const dynamic = "force-dynamic";
@@ -26,11 +29,12 @@ export async function GET() {
   try {
     const me = await getCurrentUser();
 
-    const [now, queue, player, myQueued] = await Promise.all([
+    const [now, queue, player, myQueued, mine] = await Promise.all([
       getNowPlaying(me.id),
       getQueue(me.id, 40),
       getPlayerStatus(),
       queuedCountFor(me.id),
+      myRecentTracks(me.id, 14),
     ]);
 
     return NextResponse.json(
@@ -38,6 +42,7 @@ export async function GET() {
         now,
         queue,
         player,
+        mine,
         myQueued,
         maxPerPerson: MAX_QUEUED_PER_PERSON,
         searchEnabled: isYouTubeConfigured(),
@@ -59,6 +64,7 @@ export async function GET() {
           online: false, isPaused: false, hostName: null,
           positionSeconds: null, durationSeconds: null, beatAgeSeconds: null,
         },
+        mine: [],
         myQueued: 0,
         maxPerPerson: MAX_QUEUED_PER_PERSON,
         searchEnabled: false,

@@ -15,6 +15,7 @@ import {
   getNowPlaying,
   getPlayerStatus,
   queuedCountFor,
+  myRecentTracks,
   playlistsByDay,
   dayLabel,
   canControlPlayback,
@@ -33,11 +34,12 @@ export const metadata = {
 export default async function MusicPage() {
   const me = await getCurrentUser();
 
-  const [now, queue, player, myQueued, days] = await Promise.all([
+  const [now, queue, player, myQueued, mine, days] = await Promise.all([
     getNowPlaying(me.id),
     getQueue(me.id, 40),
     getPlayerStatus(),
     queuedCountFor(me.id),
+    myRecentTracks(me.id, 14),
     playlistsByDay(7),
   ]);
 
@@ -58,6 +60,7 @@ export default async function MusicPage() {
             now,
             queue,
             player,
+            mine,
             myQueued,
             maxPerPerson: MAX_QUEUED_PER_PERSON,
             searchEnabled: isYouTubeConfigured(),

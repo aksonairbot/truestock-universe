@@ -38,9 +38,19 @@ interface Track {
   boostedByMe: boolean;
   isMine: boolean;
 }
+interface MyTrack {
+  videoId: string;
+  title: string;
+  channelTitle: string | null;
+  thumbnailUrl: string | null;
+  durationSeconds: number | null;
+  timesAdded: number;
+  active: boolean;
+}
 interface State {
   now: Track | null;
   queue: Track[];
+  mine: MyTrack[];
   player: {
     online: boolean;
     isPaused: boolean;
@@ -197,15 +207,21 @@ export function Jukebox({ initial }: { initial: State }) {
     });
   }
 
-  function addFromHit(h: Hit) {
+  /**
+   * One add path for every source — a pasted link, a search hit, or something
+   * from your own history. addTrack takes a bare video id, so re-queueing gets
+   * the duplicate check, the per-person cap and the length limit for free
+   * rather than needing a second, subtly different code path.
+   */
+  function queueVideo(videoId: string, label: string) {
     start(async () => {
       const fd = new FormData();
-      fd.set("url", h.videoId);
+      fd.set("url", videoId);
       const res = await addTrack(fd);
       if (res.ok) {
         setUrl("");
         setHits(null);
-        toast(`Queued "${h.title.slice(0, 40)}".`);
+        toast(`Queued "${label.slice(0, 40)}".`);
         load();
       } else {
         toast(res.error, { tone: "error", duration: 8000 });
@@ -363,6 +379,54 @@ export function Jukebox({ initial }: { initial: State }) {
         </p>
       ) : null}
 
+      {/* YOUR SONGS. Placed under the add box on purpose: this is an input
+          affordance, not an archive. The moment someone is thinking "what
+          shall I put on", the answer is usually something they've played
+          before, and the alternative is going back to YouTube to find the same
+          link a fourth time. */}
+      {state.mine.length > 0 ? (
+        <div className="jb-mine">
+          <div className="jb-mine-h">
+            Your songs <span className="jb-mine-hint">tap to queue again</span>
+          </div>
+          <ul className="jb-mine-row">
+            {state.mine.map((m) => (
+              <li key={m.videoId}>
+                <button
+                  type="button"
+                  className={`jb-mine-chip ${m.active ? "is-active" : ""}`}
+                  onClick={() => queueVideo(m.videoId, m.title)}
+                  disabled={busy || atLimit || m.active}
+                  title={
+                    m.active
+                      ? "Already in the queue"
+                      : atLimit
+                        ? "You're at your limit for now"
+                        : `Queue "${m.title}" again`
+                  }
+                >
+                  {m.thumbnailUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={m.thumbnailUrl} alt="" className="jb-mine-art" />
+                  ) : (
+                    <span className="jb-mine-art jb-art-blank" />
+                  )}
+                  <span className="jb-mine-meta">
+                    <span className="jb-mine-title">{m.title}</span>
+                    <span className="jb-mine-sub">
+                      {m.active ? "in the queue" : m.channelTitle}
+                      {/* Only worth showing once it means something. */}
+                      {!m.active && m.timesAdded > 1 ? ` · played ${m.timesAdded}×` : null}
+                    </span>
+                  </span>
+                  <span className="jb-mine-plus" aria-hidden="true">{m.active ? "✓" : "+"}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
       {hits && hits.length > 0 ? (
         <ul className="jb-hits">
           {hits.map((h) => (
@@ -373,7 +437,12 @@ export function Jukebox({ initial }: { initial: State }) {
                 <div className="jb-hit-title">{h.title}</div>
                 <div className="jb-hit-sub">{h.channelTitle}</div>
               </div>
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => addFromHit(h)} disabled={busy}>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => queueVideo(h.videoId, h.title)}
+                disabled={busy}
+              >
                 Queue
               </button>
             </li>

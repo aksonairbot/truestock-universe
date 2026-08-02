@@ -317,6 +317,69 @@ export async function advance(outcome: "played" | "skipped" = "played"): Promise
   };
 }
 
+export interface MyTrack {
+  videoId: string;
+  title: string;
+  channelTitle: string | null;
+  thumbnailUrl: string | null;
+  durationSeconds: number | null;
+  /** How many times this person has put it on. A quiet measure of a favourite. */
+  timesAdded: number;
+  /** Already queued or playing right now, so it can't be added again yet. */
+  active: boolean;
+}
+
+/**
+ * The songs this person has put on before, newest first.
+ *
+ * Their history IS their library — there is no separate favourites list to
+ * keep in sync, and a song someone has queued three times has already told us
+ * it's a favourite without anyone pressing a star. Grouped by video so the
+ * same track added five times is one entry rather than five.
+ *
+ * `active` marks anything currently queued or playing (by anyone), because
+ * offering a one-tap "add again" for something already in the queue would
+ * produce a refusal the person could have been spared.
+ */
+export async function myRecentTracks(userId: string, limit = 14): Promise<MyTrack[]> {
+  const db = getDb();
+
+  const result = await db.execute(sql`
+    select
+      t.video_id,
+      max(t.created_at)                                        as last_added,
+      count(*)::int                                            as times_added,
+      (array_agg(t.title          order by t.created_at desc))[1] as title,
+      (array_agg(t.channel_title  order by t.created_at desc))[1] as channel_title,
+      (array_agg(t.thumbnail_url  order by t.created_at desc))[1] as thumbnail_url,
+      (array_agg(t.duration_seconds order by t.created_at desc))[1] as duration_seconds,
+      exists (
+        select 1 from music_tracks a
+        where a.video_id = t.video_id and a.status in ('queued', 'playing')
+      )                                                        as active
+    from music_tracks t
+    where t.added_by_id = ${userId}
+    group by t.video_id
+    order by last_added desc
+    limit ${limit}
+  `);
+
+  // postgres-js hands back an array-like; node-postgres wraps it in { rows }.
+  const rows = (Array.isArray(result) ? result : ((result as { rows?: unknown[] })?.rows ?? [])) as Array<
+    Record<string, unknown>
+  >;
+
+  return rows.map((r) => ({
+    videoId: String(r.video_id),
+    title: String(r.title ?? "Untitled"),
+    channelTitle: r.channel_title == null ? null : String(r.channel_title),
+    thumbnailUrl: r.thumbnail_url == null ? null : String(r.thumbnail_url),
+    durationSeconds: r.duration_seconds == null ? null : Number(r.duration_seconds),
+    timesAdded: Number(r.times_added) || 1,
+    active: Boolean(r.active),
+  }));
+}
+
 export interface DayPlaylist {
   day: string;
   tracks: Array<{

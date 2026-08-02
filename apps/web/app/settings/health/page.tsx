@@ -54,6 +54,8 @@ const SCHEMA_CHECKS: Array<{
   otherColumns?: Array<{ table: string; column: string }>;
   /** For migrations that add an enum value rather than a column. */
   enumValue?: { type: string; value: string };
+  /** For migrations whose entire content is an index. */
+  index?: { table: string; name: string };
 }> = [
   { migration: "0021_task_links", feature: "Figma / social links on tasks", table: "task_links" },
   {
@@ -129,6 +131,12 @@ const SCHEMA_CHECKS: Array<{
       { table: "music_player_state", column: "duration_seconds" },
     ],
   },
+  {
+    migration: "0033_music_mine",
+    feature: "\"Your songs\" — one-tap re-queue from your own history",
+    // Index-only migration, so the probe checks pg_indexes rather than a column.
+    index: { table: "music_tracks", name: "music_tracks_added_by_idx" },
+  },
 ];
 
 /**
@@ -179,6 +187,7 @@ export default async function HealthPage() {
   let taskColumns = new Set<string>();
   let tableNames = new Set<string>();
   let enumValues = new Set<string>();
+  let indexNames = new Set<string>();
   let otherColumns = new Set<string>();
 
   try {
@@ -188,16 +197,38 @@ export default async function HealthPage() {
       db.execute(sql`select column_name from information_schema.columns where table_schema = 'public' and table_name = 'tasks'`),
       db.execute(sql`select table_name from information_schema.tables where table_schema = 'public'`),
     ]);
-    // Columns on tables other than `tasks`, for migrations that touch users
-    // or notifications.
+    // Columns on tables other than `tasks`.
+    //
+    // This list MUST include every table named in a SCHEMA_CHECKS otherColumns
+    // entry. It was users + notifications only, which meant the music probes
+    // added later would have reported "missing" on a perfectly healthy box —
+    // a health page that cries wolf is worse than no health page. If you add a
+    // probe for a new table, add the table here.
     try {
       const otherRes = await db.execute(
         sql`select table_name, column_name from information_schema.columns
-            where table_schema = 'public' and table_name in ('users', 'notifications')`,
+            where table_schema = 'public'
+              and table_name in ('users', 'notifications', 'contribution_tier_history',
+                                 'music_tracks', 'music_votes', 'music_player_state')`,
       );
       for (const r of rowsOf(otherRes)) {
         if (typeof r.table_name === "string" && typeof r.column_name === "string") {
           otherColumns.add(`${r.table_name}.${r.column_name}`);
+        }
+      }
+    } catch {
+      /* reported as missing below, which is the right signal */
+    }
+
+    // Indexes, for migrations that add nothing else. Without this an
+    // index-only migration is unverifiable and quietly assumed fine.
+    try {
+      const idxRes = await db.execute(
+        sql`select tablename, indexname from pg_indexes where schemaname = 'public'`,
+      );
+      for (const r of rowsOf(idxRes)) {
+        if (typeof r.tablename === "string" && typeof r.indexname === "string") {
+          indexNames.add(`${r.tablename}.${r.indexname}`);
         }
       }
     } catch {
@@ -235,6 +266,9 @@ export default async function HealthPage() {
     for (const col of c.taskColumns ?? []) if (!taskColumns.has(col)) missing.push(`tasks.${col}`);
     for (const oc of c.otherColumns ?? []) {
       if (!otherColumns.has(`${oc.table}.${oc.column}`)) missing.push(`${oc.table}.${oc.column}`);
+    }
+    if (c.index && !indexNames.has(`${c.index.table}.${c.index.name}`)) {
+      missing.push(`index ${c.index.name}`);
     }
     if (c.enumValue && !enumValues.has(`${c.enumValue.type}.${c.enumValue.value}`)) {
       missing.push(`${c.enumValue.type} value '${c.enumValue.value}'`);

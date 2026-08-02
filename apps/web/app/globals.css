@@ -6927,6 +6927,58 @@ select.cmp-input {
 .jb-input:disabled { opacity: 0.5; }
 .jb-limit { font-size: 12px; line-height: 1.5; color: var(--warning); margin: 8px 2px 0; max-width: 60ch; }
 
+/* ---- your songs: one tap to put it on again ----
+   A horizontal strip rather than a list, because it sits between the add box
+   and the queue and must not push either of them off the screen. Scrolls
+   sideways; the fade on the right edge is what tells you there's more. */
+.jb-mine { margin-top: 12px; }
+.jb-mine-h {
+  display: flex; align-items: baseline; gap: 8px; margin: 0 2px 7px;
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--text-3); font-weight: 600;
+}
+.jb-mine-hint { text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--text-4, var(--text-3)); }
+.jb-mine-row {
+  display: flex; gap: 8px; list-style: none; margin: 0; padding: 2px 2px 8px;
+  overflow-x: auto; scrollbar-width: thin;
+  /* Fades the last chip out instead of chopping it, so "there is more" reads
+     as an invitation rather than a rendering bug. */
+  mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 26px), transparent 100%);
+}
+.jb-mine-row::-webkit-scrollbar { height: 6px; }
+.jb-mine-row::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 3px; }
+
+.jb-mine-chip {
+  display: flex; align-items: center; gap: 8px;
+  width: 216px; padding: 6px 9px 6px 6px; border-radius: 11px; cursor: pointer;
+  background: var(--panel); border: 1px solid var(--border);
+  text-align: left; font: inherit; color: inherit;
+  transition: transform var(--dur-1) var(--ease-spring), border-color var(--dur-1) var(--ease-out),
+              background var(--dur-1) var(--ease-out);
+}
+.jb-mine-chip:hover:not(:disabled) { transform: translateY(-2px); border-color: var(--accent); }
+.jb-mine-chip:active:not(:disabled) { transform: translateY(0) scale(0.98); }
+.jb-mine-chip:disabled { cursor: default; opacity: 0.55; }
+.jb-mine-chip.is-active { opacity: 0.75; border-color: color-mix(in srgb, var(--success) 45%, var(--border)); }
+
+.jb-mine-art { width: 52px; height: 30px; border-radius: 6px; object-fit: cover; flex: none; background: var(--panel-2); }
+.jb-mine-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.jb-mine-title { font-size: 12px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.jb-mine-sub { font-size: 10.5px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.jb-mine-plus {
+  flex: none; width: 19px; height: 19px; border-radius: 999px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; line-height: 1; font-weight: 600;
+  background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent);
+}
+.jb-mine-chip.is-active .jb-mine-plus {
+  background: color-mix(in srgb, var(--success) 16%, transparent); color: var(--success);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .jb-mine-chip:hover:not(:disabled) { transform: none; }
+}
+
 /* ---- search results ---- */
 .jb-hits { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .jb-hit {
