@@ -253,3 +253,54 @@ export async function getRelatedTasks(userId: string, limit = 14): Promise<Relat
     overdue: Boolean(r.overdue),
   }));
 }
+
+
+export interface ImprovementTask {
+  id: string;
+  title: string;
+  status: string;
+  dueDate: string | null;
+  completedAt: Date | null;
+  askedBy: string | null;
+  overdue: boolean;
+  done: boolean;
+}
+
+/**
+ * What this person has been asked to work on, newest first.
+ *
+ * Open ones first, then finished — because the finished ones are the point.
+ * Someone looking at their own page should see that the thing their manager
+ * raised three weeks ago is done, and a manager setting a standing should see
+ * it too, right next to the field where they write the reason.
+ */
+export async function getImprovementTasks(userId: string, limit = 20): Promise<ImprovementTask[]> {
+  const db = getDb();
+  const res = await db.execute(sql`
+    select t.id, t.title, t.status::text as status, t.due_date, t.completed_at,
+           u.name as asked_by,
+           (t.status = 'done'::task_status) as done,
+           (t.status not in ('done'::task_status, 'cancelled'::task_status)
+             and t.due_date is not null
+             and t.due_date < (now() at time zone 'Asia/Kolkata')::date) as overdue
+    from tasks t
+    left join users u on u.id = t.created_by_id
+    where t.improvement_for = ${userId}
+      and t.status <> 'cancelled'::task_status
+    order by (t.status = 'done'::task_status) asc,
+             t.due_date asc nulls last,
+             t.created_at desc
+    limit ${limit}
+  `);
+
+  return rowsOf(res).map((r) => ({
+    id: String(r.id),
+    title: String(r.title ?? ""),
+    status: String(r.status ?? ""),
+    dueDate: r.due_date == null ? null : String(r.due_date),
+    completedAt: r.completed_at == null ? null : new Date(String(r.completed_at)),
+    askedBy: r.asked_by == null ? null : String(r.asked_by),
+    overdue: Boolean(r.overdue),
+    done: Boolean(r.done),
+  }));
+}

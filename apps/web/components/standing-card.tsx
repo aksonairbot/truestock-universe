@@ -28,7 +28,7 @@
 
 import { ActionForm } from "@/components/action-form";
 import { setContributionTier } from "@/app/members/standing-actions";
-import { TIER_LABEL, TIER_BLURB, TIER_COLOR, TIER_SCALE, type Standing, type Tier } from "@/lib/standing";
+import { TIER_LABEL, TIER_LETTER, TIER_BLURB, TIER_COLOR, TIER_SCALE, type Standing, type Tier } from "@/lib/standing";
 
 function fmtIst(d: Date): string {
   return new Intl.DateTimeFormat("en-IN", {
@@ -66,6 +66,7 @@ export function StandingCard({
         </div>
         {tier ? (
           <span className="stand-chip" style={{ color: TIER_COLOR[tier], borderColor: TIER_COLOR[tier] }}>
+            <span className="stand-letter">{TIER_LETTER[tier]}</span>
             {TIER_LABEL[tier]}
           </span>
         ) : (
@@ -90,6 +91,7 @@ export function StandingCard({
                     style={here ? { color: TIER_COLOR[t], borderColor: TIER_COLOR[t] } : undefined}
                     aria-current={here ? "true" : undefined}
                   >
+                    <span className="stand-step-l">{TIER_LETTER[t]}</span>
                     {TIER_LABEL[t]}
                     {here ? <span className="sr-only"> — this is where you are</span> : null}
                   </li>
@@ -129,7 +131,7 @@ export function StandingCard({
                     className="stand-hist-chip"
                     style={h.tier ? { color: TIER_COLOR[h.tier], borderColor: TIER_COLOR[h.tier] } : undefined}
                   >
-                    {h.tier ? TIER_LABEL[h.tier] : "Cleared"}
+                    {h.tier ? `${TIER_LETTER[h.tier]} — ${TIER_LABEL[h.tier]}` : "Cleared"}
                   </span>
                   <span className="stand-hist-meta">
                     {h.setByName ?? "Someone"} · {fmtIst(h.at)}
@@ -171,7 +173,7 @@ function StandingEditor({ standing }: { standing: Standing }) {
           >
             <option value="">Not set / clear it</option>
             {TIER_SCALE.slice().reverse().map((t) => (
-              <option key={t} value={t}>{TIER_LABEL[t]}</option>
+              <option key={t} value={t}>{TIER_LETTER[t]} — {TIER_LABEL[t]}</option>
             ))}
           </select>
         </label>

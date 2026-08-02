@@ -137,6 +137,11 @@ const SCHEMA_CHECKS: Array<{
     // Index-only migration, so the probe checks pg_indexes rather than a column.
     index: { table: "music_tracks", name: "music_tracks_added_by_idx" },
   },
+  {
+    migration: "0034_improvement_tasks",
+    feature: "Improvement tasks a manager asks for on the rating page",
+    taskColumns: ["improvement_for"],
+  },
 ];
 
 /**

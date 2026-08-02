@@ -26,9 +26,12 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
-import { loadStanding, listStandingSubjects, TIER_LABEL, TIER_COLOR } from "@/lib/standing";
-import { getRatingSignals, getRelatedTasks } from "@/lib/rating-signals";
+import { getDb, projects, eq } from "@tu/db";
+import { loadStanding, listStandingSubjects, TIER_LABEL, TIER_LETTER, TIER_COLOR } from "@/lib/standing";
+import { getRatingSignals, getRelatedTasks, getImprovementTasks } from "@/lib/rating-signals";
 import { StandingCard } from "@/components/standing-card";
+import { ActionForm } from "@/components/action-form";
+import { addImprovementTask, unlinkImprovementTask } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -65,10 +68,12 @@ export default async function RatingPage({
   const standing = await loadStanding(me, targetId);
   if (!standing) redirect("/rating");
 
-  const [signals, tasks, roster] = await Promise.all([
+  const [signals, tasks, roster, growth, projectList] = await Promise.all([
     getRatingSignals(targetId),
     getRelatedTasks(targetId),
     listStandingSubjects(me),
+    getImprovementTasks(targetId),
+    getDb().select({ id: projects.id, name: projects.name }).from(projects).orderBy(projects.name),
   ]);
 
   const isSelf = targetId === me.id;
@@ -103,7 +108,7 @@ export default async function RatingPage({
                 <span className="rate-chip-n">{p.id === me.id ? "You" : p.name.split(/\s+/)[0]}</span>
                 {p.tier ? (
                   <span className="rate-chip-t" style={{ color: TIER_COLOR[p.tier] }}>
-                    {TIER_LABEL[p.tier]}
+                    {TIER_LETTER[p.tier]} — {TIER_LABEL[p.tier]}
                   </span>
                 ) : (
                   <span className="rate-chip-t is-unset">Not set</span>
@@ -119,6 +124,81 @@ export default async function RatingPage({
             is allowed to set this person's standing — so an admin rates from
             here without going anywhere else. It never appears on your own. */}
         <StandingCard standing={standing} subjectName={standing.subjectName} />
+
+        <section className="card rate-sec">
+          <div className="rate-head">
+            <h2 className="rate-h">{isSelf ? "What you've been asked to work on" : "Asked to work on"}</h2>
+            <p className="rate-sub">
+              {isSelf ? (
+                <>
+                  Specific things your manager raised, as real tasks with dates. Finishing them
+                  doesn&rsquo;t move your standing on its own &mdash; a person still decides that &mdash; but
+                  these are what they actually asked for.
+                </>
+              ) : (
+                <>
+                  Turn the reason you wrote into work they can act on. &ldquo;Communication can be
+                  improved&rdquo; is hard to do anything with; &ldquo;run the Monday handover for a month&rdquo;
+                  isn&rsquo;t.
+                </>
+              )}
+            </p>
+          </div>
+
+          {growth.length === 0 ? (
+            <div className="rate-body">
+              <p className="rate-empty">
+                {isSelf
+                  ? "Nothing specific has been asked of you."
+                  : "Nothing asked yet."}
+              </p>
+            </div>
+          ) : (
+            <ul className="rate-growth">
+              {growth.map((g) => (
+                <li key={g.id} className={`rate-g ${g.done ? "is-done" : ""} ${g.overdue ? "is-overdue" : ""}`}>
+                  <span className="rate-g-mark" aria-hidden="true">{g.done ? "✓" : "○"}</span>
+                  <Link href={`/tasks?task=${g.id}`} className="rate-g-t">{g.title}</Link>
+                  <span className="rate-g-m">
+                    {g.done
+                      ? `done ${fmtDate(g.completedAt)}`
+                      : g.dueDate
+                        ? `${g.overdue ? "was due" : "by"} ${fmtDate(g.dueDate)}`
+                        : "no date"}
+                    {g.askedBy && !isSelf ? "" : g.askedBy ? ` · ${g.askedBy}` : ""}
+                  </span>
+                  {standing.canEdit ? (
+                    <ActionForm action={unlinkImprovementTask} className="rate-g-x">
+                      <input type="hidden" name="taskId" value={g.id} />
+                      <button type="submit" className="rate-g-xb" aria-label="Withdraw this ask" title="Withdraw">×</button>
+                    </ActionForm>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {standing.canEdit ? (
+            <div className="rate-add">
+              <ActionForm action={addImprovementTask} className="rate-add-f" resetOnSuccess>
+                <input type="hidden" name="memberId" value={targetId} />
+                <input
+                  name="title" type="text" required maxLength={200}
+                  placeholder="What should they work on? Be specific enough to finish."
+                  className="rate-add-t"
+                />
+                <input name="dueDate" type="date" required className="rate-add-d" aria-label="By when" />
+                <select name="projectId" className="rate-add-p" aria-label="Project" defaultValue="">
+                  <option value="">Their usual project</option>
+                  {projectList.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+                <button type="submit" className="btn btn-primary btn-sm">Ask</button>
+              </ActionForm>
+            </div>
+          ) : null}
+        </section>
 
         <section className="card rate-sec">
           <div className="rate-head">

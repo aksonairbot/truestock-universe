@@ -34,6 +34,19 @@ export function isTier(v: string): v is Tier {
   return (TIERS as readonly string[]).includes(v);
 }
 
+/**
+ * The letter grades Amit asked for, shown alongside the words rather than
+ * instead of them. A letter is quick to say and quick to compare; the word is
+ * what stops "C" reading as a failure when it is in fact the healthy middle
+ * where most of the team should sit. Both, always — never the letter alone.
+ */
+export const TIER_LETTER: Record<Tier, string> = {
+  exceeding: "A",
+  strong: "B",
+  steady: "C",
+  developing: "D",
+};
+
 export const TIER_LABEL: Record<Tier, string> = {
   exceeding: "Exceeding",
   strong: "Strong",

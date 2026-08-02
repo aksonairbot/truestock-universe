@@ -7512,6 +7512,57 @@ select.cmp-input {
 .rate-chip-t { font-size: 10.5px; font-weight: 600; }
 .rate-chip-t.is-unset { color: var(--text-4, var(--text-3)); font-weight: 400; }
 
+/* Letter alongside the word, never instead of it — a bare "C" reads as a
+   failure when it is in fact the healthy middle. */
+.stand-letter {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 17px; height: 17px; margin-right: 7px; border-radius: 5px;
+  font-size: 10.5px; font-weight: 800;
+  background: color-mix(in srgb, currentColor 20%, transparent);
+}
+.stand-step-l { font-weight: 800; margin-right: 5px; opacity: 0.75; }
+
+/* Things a manager has asked for. */
+.rate-growth { list-style: none; margin: 0; padding: 0; }
+.rate-g {
+  display: flex; align-items: baseline; gap: 10px;
+  padding: 9px 22px; border-bottom: 1px solid var(--border); font-size: 12.5px;
+}
+.rate-g:last-child { border-bottom: 0; }
+.rate-g-mark { flex: none; font-size: 11px; color: var(--text-4, var(--text-3)); }
+.rate-g.is-done .rate-g-mark { color: var(--success); }
+.rate-g-t {
+  flex: 1; min-width: 0; color: var(--text); text-decoration: none;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.rate-g-t:hover { color: var(--accent); text-decoration: underline; }
+.rate-g.is-done .rate-g-t { color: var(--text-3); text-decoration: line-through; }
+.rate-g-m { flex: none; font-size: 11px; color: var(--text-4, var(--text-3)); }
+.rate-g.is-overdue .rate-g-m { color: var(--warning); font-weight: 600; }
+.rate-g-x { flex: none; display: inline-flex; }
+.rate-g-xb {
+  border: 0; background: none; cursor: pointer; padding: 0 2px;
+  color: var(--text-4, var(--text-3)); font-size: 15px; line-height: 1;
+  opacity: 0; transition: opacity var(--dur-1) var(--ease-out), color var(--dur-1) var(--ease-out);
+}
+.rate-g:hover .rate-g-xb, .rate-g-xb:focus-visible { opacity: 1; }
+.rate-g-xb:hover { color: var(--danger); }
+
+.rate-add { padding: 13px 22px; border-top: 1px solid var(--border); background: var(--panel-2); }
+.rate-add-f { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.rate-add-t {
+  flex: 1 1 260px; min-width: 0;
+  background: var(--panel); border: 1px solid var(--border-2); border-radius: 9px;
+  padding: 8px 11px; font-size: 13px; color: var(--text);
+}
+.rate-add-d, .rate-add-p {
+  background: var(--panel); border: 1px solid var(--border-2); border-radius: 9px;
+  padding: 8px 10px; font-size: 12.5px; color: var(--text); flex: none;
+}
+.rate-add-t:focus-visible, .rate-add-d:focus-visible, .rate-add-p:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 1px; border-color: transparent;
+}
+
 /* The work behind the numbers. */
 .rate-tasks { list-style: none; margin: 0; padding: 0; }
 .rate-task {

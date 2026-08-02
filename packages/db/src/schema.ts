@@ -502,6 +502,10 @@ export const tasks = pgTable(
     //   contentStage   — idea → script → design → review → scheduled → published
     //   publishAt      — when it goes LIVE (distinct from dueDate, which is
     //                    when the work is due)
+    /** Whose growth this task is for (0034). Usually the assignee, but named
+     *  separately so reassigning the work doesn't move it to someone else's
+     *  rating page. Null for ordinary tasks. */
+    improvementFor: uuid("improvement_for"),
     contentChannel: text("content_channel"),
     contentStage: text("content_stage"),
     publishAt: timestamp("publish_at", { withTimezone: true }),
