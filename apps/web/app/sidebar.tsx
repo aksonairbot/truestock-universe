@@ -73,6 +73,10 @@ export default function Sidebar({
   // useEffect changed the hook count between renders and crashed client-side
   // navigation to/from /welcome (Rules of Hooks).
   if (rawPath === "/welcome" || rawPath.startsWith("/welcome/")) return null;
+  // The speaker opens as a 560px detached window and sits there for hours.
+  // App chrome in it would be both cramped and pointless — nobody navigates
+  // from the jukebox, they just leave it playing.
+  if (rawPath === "/music/player" || rawPath.startsWith("/music/player/")) return null;
 
   return (
     <>

@@ -6973,6 +6973,31 @@ select.cmp-input {
 .jb-boost-caret { font-size: 9px; line-height: 1; }
 .jb-boost-n { font-size: 12px; font-weight: 650; font-variant-numeric: tabular-nums; line-height: 1; }
 
+/* WHO PUT THIS ON. Given its own slot rather than trailing after the channel
+   name, because knowing a colleague chose this is most of what makes a shared
+   queue feel like a room instead of a playlist. */
+.jb-by {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11px; font-weight: 550; color: var(--text-2);
+  flex: none;
+}
+.jb-by-dot {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 15px; height: 15px; border-radius: 999px;
+  font-size: 8.5px; font-weight: 700; letter-spacing: 0;
+  background: color-mix(in srgb, var(--accent-2) 22%, transparent);
+  color: var(--accent-2);
+}
+.jb-by.is-mine { color: var(--accent); }
+.jb-by.is-mine .jb-by-dot {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: var(--accent);
+}
+.jb-now-by { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 11.5px; color: var(--text-3); }
+.jb-row-sub { display: flex; align-items: center; gap: 8px; }
+.jb-row-chan { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.jb-row-dur { flex: none; font-variant-numeric: tabular-nums; }
+
 .jb-empty { font-size: 13px; color: var(--text-3); line-height: 1.6; margin: 4px 2px; max-width: 54ch; }
 
 /* ---- history ---- */
@@ -7001,47 +7026,186 @@ select.cmp-input {
 .jb-day-by { font-size: 10.5px; color: var(--text-4, var(--text-3)); }
 
 /* ---------------------------------------------------------------------------
-   The speaker page.
+   THE SPEAKER — Winamp, 1999.
 
-   YouTube's Required Minimum Functionality: the embed must be at least
-   200×200, genuinely visible, and must not be obscured by overlays or frames.
-   Nothing in this block may position anything over .jbp-stage.
+   Amit asked for the nostalgia and it turns out to be the right shape for the
+   job: a small dense console that lives in the corner of a screen nobody is
+   using is precisely what Winamp was for.
+
+   YOUTUBE'S REQUIRED MINIMUM FUNCTIONALITY STILL APPLIES AND IS NOT
+   NEGOTIABLE. The embed must be >=200x200, genuinely visible, and must NOT be
+   obscured by overlays or frames. So .wa-screen holds the video at full size
+   and every piece of chrome sits above or below it. NOTHING IN THIS BLOCK MAY
+   POSITION ANYTHING OVER .wa-screen — not the LCD strip, not the marquee, not
+   a tempting little "now playing" badge in the corner. That is a terms
+   violation, not a style preference.
 --------------------------------------------------------------------------- */
-.jbp { max-width: 940px; margin: 0 auto; padding: 24px 20px 40px; }
-.jbp-start { max-width: 46ch; margin: 12vh auto 0; text-align: center; }
-.jbp-start-h { font-size: 22px; font-weight: 650; color: var(--text); margin: 0 0 10px; }
-.jbp-start-p { font-size: 14px; line-height: 1.65; color: var(--text-2); margin: 0 0 22px; }
-.jbp-start-note { font-size: 12px; line-height: 1.55; color: var(--text-3); margin: 16px 0 0; }
+.wa {
+  --wa-face:  #3f3f3f;
+  --wa-hi:    #7c7c7c;
+  --wa-lo:    #1b1b1b;
+  --wa-lcd:   #000000;
+  --wa-green: #00e830;
+  --wa-dim:   #0a7a1c;
+  --wa-sel:   #0f2b8c;
+  max-width: 520px; margin: 0 auto; padding: 12px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+.wa-boot { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 16px; }
+.wa-boot-win { max-width: 420px; }
+.wa-boot-body { padding: 18px 16px 20px; text-align: center; }
+.wa-boot-p { font-size: 12.5px; line-height: 1.6; color: #d4d4d4; margin: 0 0 16px; }
+.wa-boot-note { font-size: 11px; line-height: 1.5; color: #9a9a9a; margin: 14px 0 0; }
+.wa-bigbtn {
+  font-family: inherit; font-size: 13px; font-weight: 700; letter-spacing: 0.08em;
+  color: var(--wa-green); background: #111; cursor: pointer;
+  padding: 12px 20px; border: 2px solid; border-color: #6a6a6a #101010 #101010 #6a6a6a;
+  text-shadow: 0 0 6px rgba(0, 232, 48, 0.55);
+}
+.wa-bigbtn:active { border-color: #101010 #6a6a6a #6a6a6a #101010; }
 
-.jbp-stage {
-  width: 100%; aspect-ratio: 16 / 9;
-  /* Comfortably above YouTube's 200px floor at any window size we'd ever see. */
-  min-width: 320px; min-height: 200px;
-  border-radius: 14px; overflow: hidden; background: #000;
-  border: 1px solid var(--border);
+/* The classic beveled window. Light on top-left, dark on bottom-right. */
+.wa-window {
+  background: linear-gradient(180deg, #4a4a4a 0%, #3a3a3a 100%);
+  border: 2px solid; border-color: var(--wa-hi) var(--wa-lo) var(--wa-lo) var(--wa-hi);
+  margin-bottom: 10px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
 }
-.jbp-embed { width: 100%; height: 100%; }
-.jbp-embed iframe { width: 100%; height: 100%; border: 0; display: block; }
+.wa-titlebar {
+  display: flex; align-items: center; gap: 8px;
+  background: linear-gradient(180deg, #2e2e3c 0%, #1d1d27 100%);
+  border-bottom: 1px solid var(--wa-lo);
+  padding: 4px 8px;
+}
+.wa-tb-text {
+  font-size: 9.5px; font-weight: 700; letter-spacing: 0.22em; color: #c8c8d8;
+  text-transform: uppercase;
+}
+.wa-tb-host { margin-left: auto; font-size: 9.5px; color: #7d7d90; letter-spacing: 0.08em; }
 
-.jbp-bar { display: flex; align-items: center; gap: 16px; margin-top: 16px; }
-.jbp-meta { flex: 1; min-width: 0; }
-.jbp-title {
-  font-size: 16px; font-weight: 600; color: var(--text);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+/* ---- the green LCD strip ---- */
+.wa-lcd {
+  display: flex; gap: 10px; align-items: stretch;
+  background: var(--wa-lcd); margin: 6px;
+  border: 2px solid; border-color: var(--wa-lo) var(--wa-hi) var(--wa-hi) var(--wa-lo);
+  padding: 7px 9px;
 }
-.jbp-idle { color: var(--text-3); font-weight: 500; }
-.jbp-sub { font-size: 12.5px; color: var(--text-3); margin-top: 3px; }
-.jbp-controls { display: flex; gap: 8px; flex: none; }
-.jbp-note {
-  margin: 14px 0 0; padding: 9px 12px; border-radius: 9px;
-  font-size: 12.5px; line-height: 1.5; color: var(--warning);
-  border: 1px solid color-mix(in srgb, var(--warning) 32%, transparent);
-  background: color-mix(in srgb, var(--warning) 8%, transparent);
+.wa-lcd-left { flex: none; display: flex; flex-direction: column; justify-content: center; min-width: 74px; }
+.wa-time {
+  font-size: 26px; line-height: 1; font-weight: 700; color: var(--wa-green);
+  letter-spacing: 0.02em; text-shadow: 0 0 8px rgba(0, 232, 48, 0.5);
+  font-variant-numeric: tabular-nums;
 }
-.jbp-next { list-style: none; margin: 22px 0 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
-.jbp-next-row { display: flex; gap: 12px; align-items: baseline; font-size: 12.5px; color: var(--text-3); }
-.jbp-next-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.jbp-next-by { flex: none; font-size: 11px; color: var(--text-4, var(--text-3)); }
+.wa-total { font-size: 10px; color: var(--wa-dim); margin-top: 4px; font-variant-numeric: tabular-nums; }
+.wa-lcd-right { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 7px; }
+
+/* Scrolling title. Winamp scrolled the whole line, and the person's name is
+   IN it on purpose — the jukebox should read as full of colleagues. */
+.wa-marquee { overflow: hidden; white-space: nowrap; height: 15px; }
+.wa-marquee-in {
+  display: inline-block; font-size: 11.5px; line-height: 15px;
+  color: var(--wa-green); text-shadow: 0 0 6px rgba(0, 232, 48, 0.4);
+}
+.wa-marquee-in.is-rolling { animation: wa-roll 26s linear infinite; }
+@keyframes wa-roll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+
+.wa-meters { display: flex; align-items: flex-end; gap: 10px; }
+.wa-viz { display: flex; align-items: flex-end; gap: 2px; height: 17px; flex: none; }
+.wa-viz i {
+  display: block; width: 3px; height: 12%;
+  background: linear-gradient(180deg, #7dff9a 0%, var(--wa-green) 45%, var(--wa-dim) 100%);
+}
+/* Ornament, not analysis: an iframe's audio is cross-origin, so there is
+   nothing to measure. Varied durations so it never reads as a progress bar. */
+.wa-viz.is-on i { animation: wa-bars 900ms ease-in-out infinite alternate; }
+.wa-viz.is-on i:nth-child(3n)   { animation-duration: 640ms; }
+.wa-viz.is-on i:nth-child(3n+1) { animation-duration: 1120ms; }
+.wa-viz.is-on i:nth-child(4n)   { animation-duration: 780ms; }
+.wa-viz.is-on i { animation-delay: calc(var(--b) * -137ms); }
+@keyframes wa-bars { from { height: 10%; } to { height: 100%; } }
+
+.wa-flags { display: flex; flex-direction: column; gap: 2px; font-size: 8px; letter-spacing: 0.1em; }
+.wa-flags span { color: #1f4a27; transition: color 200ms ease; }
+.wa-flags span.is-lit { color: var(--wa-green); text-shadow: 0 0 5px rgba(0, 232, 48, 0.5); }
+
+/* ---- THE VIDEO. Nothing goes on top of this. ---- */
+.wa-screen {
+  margin: 0 6px; background: #000;
+  aspect-ratio: 16 / 9; min-height: 200px;
+  border: 2px solid; border-color: var(--wa-lo) var(--wa-hi) var(--wa-hi) var(--wa-lo);
+}
+.wa-embed { width: 100%; height: 100%; }
+.wa-embed iframe { width: 100%; height: 100%; border: 0; display: block; }
+
+/* ---- transport ---- */
+.wa-transport { display: flex; align-items: center; gap: 5px; padding: 8px 6px 9px; }
+.wa-btn {
+  font-family: inherit; font-size: 11px; color: #e0e0e0; cursor: pointer;
+  min-width: 34px; padding: 6px 8px;
+  background: linear-gradient(180deg, #565656 0%, #3d3d3d 100%);
+  border: 2px solid; border-color: var(--wa-hi) var(--wa-lo) var(--wa-lo) var(--wa-hi);
+}
+.wa-btn:hover:not(:disabled) { background: linear-gradient(180deg, #626262 0%, #464646 100%); }
+.wa-btn:active:not(:disabled) { border-color: var(--wa-lo) var(--wa-hi) var(--wa-hi) var(--wa-lo); }
+.wa-btn:disabled { opacity: 0.4; cursor: default; }
+
+.wa-vol { margin-left: auto; display: flex; align-items: center; gap: 7px; }
+.wa-vol-label { font-size: 8.5px; letter-spacing: 0.14em; color: #9a9a9a; }
+.wa-vol-n { font-size: 9.5px; color: var(--wa-green); min-width: 20px; text-align: right; font-variant-numeric: tabular-nums; }
+.wa-slider { -webkit-appearance: none; appearance: none; width: 92px; height: 14px; background: transparent; cursor: pointer; }
+.wa-slider::-webkit-slider-runnable-track {
+  height: 6px; background: #151515;
+  border: 1px solid; border-color: var(--wa-lo) var(--wa-hi) var(--wa-hi) var(--wa-lo);
+}
+.wa-slider::-moz-range-track {
+  height: 6px; background: #151515;
+  border: 1px solid; border-color: var(--wa-lo) var(--wa-hi) var(--wa-hi) var(--wa-lo);
+}
+.wa-slider::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none; width: 9px; height: 14px; margin-top: -5px;
+  background: linear-gradient(180deg, #d0d0d0, #8a8a8a);
+  border: 1px solid; border-color: #e8e8e8 #2a2a2a #2a2a2a #e8e8e8;
+}
+.wa-slider::-moz-range-thumb {
+  width: 9px; height: 14px; border-radius: 0;
+  background: linear-gradient(180deg, #d0d0d0, #8a8a8a);
+  border: 1px solid; border-color: #e8e8e8 #2a2a2a #2a2a2a #e8e8e8;
+}
+.wa-slider:focus-visible { outline: 1px solid var(--wa-green); outline-offset: 2px; }
+
+.wa-note {
+  margin: 0 0 10px; padding: 8px 10px; font-size: 11px; line-height: 1.5;
+  color: #ffd479; background: #241d0b; border: 1px solid #5a4a1c;
+}
+
+/* ---- playlist editor ---- */
+.wa-pl {
+  background: var(--wa-lcd); margin: 6px;
+  border: 2px solid; border-color: var(--wa-lo) var(--wa-hi) var(--wa-hi) var(--wa-lo);
+  padding: 5px 0; max-height: 220px; overflow-y: auto;
+}
+.wa-pl-row {
+  display: flex; align-items: baseline; gap: 8px;
+  padding: 2px 9px; font-size: 11px; line-height: 1.55; color: var(--wa-green);
+}
+.wa-pl-row.is-current { background: var(--wa-sel); color: #ffffff; }
+.wa-pl-n { flex: none; min-width: 20px; color: var(--wa-dim); font-variant-numeric: tabular-nums; }
+.wa-pl-row.is-current .wa-pl-n { color: #b9c8ff; }
+.wa-pl-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The name is not a footnote. Amit's point: people should see whose song this
+   is, so it gets its own column rather than trailing after the channel. */
+.wa-pl-by { flex: none; max-width: 33%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--wa-dim); }
+.wa-pl-row.is-current .wa-pl-by { color: #b9c8ff; }
+.wa-pl-empty { padding: 10px 9px; font-size: 11px; color: var(--wa-dim); }
+
+.wa-pl::-webkit-scrollbar { width: 9px; }
+.wa-pl::-webkit-scrollbar-track { background: #101010; }
+.wa-pl::-webkit-scrollbar-thumb { background: #4a4a4a; border: 1px solid #6a6a6a; }
+
+@media (prefers-reduced-motion: reduce) {
+  .wa-marquee-in.is-rolling { animation: none; }
+  .wa-viz.is-on i { animation: none; height: 55%; }
+}
 
 @media (max-width: 1000px) {
   .jb-layout { grid-template-columns: minmax(0, 1fr); }

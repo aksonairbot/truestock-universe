@@ -56,6 +56,25 @@ interface Hit {
 
 const POLL_MS = 4000;
 
+/**
+ * Whose song this is, as a thing you can see rather than a suffix.
+ *
+ * The first version buried the name at the end of "channel · 3:42 · Priya",
+ * which reads as metadata. It isn't — knowing a colleague put this on is most
+ * of what makes a shared queue feel like a room rather than a playlist. So it
+ * gets an initial disc and its own slot.
+ */
+function Who({ name, isMine }: { name: string | null; isMine: boolean }) {
+  if (!name) return null;
+  const initial = name.trim().charAt(0).toUpperCase() || "?";
+  return (
+    <span className={`jb-by ${isMine ? "is-mine" : ""}`} title={isMine ? `You added this` : `${name} added this`}>
+      <span className="jb-by-dot" aria-hidden="true">{initial}</span>
+      {isMine ? "you" : name.split(/\s+/)[0]}
+    </span>
+  );
+}
+
 function fmt(seconds: number | null): string {
   if (!seconds || seconds <= 0) return "";
   const m = Math.floor(seconds / 60);
@@ -74,6 +93,39 @@ export function Jukebox({ initial }: { initial: State }) {
   const [pending, setPending] = useState<Record<string, boolean>>({});
   const toast = useToast();
   const inputRef = useRef<HTMLInputElement>(null);
+
+  /**
+   * Open the speaker in a real detached window, not a tab.
+   *
+   * The bug this fixes: /music/player is its own route, so clicking back to
+   * /music unmounted the player and the music stopped. A tab is something you
+   * navigate away from without thinking; a window sized like a hi-fi is
+   * something you park in the corner of the screen and leave alone.
+   *
+   * The window NAME matters as much as the size — calling window.open again
+   * with the same name focuses the window that's already there instead of
+   * opening a second speaker, which would mean two songs at once.
+   *
+   * Still an <a href>, so ctrl/cmd-click and middle-click behave normally and
+   * it degrades to an ordinary link if a popup blocker intervenes.
+   */
+  function openSpeaker(e: React.MouseEvent<HTMLAnchorElement>) {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+    e.preventDefault();
+    const w = window.open(
+      "/music/player",
+      "seekpeak-speaker",
+      "width=560,height=760,menubar=no,toolbar=no,location=no,status=no",
+    );
+    if (!w) {
+      toast("Your browser blocked the window — allow popups for seekpeak.in, or open the link in a new tab.", {
+        tone: "error",
+        duration: 9000,
+      });
+      return;
+    }
+    w.focus();
+  }
 
   const load = useCallback(async () => {
     try {
@@ -208,8 +260,12 @@ export function Jukebox({ initial }: { initial: State }) {
               <div className="jb-now-title">{now.title}</div>
               <div className="jb-now-sub">
                 {now.channelTitle}
-                {now.addedByName ? <> · added by {now.isMine ? "you" : now.addedByName}</> : null}
               </div>
+              {now.addedByName ? (
+                <div className="jb-now-by">
+                  <Who name={now.addedByName} isMine={now.isMine} /> put this on
+                </div>
+              ) : null}
             </div>
             <div className="jb-now-actions">
               <button
@@ -249,8 +305,14 @@ export function Jukebox({ initial }: { initial: State }) {
         ) : (
           <>No speaker connected</>
         )}
-        <a href="/music/player" target="_blank" rel="noopener noreferrer" className="jb-status-link">
-          Open the player →
+        <a
+          href="/music/player"
+          target="seekpeak-speaker"
+          rel="noopener"
+          className="jb-status-link"
+          onClick={openSpeaker}
+        >
+          {player.online ? "Show the player →" : "Open the player →"}
         </a>
       </div>
 
@@ -332,9 +394,9 @@ export function Jukebox({ initial }: { initial: State }) {
                 <div className="jb-row-meta">
                   <div className="jb-row-title">{t.title}</div>
                   <div className="jb-row-sub">
-                    {t.channelTitle}
-                    {t.durationSeconds ? <> · {fmt(t.durationSeconds)}</> : null}
-                    {t.addedByName ? <> · {t.isMine ? "you" : t.addedByName}</> : null}
+                    <Who name={t.addedByName} isMine={t.isMine} />
+                    {t.channelTitle ? <span className="jb-row-chan">{t.channelTitle}</span> : null}
+                    {t.durationSeconds ? <span className="jb-row-dur">{fmt(t.durationSeconds)}</span> : null}
                   </div>
                 </div>
                 {t.isMine ? (
