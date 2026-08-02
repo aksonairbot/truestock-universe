@@ -251,6 +251,10 @@ export const notificationKindEnum = pgEnum("notification_kind", [
   // publish. A separate kind so the inbox never implies a human is asking.
   // The DB side is migration 0028 (ALTER TYPE ... ADD VALUE).
   "content_at_risk",
+  // A manager changed your contribution standing. The body deliberately does
+  // NOT carry the tier value — notifications are delivered by email, and a
+  // standing is not something anyone should learn from an inbox. See 0030.
+  "standing_updated",
 ]);
 
 // ---------- users ----------
@@ -284,6 +288,21 @@ export const users = pgTable(
     productAccess: jsonb("product_access").notNull().default(sql`'["*"]'::jsonb`),
     timezone: text("timezone").notNull().default("Asia/Kolkata"),
     hireDate: date("hire_date"),
+    // ---- Contribution standing (migration 0030) ----
+    // Manager-assigned, and visible ONLY to the person themselves, their
+    // manager, and an admin. NEVER select these columns into anything a peer
+    // can receive. lib/standing.ts is the single door — read through it rather
+    // than reaching for the column, so the rule lives in one place instead of
+    // being re-remembered correctly at every call site.
+    //
+    // Text + CHECK rather than a pgEnum: the vocabulary you use to describe
+    // people is precisely the thing that gets revised, and Postgres cannot
+    // drop or rename an enum value without a table rewrite.
+    contributionTier: text("contribution_tier"),
+    /** Why. The action refuses to set a tier without one. */
+    contributionTierNote: text("contribution_tier_note"),
+    contributionTierSetBy: uuid("contribution_tier_set_by"),
+    contributionTierSetAt: timestamp("contribution_tier_set_at", { withTimezone: true }),
     isActive: boolean("is_active").notNull().default(true),
     lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
@@ -294,6 +313,34 @@ export const users = pgTable(
     byManager: index("users_manager_idx").on(t.managerId),
     byActive: index("users_active_idx").on(t.isActive),
     byDepartment: index("users_department_idx").on(t.departmentId),
+  }),
+);
+
+// ---------- contribution_tier_history ----------
+//
+// Every change to a person's standing, including the one that cleared it.
+//
+// It exists so a standing has a memory. Without it there is only today's
+// value: the person cannot see that it moved or why, a manager's judgement is
+// ambient rather than attributable, and a standing that drifts down over six
+// months looks identical to one set once and left alone.
+//
+// Same visibility rule as the columns — the person, their manager, an admin.
+export const contributionTierHistory = pgTable(
+  "contribution_tier_history",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** Null is meaningful here: it records the standing being cleared. */
+    tier: text("tier"),
+    note: text("note"),
+    setById: uuid("set_by_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    byUser: index("contribution_tier_history_user_idx").on(t.userId, t.createdAt),
   }),
 );
 

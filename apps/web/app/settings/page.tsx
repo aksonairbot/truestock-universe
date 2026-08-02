@@ -3,6 +3,8 @@ import Link from "next/link";
 import AppearanceSection from "./appearance-section";
 import { NotifySection } from "./notify-section";
 import { isOutboundEnabled, outboundStatus } from "@/lib/outbound";
+import { StandingCard } from "@/components/standing-card";
+import { loadStanding } from "@/lib/standing";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +15,17 @@ export const metadata = {
 
 export default async function SettingsPage() {
   const user = await getCurrentUser();
+
+  // Settings is where this lives for the person, because it is the only page
+  // in the app every member can reach. /members redirects anyone who isn't a
+  // manager, so a member would never find their own standing there — which
+  // would make "everyone can see their own" true in the database and false in
+  // practice.
+  //
+  // loadStanding authorises before it reads. Here the viewer IS the subject,
+  // so it always returns a row; passing `user` rather than assuming makes the
+  // rule the same one line of code everywhere it appears.
+  const standing = await loadStanding(user, user.id);
 
   return (
     <div className="page-content">
@@ -44,6 +57,10 @@ export default async function SettingsPage() {
             </div>
           </div>
         </section>
+
+        <div className="mb-6">
+          <StandingCard standing={standing} />
+        </div>
 
         {/* Appearance section (client component for theme toggle) */}
         <AppearanceSection />

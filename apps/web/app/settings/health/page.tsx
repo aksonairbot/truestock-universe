@@ -100,6 +100,18 @@ const SCHEMA_CHECKS: Array<{
       { table: "notifications", column: "delivered_at" },
     ],
   },
+  {
+    migration: "0030_contribution_tier",
+    feature: "Contribution standing (private to the person, their manager and admins)",
+    table: "contribution_tier_history",
+    otherColumns: [
+      { table: "users", column: "contribution_tier" },
+      { table: "users", column: "contribution_tier_note" },
+      { table: "users", column: "contribution_tier_set_by" },
+      { table: "users", column: "contribution_tier_set_at" },
+    ],
+    enumValue: { type: "notification_kind", value: "standing_updated" },
+  },
 ];
 
 /**

@@ -23,7 +23,7 @@ const RECENT_WINDOW_MS = 60_000;
 
 async function insertWithDedupe(opts: {
   userId: string;
-  kind: "mention" | "assigned" | "task_completed" | "comment_on_assigned" | "review_requested" | "review_approved" | "review_revision";
+  kind: "mention" | "assigned" | "task_completed" | "comment_on_assigned" | "review_requested" | "review_approved" | "review_revision" | "standing_updated";
   taskId?: string | null;
   actorId?: string | null;
   body: string;
@@ -67,6 +67,30 @@ async function insertWithDedupe(opts: {
 // ---------------------------------------------------------------------------
 // Public helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Tell someone their contribution standing changed.
+ *
+ * THE BODY CARRIES NO TIER VALUE, and that is the entire design of this
+ * function. Notifications are delivered by email (lib/outbound.ts), so
+ * whatever goes in `body` may land in an inbox, on a phone, on a lock screen,
+ * possibly in a meeting. "You have been moved to Developing" is not a sentence
+ * that should reach someone that way, ahead of the conversation with their
+ * manager. So the message says only that it moved and where to look; the value
+ * and the manager's reasoning live behind the person's own login.
+ *
+ * There is no taskId, so insertWithDedupe's soft dedupe does not apply — which
+ * is correct here. Two genuine changes in a minute are two real events, and
+ * the caller already suppresses no-op saves.
+ */
+export async function notifyStandingUpdated(opts: { userId: string; actorId: string }) {
+  await insertWithDedupe({
+    userId: opts.userId,
+    actorId: opts.actorId,
+    kind: "standing_updated",
+    body: "updated your standing — open Settings to see it and the note behind it",
+  });
+}
 
 /** Notify a user when they've been assigned a task. */
 export async function notifyAssigned(opts: {

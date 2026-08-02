@@ -23,12 +23,28 @@ const KIND_VERB: Record<string, string> = {
   assigned: "assigned",
   task_completed: "completed",
   comment_on_assigned: "commented",
+  // Without an entry here the row falls back to printing the raw enum name,
+  // so the live watchdog has been rendering "Someone content_at_risk Publish
+  // failed: ..." since it shipped.
+  content_at_risk: "flagged",
+  standing_updated: "updated",
 };
 const KIND_COLOR: Record<string, string> = {
   mention: "var(--accent-2)",
   assigned: "var(--info)",
   task_completed: "var(--success)",
   comment_on_assigned: "var(--warning)",
+  content_at_risk: "var(--warning)",
+  standing_updated: "var(--accent-2)",
+};
+
+/**
+ * Where this notification goes when there's no task behind it. A standing
+ * change has no task and is not viewable by anyone but the person, so it
+ * points at their own settings page rather than nowhere.
+ */
+const KIND_HREF: Record<string, string> = {
+  standing_updated: "/settings",
 };
 
 function avaClass(name?: string | null): string {
@@ -76,10 +92,10 @@ export function NotifRow({ row }: { row: Row }) {
     });
   }
 
-  const Wrapper: React.ElementType = row.taskId ? Link : "div";
-  const wrapperProps = row.taskId
-    ? { href: `/tasks?task=${row.taskId}`, scroll: false }
-    : {};
+  const fallbackHref = KIND_HREF[row.kind];
+  const href = row.taskId ? `/tasks?task=${row.taskId}` : fallbackHref;
+  const Wrapper: React.ElementType = href ? Link : "div";
+  const wrapperProps = href ? { href, scroll: !row.taskId } : {};
 
   return (
     <li className={`notif-row ${unread ? "is-unread" : ""}`}>
@@ -87,7 +103,9 @@ export function NotifRow({ row }: { row: Row }) {
         <span className={`tava ${avaClass(row.actor?.name)}`}>{avaInitial(row.actor?.name)}</span>
         <div className="notif-body">
           <div className="notif-line">
-            <span className="notif-actor">{row.actor?.name ?? "Someone"}</span>{" "}
+            {/* Machine-raised notifications (the content watchdog) carry no
+                actor. "Someone flagged..." implies a colleague did it. */}
+            <span className="notif-actor">{row.actor?.name ?? "SeekPeak"}</span>{" "}
             <span className="notif-kind" style={{ color: KIND_COLOR[row.kind] ?? "var(--text-3)" }}>
               {KIND_VERB[row.kind] ?? row.kind}
             </span>{" "}

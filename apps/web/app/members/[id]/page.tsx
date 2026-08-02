@@ -30,6 +30,8 @@ import { RoleSelect } from "../role-select";
 import { DepartmentSelect } from "../department-select";
 import { ManagerSelect } from "../manager-select";
 import { BadgeShelf } from "../../badge-shelf";
+import { StandingCard } from "@/components/standing-card";
+import { loadStanding } from "@/lib/standing";
 
 export const dynamic = "force-dynamic";
 
@@ -125,6 +127,12 @@ export default async function MemberProfilePage({ params, searchParams }: PagePr
   const [userDept] = user.departmentId
     ? await db.select({ name: departments.name, color: departments.color }).from(departments).where(eq(departments.id, user.departmentId)).limit(1)
     : [undefined];
+
+  // Authorised inside loadStanding, not here: it re-checks the viewer against
+  // the subject and returns null when they may not see it. That means this
+  // page cannot leak a standing even if the data wall above is later loosened
+  // — the two guards are independent on purpose.
+  const standing = await loadStanding(me, id);
 
   const [userManager] = user.managerId
     ? await db.select({ name: users.name }).from(users).where(eq(users.id, user.managerId)).limit(1)
@@ -359,6 +367,16 @@ export default async function MemberProfilePage({ params, searchParams }: PagePr
           </Link>
         </div>
       </div>
+
+      {/* Standing — renders nothing at all unless the viewer is this person,
+          their manager, or an admin. Placed directly under the header because
+          for the person themselves it is the most important thing on the page,
+          and burying it below throughput charts would be its own message. */}
+      {standing ? (
+        <div style={{ marginBottom: 18 }}>
+          <StandingCard standing={standing} subjectName={user.name} />
+        </div>
+      ) : null}
 
       {/* stats */}
       <div className="profile-stats">

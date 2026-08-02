@@ -22,6 +22,7 @@ import { getDb, users, tasks, taskComments, departments, eq, and, desc, asc, sql
 import { getCurrentUser } from "@/lib/auth";
 import { isPrivileged, isAdmin, getDepartmentScope } from "@/lib/access";
 import { createMember, createDepartment } from "./actions";
+import { canSeeStandingOf, isTier, TIER_LABEL, TIER_COLOR } from "@/lib/standing";
 
 export const dynamic = "force-dynamic";
 
@@ -203,9 +204,18 @@ export default async function MembersPage({ searchParams }: PageProps) {
     done30d: number;
     comments7d: number;
     busy: number;
+    /** Null when this viewer may not see this person's standing. */
+    standing: string | null;
   };
   const augmented: Augmented[] = memberRows.map((u) => ({
     ...u,
+    // memberRows is already department-filtered for a manager, so in practice
+    // every row here is visible to `me`. The check is applied per row anyway:
+    // it costs nothing, and it means a future change to that filter cannot
+    // silently start rendering standings the viewer shouldn't have.
+    standing: canSeeStandingOf(me, u) && u.contributionTier && isTier(u.contributionTier)
+      ? u.contributionTier
+      : null,
     open: openMap.get(u.id) ?? 0,
     overdue: overdueMap.get(u.id) ?? 0,
     done1d: done1dMap.get(u.id) ?? 0,
@@ -276,6 +286,11 @@ export default async function MembersPage({ searchParams }: PageProps) {
               <tr>
                 <th><Link href={sortHref("name")} className="th-link">Name{sortArrow("name")}</Link></th>
                 <th><Link href={sortHref("role")} className="th-link">Role{sortArrow("role")}</Link></th>
+                {/* NOT sortable, and that is the design. Sorting the team by
+                    standing is a leaderboard, and SeekPeak does not have those.
+                    You can read a person's standing on their own row; you
+                    cannot line people up with it. */}
+                <th title="Visible to this person, their manager, and admins only.">Standing</th>
                 <th>Dept</th>
                 <th>Reports to</th>
                 <th className="text-right"><Link href={sortHref("open")} className="th-link">Open{sortArrow("open")}</Link></th>
@@ -290,7 +305,7 @@ export default async function MembersPage({ searchParams }: PageProps) {
             <tbody>
               {augmented.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="text-center py-10 text-text-3">
+                  <td colSpan={12} className="text-center py-10 text-text-3">
                     No members yet. Use the form on the right to add the first one.
                   </td>
                 </tr>
@@ -316,6 +331,18 @@ export default async function MembersPage({ searchParams }: PageProps) {
                         <span className="inline-block rounded-full" style={{ width: 6, height: 6, background: ROLE_TONE[u.role] }} />
                         {ROLE_LABEL[u.role] ?? u.role}
                       </span>
+                    </td>
+                    <td>
+                      {u.standing ? (
+                        <span
+                          className="stand-cell"
+                          style={{ color: TIER_COLOR[u.standing as keyof typeof TIER_COLOR] }}
+                        >
+                          {TIER_LABEL[u.standing as keyof typeof TIER_LABEL]}
+                        </span>
+                      ) : (
+                        <span className="stand-cell is-unset">Not set</span>
+                      )}
                     </td>
                     <td>
                       {u.departmentId && deptMap.has(u.departmentId) ? (
