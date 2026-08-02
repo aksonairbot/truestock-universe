@@ -112,6 +112,15 @@ const SCHEMA_CHECKS: Array<{
     ],
     enumValue: { type: "notification_kind", value: "standing_updated" },
   },
+  {
+    migration: "0031_music",
+    feature: "The office jukebox (shared queue, boosts, daily playlists)",
+    table: "music_tracks",
+    otherColumns: [
+      { table: "music_votes", column: "kind" },
+      { table: "music_player_state", column: "last_beat_at" },
+    ],
+  },
 ];
 
 /**

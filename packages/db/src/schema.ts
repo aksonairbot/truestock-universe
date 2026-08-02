@@ -316,6 +316,71 @@ export const users = pgTable(
   }),
 );
 
+// ---------- the office jukebox (migration 0031) ----------
+//
+// A shared queue driven from everyone's screen and played through one pair of
+// speakers. See 0031_music.sql for why there is no `position` column (order is
+// derived from votes, so a boost is one INSERT and can never disagree with the
+// votes that produced it) and why there is no snapshot table (play_day makes
+// the daily playlist a GROUP BY that cannot drift from what actually played).
+export const musicTracks = pgTable(
+  "music_tracks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /** YouTube video id, not a URL — the same video arrives in five link forms. */
+    videoId: text("video_id").notNull(),
+    title: text("title").notNull(),
+    channelTitle: text("channel_title"),
+    /** Null when only oEmbed was available (no API key). The queue still works. */
+    durationSeconds: integer("duration_seconds"),
+    thumbnailUrl: text("thumbnail_url"),
+    addedById: uuid("added_by_id"),
+    /** queued | playing | played | skipped — CHECK-constrained in SQL. */
+    status: text("status").notNull().default("queued"),
+    playedAt: timestamp("played_at", { withTimezone: true }),
+    /** The IST day it played. Null until it does. This IS the daily snapshot. */
+    playDay: date("play_day"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    byCreated: index("music_tracks_queued_idx").on(t.createdAt),
+    byDay: index("music_tracks_day_idx").on(t.playDay, t.playedAt),
+  }),
+);
+
+// 'boost' raises a queued track; 'skip' votes to move on from what is playing
+// right now. Deliberately two verbs rather than +1/-1 on one scale — see the
+// migration for why an office does not need a way to downvote a colleague.
+export const musicVotes = pgTable(
+  "music_votes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    trackId: uuid("track_id")
+      .notNull()
+      .references(() => musicTracks.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    // One vote of each kind per person per track. This uniqueness IS the
+    // anti-abuse story — no rate limits, no counters to reconcile.
+    uniqueVote: uniqueIndex("music_votes_unique_idx").on(t.trackId, t.userId, t.kind),
+    byTrack: index("music_votes_track_idx").on(t.trackId, t.kind),
+  }),
+);
+
+/** One row, id 'office'. Lets the queue tell "nothing playing" from "no speaker". */
+export const musicPlayerState = pgTable("music_player_state", {
+  id: text("id").primaryKey().default("office"),
+  lastBeatAt: timestamp("last_beat_at", { withTimezone: true }),
+  hostUserId: uuid("host_user_id"),
+  isPaused: boolean("is_paused").notNull().default(false),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 // ---------- contribution_tier_history ----------
 //
 // Every change to a person's standing, including the one that cleared it.

@@ -6794,3 +6794,270 @@ select.cmp-input {
 @media (max-width: 640px) {
   .stand-head { flex-direction: column; gap: 10px; }
 }
+
+
+/* ---------------------------------------------------------------------------
+   The office jukebox (migration 0031)
+
+   The one surface in SeekPeak allowed to be playful. Everything else in this
+   app is someone's work; this is the radio in the corner, and it should look
+   like it enjoys being looked at.
+
+   The motion here is load-bearing rather than decorative: the equaliser tells
+   you at a glance that sound is actually coming out, and the queue rows
+   animating into their new order IS the feedback for a boost. Both respect
+   prefers-reduced-motion at the bottom of this block.
+--------------------------------------------------------------------------- */
+.jb-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 22px;
+  align-items: start;
+}
+
+/* ---- now playing ---- */
+.jb-now {
+  display: flex; align-items: center; gap: 16px;
+  padding: 16px 18px; border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  position: relative; overflow: hidden;
+}
+.jb-now.is-live {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+  background:
+    radial-gradient(120% 140% at 0% 0%, color-mix(in srgb, var(--accent) 11%, transparent), transparent 60%),
+    var(--panel);
+}
+.jb-now.is-quiet { opacity: 0.85; }
+.jb-now-art {
+  width: 92px; height: 52px; flex: none;
+  border-radius: 9px; object-fit: cover; background: var(--panel-2);
+}
+.jb-art-blank { background: var(--panel-2); }
+.jb-now-meta { flex: 1; min-width: 0; }
+.jb-now-label {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.07em;
+  color: var(--accent); font-weight: 700; margin-bottom: 5px;
+}
+.jb-now-title {
+  font-size: 15px; font-weight: 600; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.jb-quiet-title { color: var(--text-2); font-weight: 500; }
+.jb-now-sub {
+  font-size: 12px; color: var(--text-3); margin-top: 3px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.jb-now-actions { flex: none; }
+
+/* The equaliser. Three bars, deliberately out of phase — a synchronised
+   equaliser reads as a loading spinner, not as sound. */
+.jb-eq { display: inline-flex; align-items: flex-end; gap: 2px; height: 11px; }
+.jb-eq i {
+  display: block; width: 2.5px; border-radius: 1px;
+  background: currentColor; height: 30%;
+  animation: jb-bounce 900ms ease-in-out infinite;
+}
+.jb-eq i:nth-child(2) { animation-duration: 640ms; animation-delay: 120ms; }
+.jb-eq i:nth-child(3) { animation-duration: 1080ms; animation-delay: 260ms; }
+@keyframes jb-bounce {
+  0%, 100% { height: 28%; }
+  50%      { height: 100%; }
+}
+
+/* ---- speaker status ---- */
+.jb-status {
+  display: flex; align-items: center; gap: 8px;
+  margin: 10px 2px 16px; font-size: 12px; color: var(--text-3);
+}
+.jb-dot { width: 7px; height: 7px; border-radius: 999px; flex: none; }
+.jb-dot.is-on {
+  background: var(--success);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--success) 60%, transparent);
+  animation: jb-pulse 2.4s ease-out infinite;
+}
+.jb-dot.is-off { background: var(--text-4, var(--text-3)); opacity: 0.5; }
+@keyframes jb-pulse {
+  0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--success) 55%, transparent); }
+  70%  { box-shadow: 0 0 0 7px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+.jb-status-link { margin-left: auto; color: var(--accent); text-decoration: none; }
+.jb-status-link:hover { text-decoration: underline; }
+
+/* ---- add ---- */
+.jb-add { display: flex; gap: 8px; align-items: center; }
+.jb-input {
+  flex: 1; min-width: 0;
+  background: var(--panel-2); border: 1px solid var(--border-2);
+  border-radius: 10px; padding: 9px 13px; font-size: 13.5px; color: var(--text);
+  transition: border-color var(--dur-1) var(--ease-out), box-shadow var(--dur-1) var(--ease-out);
+}
+.jb-input:focus-visible {
+  outline: none; border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.jb-input:disabled { opacity: 0.5; }
+.jb-limit { font-size: 12px; line-height: 1.5; color: var(--warning); margin: 8px 2px 0; max-width: 60ch; }
+
+/* ---- search results ---- */
+.jb-hits { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.jb-hit {
+  display: flex; align-items: center; gap: 11px;
+  padding: 7px 9px; border-radius: 11px; background: var(--panel-2);
+  animation: motion-in var(--dur-2) var(--ease-out) both;
+}
+.jb-hit-art { width: 62px; height: 35px; border-radius: 6px; object-fit: cover; flex: none; }
+.jb-hit-meta { flex: 1; min-width: 0; }
+.jb-hit-title { font-size: 12.5px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.jb-hit-sub { font-size: 11px; color: var(--text-3); }
+
+/* ---- the queue ---- */
+.jb-queue-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  margin: 22px 2px 8px;
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--text-3); font-weight: 600;
+}
+.jb-queue-n { text-transform: none; letter-spacing: 0; font-weight: 400; }
+.jb-queue { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+.jb-row {
+  display: flex; align-items: center; gap: 11px;
+  padding: 7px 10px; border-radius: 11px;
+  background: var(--panel); border: 1px solid var(--border);
+  animation: jb-in var(--dur-2) var(--ease-out) both;
+  /* Stagger by position so the list assembles rather than appearing. Capped
+     so a forty-song queue doesn't take four seconds to draw. */
+  animation-delay: calc(min(var(--i), 12) * 22ms);
+  transition: border-color var(--dur-1) var(--ease-out), transform var(--dur-1) var(--ease-out);
+}
+.jb-row:hover { border-color: var(--border-2); }
+@keyframes jb-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+.jb-pos {
+  width: 18px; flex: none; text-align: right;
+  font-size: 11px; color: var(--text-4, var(--text-3)); font-variant-numeric: tabular-nums;
+}
+.jb-row-art { width: 58px; height: 33px; border-radius: 6px; object-fit: cover; flex: none; }
+.jb-row-meta { flex: 1; min-width: 0; }
+.jb-row-title { font-size: 13px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.jb-row-sub { font-size: 11px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.jb-remove {
+  flex: none; width: 22px; height: 22px; border-radius: 6px;
+  border: 0; background: none; color: var(--text-4, var(--text-3));
+  font-size: 16px; line-height: 1; cursor: pointer;
+  opacity: 0; transition: opacity var(--dur-1) var(--ease-out), color var(--dur-1) var(--ease-out);
+}
+.jb-row:hover .jb-remove, .jb-remove:focus-visible { opacity: 1; }
+.jb-remove:hover { color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); }
+
+.jb-boost {
+  flex: none; display: flex; flex-direction: column; align-items: center; gap: 1px;
+  min-width: 42px; padding: 5px 8px; border-radius: 9px; cursor: pointer;
+  border: 1px solid var(--border-2); background: var(--panel-2); color: var(--text-3);
+  transition: transform var(--dur-1) var(--ease-spring), border-color var(--dur-1) var(--ease-out),
+              color var(--dur-1) var(--ease-out), background var(--dur-1) var(--ease-out);
+}
+.jb-boost:hover:not(:disabled) { transform: translateY(-1px); border-color: var(--accent); color: var(--accent); }
+.jb-boost:active:not(:disabled) { transform: translateY(0) scale(0.94); }
+.jb-boost.is-on {
+  color: var(--accent); border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 13%, transparent);
+}
+.jb-boost:disabled { opacity: 0.55; cursor: default; }
+.jb-boost-caret { font-size: 9px; line-height: 1; }
+.jb-boost-n { font-size: 12px; font-weight: 650; font-variant-numeric: tabular-nums; line-height: 1; }
+
+.jb-empty { font-size: 13px; color: var(--text-3); line-height: 1.6; margin: 4px 2px; max-width: 54ch; }
+
+/* ---- history ---- */
+.jb-history {
+  border-left: 1px solid var(--border); padding-left: 20px;
+  position: sticky; top: 16px; max-height: calc(100vh - 60px); overflow-y: auto;
+}
+.jb-history-h {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--text-3); font-weight: 600; margin-bottom: 12px;
+}
+.jb-day { margin-bottom: 18px; }
+.jb-day-h {
+  display: flex; align-items: baseline; justify-content: space-between;
+  font-size: 12px; font-weight: 600; color: var(--text-2); margin-bottom: 6px;
+}
+.jb-day-n { font-size: 11px; color: var(--text-4, var(--text-3)); font-weight: 400; }
+.jb-day-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+.jb-day-row { display: flex; flex-direction: column; gap: 1px; }
+.jb-day-row.was-skipped { opacity: 0.5; }
+.jb-day-title {
+  font-size: 12px; color: var(--text-2); text-decoration: none;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.jb-day-title:hover { color: var(--accent); text-decoration: underline; }
+.jb-day-by { font-size: 10.5px; color: var(--text-4, var(--text-3)); }
+
+/* ---------------------------------------------------------------------------
+   The speaker page.
+
+   YouTube's Required Minimum Functionality: the embed must be at least
+   200×200, genuinely visible, and must not be obscured by overlays or frames.
+   Nothing in this block may position anything over .jbp-stage.
+--------------------------------------------------------------------------- */
+.jbp { max-width: 940px; margin: 0 auto; padding: 24px 20px 40px; }
+.jbp-start { max-width: 46ch; margin: 12vh auto 0; text-align: center; }
+.jbp-start-h { font-size: 22px; font-weight: 650; color: var(--text); margin: 0 0 10px; }
+.jbp-start-p { font-size: 14px; line-height: 1.65; color: var(--text-2); margin: 0 0 22px; }
+.jbp-start-note { font-size: 12px; line-height: 1.55; color: var(--text-3); margin: 16px 0 0; }
+
+.jbp-stage {
+  width: 100%; aspect-ratio: 16 / 9;
+  /* Comfortably above YouTube's 200px floor at any window size we'd ever see. */
+  min-width: 320px; min-height: 200px;
+  border-radius: 14px; overflow: hidden; background: #000;
+  border: 1px solid var(--border);
+}
+.jbp-embed { width: 100%; height: 100%; }
+.jbp-embed iframe { width: 100%; height: 100%; border: 0; display: block; }
+
+.jbp-bar { display: flex; align-items: center; gap: 16px; margin-top: 16px; }
+.jbp-meta { flex: 1; min-width: 0; }
+.jbp-title {
+  font-size: 16px; font-weight: 600; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.jbp-idle { color: var(--text-3); font-weight: 500; }
+.jbp-sub { font-size: 12.5px; color: var(--text-3); margin-top: 3px; }
+.jbp-controls { display: flex; gap: 8px; flex: none; }
+.jbp-note {
+  margin: 14px 0 0; padding: 9px 12px; border-radius: 9px;
+  font-size: 12.5px; line-height: 1.5; color: var(--warning);
+  border: 1px solid color-mix(in srgb, var(--warning) 32%, transparent);
+  background: color-mix(in srgb, var(--warning) 8%, transparent);
+}
+.jbp-next { list-style: none; margin: 22px 0 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
+.jbp-next-row { display: flex; gap: 12px; align-items: baseline; font-size: 12.5px; color: var(--text-3); }
+.jbp-next-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.jbp-next-by { flex: none; font-size: 11px; color: var(--text-4, var(--text-3)); }
+
+@media (max-width: 1000px) {
+  .jb-layout { grid-template-columns: minmax(0, 1fr); }
+  .jb-history { border-left: 0; padding-left: 0; border-top: 1px solid var(--border); padding-top: 18px; position: static; max-height: none; }
+}
+@media (max-width: 560px) {
+  .jb-now-art { width: 64px; height: 36px; }
+  .jb-now { flex-wrap: wrap; }
+}
+
+/* Motion here is informative, so it degrades rather than vanishing: the
+   equaliser holds a static mid-height instead of freezing at 28%. */
+@media (prefers-reduced-motion: reduce) {
+  .jb-eq i { animation: none; height: 62%; }
+  .jb-dot.is-on { animation: none; }
+  .jb-row { animation: none; }
+  .jb-hit { animation: none; }
+  .jb-boost:hover:not(:disabled) { transform: none; }
+}

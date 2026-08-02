@@ -166,6 +166,9 @@ export default function Sidebar({
             </span>
           ) : null}
         </NavLink>
+        <NavLink href="/music" active={isActive("/music")} icon={<IcMusic />}>
+          Music
+        </NavLink>
         <NavLink href="/notifications" active={isActive("/notifications")} icon={<IcBell />}>
           <span className="flex-1">Inbox</span>
           {unreadCount > 0 ? (
@@ -397,6 +400,17 @@ function IcChat() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
       <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2v10z" />
+    </svg>
+  );
+}
+
+function IcMusic() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" width="16" height="16"
+         strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 18V5l12-2v13" />
+      <circle cx="6" cy="18" r="3" />
+      <circle cx="18" cy="16" r="3" />
     </svg>
   );
 }
