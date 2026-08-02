@@ -31,9 +31,6 @@ import { loadStanding, listStandingSubjects, TIER_LABEL, TIER_LETTER, TIER_COLOR
 import { getRatingSignals, getRelatedTasks, getImprovementTasks } from "@/lib/rating-signals";
 import { StandingCard } from "@/components/standing-card";
 import { ActionForm } from "@/components/action-form";
-import { getBadgeProgress } from "@/lib/badges";
-import { levelFromXp, getXpLeaderboard } from "@/lib/game";
-import { GameHero, type BadgeView } from "./game-hero";
 import { addImprovementTask, unlinkImprovementTask } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -71,32 +68,13 @@ export default async function RatingPage({
   const standing = await loadStanding(me, targetId);
   if (!standing) redirect("/rating");
 
-  const [signals, tasks, roster, growth, projectList, progress, leaders] = await Promise.all([
+  const [signals, tasks, roster, growth, projectList] = await Promise.all([
     getRatingSignals(targetId),
     getRelatedTasks(targetId),
     listStandingSubjects(me),
     getImprovementTasks(targetId),
     getDb().select({ id: projects.id, name: projects.name }).from(projects).orderBy(projects.name),
-    getBadgeProgress(targetId),
-    getXpLeaderboard(me.id),
   ]);
-
-  // XP is derived from the badges actually earned — there is no stored balance
-  // to drift, and nothing anyone can top up.
-  const xp = progress.filter((p) => p.earned).reduce((sum, p) => sum + p.badge.xp, 0);
-  const levelState = levelFromXp(xp);
-  const badgeViews: BadgeView[] = progress.map((p) => ({
-    key: p.badge.key,
-    name: p.badge.name,
-    description: p.badge.description,
-    icon: p.badge.icon,
-    color: p.badge.color,
-    xp: p.badge.xp,
-    earned: p.earned,
-    current: p.current,
-    target: p.badge.target,
-  }));
-  const myRank = leaders.find((l) => l.id === targetId)?.rank ?? null;
 
   const isSelf = targetId === me.id;
   // A roster of one is just your own name — not worth the furniture.
@@ -146,11 +124,6 @@ export default async function RatingPage({
             is allowed to set this person's standing — so an admin rates from
             here without going anywhere else. It never appears on your own. */}
         <StandingCard standing={standing} subjectName={standing.subjectName} />
-
-        {/* The game layer, BELOW the standing on purpose. The standing is the
-            answer to the question people arrive with; XP is not a route to it,
-            however much putting it on top would imply otherwise. */}
-        <GameHero state={levelState} badges={badgeViews} leaders={leaders} rank={myRank} />
 
         <section className="card rate-sec">
           <div className="rate-head">

@@ -19,7 +19,6 @@ import {
   playlistsByDay,
   dayLabel,
   canControlPlayback,
-  getDjStats,
   MAX_QUEUED_PER_PERSON,
 } from "@/lib/music";
 import { isYouTubeConfigured } from "@/lib/youtube";
@@ -54,14 +53,13 @@ export default async function MusicPage({
   const asMember = (await searchParams).as === "member";
   const canControl = canControlPlayback(me) && !asMember;
 
-  const [now, queue, player, myQueued, mine, days, dj] = await Promise.all([
+  const [now, queue, player, myQueued, mine, days] = await Promise.all([
     getNowPlaying(me.id),
     getQueue(me.id, 40),
     getPlayerStatus(),
     queuedCountFor(me.id),
     myRecentTracks(me.id, 14),
     playlistsByDay(7),
-    getDjStats(me.id),
   ]);
 
   return (
@@ -93,41 +91,6 @@ export default async function MusicPage({
         />
 
         <aside className="jb-history">
-          {/* Boosts received, not songs queued. Queuing is free; a boost is
-              someone else stopping what they were doing to say they liked
-              your choice. Ranking by volume would crown whoever pastes the
-              most links. */}
-          {dj.board.length > 0 ? (
-            <section className="dj">
-              <div className="dj-h">Selectors</div>
-              <div className="dj-me">
-                <div className="dj-stat">
-                  <span className="dj-n">{dj.myBoosts}</span>
-                  <span className="dj-l">boosts on your picks</span>
-                </div>
-                <div className="dj-stat">
-                  <span className="dj-n">{dj.myPlayed}</span>
-                  <span className="dj-l">of yours played</span>
-                </div>
-                {dj.myRank ? <span className="dj-rank">#{dj.myRank}</span> : null}
-              </div>
-              {dj.topTrack ? (
-                <div className="dj-top">
-                  Your most-boosted: <strong>{dj.topTrack.title}</strong> ({dj.topTrack.boosts})
-                </div>
-              ) : null}
-              <ol className="dj-board">
-                {dj.board.slice(0, 6).map((d, i) => (
-                  <li key={d.id} className={`dj-r ${d.isMe ? "is-me" : ""}`} style={{ ["--i" as string]: String(i) }}>
-                    <span className={`dj-p p${d.rank <= 3 ? d.rank : 0}`}>{d.rank}</span>
-                    <span className="dj-name">{d.isMe ? "You" : d.name.split(/\s+/)[0]}</span>
-                    <span className="dj-b">{d.boosts}</span>
-                  </li>
-                ))}
-              </ol>
-            </section>
-          ) : null}
-
           <div className="jb-history-h">What we listened to</div>
           {days.length === 0 ? (
             <p className="jb-empty">
