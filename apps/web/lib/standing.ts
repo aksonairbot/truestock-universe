@@ -23,7 +23,7 @@
 //     human's name on it. Computing it from throughput would make it look
 //     objective while measuring whoever closes the most small tickets.
 
-import { getDb, users, contributionTierHistory, eq, and, desc, sql } from "@tu/db";
+import { getDb, users, departments, contributionTierHistory, eq, and, desc, sql } from "@tu/db";
 import type { User } from "@tu/db";
 import { isAdmin, isPrivileged } from "./access";
 
@@ -75,6 +75,8 @@ export interface StandingEntry {
 
 export interface Standing {
   userId: string;
+  /** Whose standing this is, for headings. */
+  subjectName: string;
   tier: Tier | null;
   note: string | null;
   setByName: string | null;
@@ -157,6 +159,7 @@ export async function loadStanding(viewer: User, targetId: string): Promise<Stan
   const [subject] = await db
     .select({
       id: users.id,
+      name: users.name,
       role: users.role,
       departmentId: users.departmentId,
       managerId: users.managerId,
@@ -188,6 +191,7 @@ export async function loadStanding(viewer: User, targetId: string): Promise<Stan
 
   return {
     userId: targetId,
+    subjectName: subject.name,
     tier: subject.tier && isTier(subject.tier) ? subject.tier : null,
     note: subject.note,
     setByName,
@@ -201,6 +205,59 @@ export async function loadStanding(viewer: User, targetId: string): Promise<Stan
     isSelf: viewer.id === targetId,
     canEdit: canSetStandingOf(viewer, subject),
   };
+}
+
+export interface StandingRosterEntry {
+  id: string;
+  name: string;
+  role: string;
+  departmentName: string | null;
+  tier: Tier | null;
+  setAt: Date | null;
+  /** True when the viewer may actually change this one. */
+  canEdit: boolean;
+}
+
+/**
+ * Everyone whose standing this viewer is allowed to see, for the roster on
+ * the rating page.
+ *
+ * Filtered through canSeeStandingOf in application code rather than translated
+ * into a WHERE clause, deliberately. The rule has four branches and one
+ * exception; expressing it twice — once in SQL, once in TypeScript — is how
+ * the two versions drift and one of them quietly starts leaking. At eighteen
+ * people the cost of fetching and filtering is nothing.
+ */
+export async function listStandingSubjects(viewer: User): Promise<StandingRosterEntry[]> {
+  const db = getDb();
+  const rows = await db
+    .select({
+      id: users.id,
+      name: users.name,
+      role: users.role,
+      departmentId: users.departmentId,
+      managerId: users.managerId,
+      departmentName: departments.name,
+      tier: users.contributionTier,
+      setAt: users.contributionTierSetAt,
+      isActive: users.isActive,
+    })
+    .from(users)
+    .leftJoin(departments, eq(users.departmentId, departments.id))
+    .where(eq(users.isActive, true))
+    .orderBy(users.name);
+
+  return rows
+    .filter((r) => canSeeStandingOf(viewer, r))
+    .map((r) => ({
+      id: r.id,
+      name: r.name,
+      role: r.role,
+      departmentName: r.departmentName ?? null,
+      tier: r.tier && isTier(r.tier) ? r.tier : null,
+      setAt: r.setAt ? new Date(r.setAt) : null,
+      canEdit: canSetStandingOf(viewer, r),
+    }));
 }
 
 async function nameOf(userId: string): Promise<string | null> {

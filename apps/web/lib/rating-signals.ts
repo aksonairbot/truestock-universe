@@ -199,3 +199,57 @@ export async function getRatingSignals(userId: string): Promise<Signal[]> {
 
   return out;
 }
+
+
+export interface RelatedTask {
+  id: string;
+  title: string;
+  status: string;
+  dueDate: string | null;
+  completedAt: Date | null;
+  overdue: boolean;
+}
+
+/**
+ * The actual work behind the numbers.
+ *
+ * A manager setting someone's standing should be looking at the work, not at
+ * five aggregates. This is what turns the rating page from a dashboard into
+ * something you can form a judgement from: overdue first, then what's open,
+ * then what they've actually finished lately.
+ *
+ * The person's own page gets it too — being told "4 overdue" without being
+ * told WHICH four is the kind of feedback that makes people feel watched
+ * rather than helped.
+ */
+export async function getRelatedTasks(userId: string, limit = 14): Promise<RelatedTask[]> {
+  const db = getDb();
+  const res = await db.execute(sql`
+    select id, title, status::text as status, due_date, completed_at,
+           (status not in ('done'::task_status, 'cancelled'::task_status)
+             and due_date is not null
+             and due_date < (now() at time zone 'Asia/Kolkata')::date) as overdue
+    from tasks
+    where assignee_id = ${userId}
+      and status <> 'cancelled'::task_status
+      and (status not in ('done'::task_status)
+           or completed_at > now() - interval '30 days')
+    order by
+      (status not in ('done'::task_status, 'cancelled'::task_status)
+        and due_date is not null
+        and due_date < (now() at time zone 'Asia/Kolkata')::date) desc,
+      (status not in ('done'::task_status)) desc,
+      due_date asc nulls last,
+      completed_at desc nulls last
+    limit ${limit}
+  `);
+
+  return rowsOf(res).map((r) => ({
+    id: String(r.id),
+    title: String(r.title ?? ""),
+    status: String(r.status ?? ""),
+    dueDate: r.due_date == null ? null : String(r.due_date),
+    completedAt: r.completed_at == null ? null : new Date(String(r.completed_at)),
+    overdue: Boolean(r.overdue),
+  }));
+}
