@@ -6815,18 +6815,6 @@ select.cmp-input {
   align-items: start;
 }
 
-/* Preview banner. Deliberately loud — an admin who forgets they're in preview
-   and reports "the skip button has disappeared" costs more than a bit of amber. */
-.jb-preview {
-  display: flex; align-items: center; gap: 9px; flex-wrap: wrap;
-  margin-bottom: 12px; padding: 9px 13px; border-radius: 10px;
-  font-size: 12.5px; line-height: 1.5; color: var(--warning);
-  border: 1px dashed color-mix(in srgb, var(--warning) 45%, transparent);
-  background: color-mix(in srgb, var(--warning) 8%, transparent);
-}
-.jb-preview-eye { font-size: 13px; }
-.jb-preview-exit { margin-left: auto; color: var(--warning); font-weight: 600; text-decoration: underline; }
-
 /* ---- now playing: the little Winamp everyone gets ----
    Most people can no longer touch playback, so this had to become MORE
    informative rather than less: the green display, the marquee naming whose
@@ -6922,9 +6910,30 @@ select.cmp-input {
   100% { box-shadow: 0 0 0 0 transparent; }
 }
 .jb-status-link { margin-left: auto; color: var(--accent); text-decoration: none; }
-/* The second link must not also claim margin-left:auto, or the two fight. */
-.jb-status-link.jb-status-alt { margin-left: 14px; color: var(--text-3); }
-.jb-status-link.jb-status-alt:hover { color: var(--text-2); }
+
+/* For most of the team this is the only control on the page that opens
+   anything, so it stops being a quiet link and becomes the obvious thing to
+   press. */
+.jb-watch {
+  margin-left: auto; display: inline-flex; align-items: center; gap: 8px;
+  padding: 8px 16px; border-radius: 10px; text-decoration: none;
+  font-size: 13px; font-weight: 600; letter-spacing: 0.01em;
+  color: #fff; background: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 70%, #000);
+  box-shadow: 0 1px 0 color-mix(in srgb, #fff 22%, transparent) inset,
+              0 2px 10px color-mix(in srgb, var(--accent) 35%, transparent);
+  transition: transform var(--dur-1) var(--ease-spring), box-shadow var(--dur-1) var(--ease-out),
+              background var(--dur-1) var(--ease-out);
+}
+.jb-watch:hover {
+  transform: translateY(-1px);
+  background: color-mix(in srgb, var(--accent) 88%, #fff);
+  box-shadow: 0 1px 0 color-mix(in srgb, #fff 26%, transparent) inset,
+              0 5px 18px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+.jb-watch:active { transform: translateY(0) scale(0.98); }
+.jb-watch-ic { font-size: 10px; line-height: 1; opacity: 0.95; }
+@media (prefers-reduced-motion: reduce) { .jb-watch:hover { transform: none; } }
 .jb-status-link:hover { text-decoration: underline; }
 
 /* ---- add ---- */
@@ -7030,6 +7039,11 @@ select.cmp-input {
   from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: none; }
 }
+/* A track with no thumbnail. Lost when the now-playing block was replaced,
+   which left blank slots rendering as nothing at all. `.jb` itself is a plain
+   wrapper and intentionally has no rule. */
+.jb-art-blank { background: var(--panel-2); }
+
 .jb-pos {
   width: 18px; flex: none; text-align: right;
   font-size: 11px; color: var(--text-4, var(--text-3)); font-variant-numeric: tabular-nums;
@@ -7199,17 +7213,30 @@ select.cmp-input {
   text-shadow: 0 0 9px rgba(18, 226, 28, 0.45);
 }
 .wa-disp-r { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 4px; }
-.wa-marq { overflow: hidden; white-space: nowrap; height: 14px; }
+.wa-marq {
+  overflow: hidden; white-space: nowrap;
+  /* 14px clipped every descender — the g in "Song" lost its tail. The box has
+     to clear the line box, not merely match the font size. */
+  height: 18px;
+  /* Fade both ends so text enters and leaves the display instead of being
+     chopped mid-glyph against the bezel, which is what it was doing. */
+  mask-image: linear-gradient(90deg, transparent 0, #000 8px, #000 calc(100% - 12px), transparent 100%);
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 8px, #000 calc(100% - 12px), transparent 100%);
+}
 .wa-marq-in {
-  display: inline-block; font-size: 11px; line-height: 14px; color: var(--wa-green);
+  display: inline-block; font-size: 11.5px; line-height: 18px; color: var(--wa-green);
   text-shadow: 0 0 5px rgba(18, 226, 28, 0.35);
 }
-.wa-marq-in.is-rolling { animation: wa-roll 26s linear infinite; }
+/* Duration comes from the title's length (set inline), so everything scrolls
+   at the same reading speed regardless of how long the name is. */
+.wa-marq-in.is-rolling { animation: wa-roll var(--dur, 26s) linear infinite; }
 @keyframes wa-roll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
 
-.wa-rates { display: flex; align-items: baseline; gap: 4px; font-size: 8px; }
+/* gap:4px put a space inside "480p" and "05:50len". The unit owns its own
+   spacing so the number and its unit read as one token. */
+.wa-rates { display: flex; align-items: baseline; gap: 0; font-size: 8px; }
 .wa-num { color: var(--wa-green); font-variant-numeric: tabular-nums; }
-.wa-unit { color: var(--wa-dim); margin-right: 5px; }
+.wa-unit { color: var(--wa-dim); margin: 0 9px 0 1.5px; }
 .wa-chan { margin-left: auto; color: #16401c; letter-spacing: 0.06em; }
 .wa-chan.is-lit { color: var(--wa-green); text-shadow: 0 0 5px rgba(18, 226, 28, 0.5); }
 
@@ -7293,54 +7320,94 @@ select.cmp-input {
 .wa-ctl-view { padding-top: 7px; }
 .wa-viewnote { font-size: 9.5px; color: #9a9a9a; letter-spacing: 0.02em; }
 
-/* ---- the equaliser window (viewer only, decorative) ----
-   Every slider here is ornament. The audio is cross-origin on another machine,
-   so there is nothing to analyse and nothing we could filter. It fills the
-   space the transport row leaves empty, and it is the most recognisable
-   window Winamp had. */
+/* ---- the equaliser window (viewer only) ----
+   THE SLIDERS ARE REAL — they drag, they hold their position, they persist
+   per browser, and they shape the analyser beneath them. What they cannot do
+   is touch the audio: that lives in a cross-origin iframe on another machine,
+   so there is no signal to filter. Rather than fake a filter, they visibly
+   drive the thing right next to them.
+
+   They were animated drifting up and down before, which looked like a control
+   and behaved like a screensaver. A slider that moves on its own is worse
+   than no slider. */
 .wa-eqwin .wa-body { padding: 6px 5px 5px; }
 .wa-eq {
   display: flex; align-items: flex-end; gap: 8px;
-  background: var(--wa-lcd); padding: 7px 9px 5px;
+  background: var(--wa-lcd); padding: 8px 10px 6px;
   border: 2px solid; border-color: var(--wa-lo) var(--wa-hi) var(--wa-hi) var(--wa-lo);
 }
-.wa-eq-pre { display: flex; flex-direction: column; align-items: center; gap: 3px; flex: none; padding-right: 8px; border-right: 1px solid #16281a; }
-.wa-eq-bands { display: flex; gap: 5px; flex: 1; justify-content: space-between; }
-.wa-eq-band { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.wa-eq-pre {
+  display: flex; flex-direction: column; align-items: center; gap: 4px; flex: none;
+  padding-right: 9px; border-right: 1px solid #16281a;
+}
+.wa-eq-bands { display: flex; gap: 4px; flex: 1; justify-content: space-between; }
+.wa-eq-band { display: flex; flex-direction: column; align-items: center; gap: 4px; }
 
-/* The slot is the recessed track; the thumb rides it. */
-.wa-eq-slot {
-  position: relative; width: 9px; height: 46px;
-  background: linear-gradient(90deg, transparent 3px, #16281a 3px, #16281a 5px, transparent 5px);
+/* A horizontal range rotated upright. Rotation carries the hit area with it,
+   so dragging works exactly as it should, and going through a real <input>
+   keeps keyboard control and screen-reader labels for free — neither of which
+   a hand-rolled pointer handler would have given us. */
+.wa-eq-slot { position: relative; width: 13px; height: 52px; }
+.wa-eq-slot::before {
+  /* The recessed centre groove the thumb rides in. */
+  content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: 3px;
+  transform: translateX(-50%);
+  background: #102413; border-left: 1px solid #050b06; border-right: 1px solid #1d3b22;
 }
-.wa-eq-thumb {
-  position: absolute; left: 0; width: 9px; height: 6px;
-  background: linear-gradient(180deg, #d8d8d8, #7a7a7a);
-  border: 1px solid; border-color: #f2f2f2 #202020 #202020 #f2f2f2;
-  /* Centre = flat EQ. Everything below animates around this. */
-  top: 20px;
+.wa-eq-range {
+  position: absolute; left: 50%; top: 50%;
+  width: 52px; height: 13px; margin: 0;
+  transform: translate(-50%, -50%) rotate(-90deg);
+  -webkit-appearance: none; appearance: none;
+  background: transparent; cursor: ns-resize;
 }
-/* Settled when nothing is playing; drifting when it is. Staggered per band so
-   it reads as a spectrum rather than ten sliders moving as one. */
-.wa-eq.is-on .wa-eq-thumb { animation: wa-eqdrift 3.4s ease-in-out infinite alternate; }
-.wa-eq.is-on .wa-eq-band:nth-child(3n) .wa-eq-thumb   { animation-duration: 2.6s; }
-.wa-eq.is-on .wa-eq-band:nth-child(3n+1) .wa-eq-thumb { animation-duration: 4.1s; }
-.wa-eq.is-on .wa-eq-band .wa-eq-thumb { animation-delay: calc(var(--b) * -290ms); }
-@keyframes wa-eqdrift {
-  0%   { top: 32px; }
-  35%  { top: 8px; }
-  70%  { top: 26px; }
-  100% { top: 13px; }
+.wa-eq-range::-webkit-slider-runnable-track { height: 13px; background: transparent; }
+.wa-eq-range::-moz-range-track { height: 13px; background: transparent; }
+.wa-eq-range::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none; width: 9px; height: 13px;
+  background: linear-gradient(180deg, #e6e6e6 0%, #b4b4b4 45%, #6f6f6f 100%);
+  border: 1px solid; border-color: #f6f6f6 #1a1a1a #1a1a1a #f6f6f6;
 }
+.wa-eq-range::-moz-range-thumb {
+  width: 9px; height: 13px; border-radius: 0;
+  background: linear-gradient(180deg, #e6e6e6 0%, #b4b4b4 45%, #6f6f6f 100%);
+  border: 1px solid; border-color: #f6f6f6 #1a1a1a #1a1a1a #f6f6f6;
+}
+.wa-eq-range:focus-visible { outline: 1px solid var(--wa-green); outline-offset: 3px; }
 .wa-eq-lab { font-size: 6.5px; color: var(--wa-dim); letter-spacing: 0.02em; }
 
-/* The big analyser under the EQ — the viewer's centrepiece. */
+.wa-eq-presets { display: flex; gap: 3px; padding: 6px 0 0; }
+.wa-eq-preset {
+  font-family: inherit; font-size: 7.5px; letter-spacing: 0.1em; cursor: pointer;
+  color: #d8d8d8; padding: 3px 7px;
+  background: linear-gradient(180deg, #5c5c5c 0%, #3d3d3d 100%);
+  border: 2px solid; border-color: var(--wa-hi) var(--wa-lo) var(--wa-lo) var(--wa-hi);
+}
+.wa-eq-preset:hover { background: linear-gradient(180deg, #6a6a6a 0%, #474747 100%); color: #fff; }
+.wa-eq-preset:active { border-color: var(--wa-lo) var(--wa-hi) var(--wa-hi) var(--wa-lo); }
+
+/* The analyser the EQ drives. --g is the per-bar gain from the curve. */
 .wa-viz-big {
-  height: 44px; gap: 2px; margin-top: 6px; padding: 5px 8px;
-  background: var(--wa-lcd); justify-content: space-between;
+  height: 46px; gap: 2px; margin-top: 6px; padding: 5px 8px;
+  background: var(--wa-lcd); justify-content: space-between; align-items: flex-end;
   border: 2px solid; border-color: var(--wa-lo) var(--wa-hi) var(--wa-hi) var(--wa-lo);
 }
-.wa-viz-big i { width: 4px; }
+.wa-viz-big i {
+  width: 4px;
+  /* Settled state: the curve itself, so your shape stays readable when the
+     music stops rather than collapsing to a flat line. */
+  height: calc(52% * var(--g, 1));
+  transition: height 260ms var(--ease-out);
+}
+.wa-viz-big.is-on i { animation: wa-bars-g 880ms ease-in-out infinite alternate; transition: none; }
+.wa-viz-big.is-on i:nth-child(3n)   { animation-duration: 610ms; }
+.wa-viz-big.is-on i:nth-child(3n+1) { animation-duration: 1150ms; }
+.wa-viz-big.is-on i:nth-child(4n)   { animation-duration: 780ms; }
+.wa-viz-big.is-on i { animation-delay: calc(var(--b) * -117ms); }
+@keyframes wa-bars-g {
+  from { height: calc(9% * var(--g, 1)); }
+  to   { height: calc(100% * var(--g, 1)); }
+}
 
 .wa-note {
   margin: 0 0 8px; padding: 7px 10px; font-size: 11px; line-height: 1.5;
@@ -7378,7 +7445,7 @@ select.cmp-input {
 @media (prefers-reduced-motion: reduce) {
   .wa-marq-in.is-rolling { animation: none; }
   .wa-viz.is-on i { animation: none; height: 52%; }
-  .wa-eq.is-on .wa-eq-thumb { animation: none; }
+  .wa-viz-big.is-on i { animation: none; height: calc(52% * var(--g, 1)); }
   .wa-seek i { transition: none; }
 }
 

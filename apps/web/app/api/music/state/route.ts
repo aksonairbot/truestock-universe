@@ -25,12 +25,9 @@ import { isYouTubeConfigured } from "@/lib/youtube";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(request: Request) {
+export async function GET() {
   try {
     const me = await getCurrentUser();
-    // The poll has to honour ?as=member too, or four seconds after an admin
-    // opens the preview the buttons reappear underneath them.
-    const previewAsMember = new URL(request.url).searchParams.get("as") === "member";
 
     const [now, queue, player, myQueued, mine] = await Promise.all([
       getNowPlaying(me.id),
@@ -51,8 +48,7 @@ export async function GET(request: Request) {
         searchEnabled: isYouTubeConfigured(),
         // Drives which buttons render. The actions check this themselves too —
         // this field is for the UI's benefit, never the security boundary.
-        // ANDed, never ORed: preview can only take capability away.
-        canControl: canControlPlayback(me) && !previewAsMember,
+        canControl: canControlPlayback(me),
       },
       // no-store: a cached jukebox is a jukebox showing the wrong song.
       { headers: { "Cache-Control": "no-store" } },

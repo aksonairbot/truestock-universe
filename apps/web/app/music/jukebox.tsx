@@ -63,8 +63,6 @@ interface State {
   maxPerPerson: number;
   searchEnabled: boolean;
   canControl: boolean;
-  /** True only when someone WITH control is deliberately looking without it. */
-  previewing?: boolean;
 }
 interface Hit {
   videoId: string;
@@ -123,17 +121,13 @@ export function Jukebox({ initial }: { initial: State }) {
 
   const load = useCallback(async () => {
     try {
-      // Carry the preview flag into the poll, or the controls reappear four
-      // seconds after the admin opens it.
-      const qs = initial.previewing ? "?as=member" : "";
-      const r = await fetch(`/api/music/state${qs}`, { cache: "no-store" });
+      const r = await fetch("/api/music/state", { cache: "no-store" });
       if (!r.ok) return;
-      const d = (await r.json()) as State;
-      applyState({ ...d, previewing: initial.previewing });
+      applyState((await r.json()) as State);
     } catch {
       // A dropped poll is a stale second, not an error worth showing.
     }
-  }, [applyState, initial.previewing]);
+  }, [applyState]);
 
   useEffect(() => {
     const t = setInterval(load, POLL_MS);
@@ -164,9 +158,9 @@ export function Jukebox({ initial }: { initial: State }) {
   function openSpeaker(e: React.MouseEvent<HTMLAnchorElement>) {
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
     e.preventDefault();
-    // Members (and admins previewing) get the viewer; the speaker window is
-    // named separately so opening one never steals or replaces the other.
-    const viewer = !canControl || Boolean(state.previewing);
+    // Members get the viewer; the speaker window is named separately so
+    // opening one never steals or replaces the other.
+    const viewer = !canControl;
     const w = window.open(
       viewer ? "/music/player?as=member" : "/music/player",
       viewer ? "seekpeak-viewer" : "seekpeak-speaker",
@@ -288,15 +282,6 @@ export function Jukebox({ initial }: { initial: State }) {
 
   return (
     <div className="jb">
-      {state.previewing ? (
-        <div className="jb-preview" role="status">
-          <span className="jb-preview-eye" aria-hidden="true">👁</span>
-          Viewing as a member — no playback controls. &ldquo;Watch along&rdquo; opens the viewer window they get:
-          same video, same lights, muted and following the speaker.
-          <a href="/music" className="jb-preview-exit">Exit preview</a>
-        </div>
-      ) : null}
-
       {/* ---------------- now playing: the little Winamp ---------------- */}
       <section className={`jbw ${live ? "is-live" : ""}`}>
         {now?.thumbnailUrl ? (
@@ -352,22 +337,19 @@ export function Jukebox({ initial }: { initial: State }) {
         ) : (
           <>No speaker connected</>
         )}
+        {/* One button, not a row of quiet links. For most of the team this
+            is the only thing on the page they can press that opens anything,
+            so it should look like it. */}
         <a
-          href={canControl && !state.previewing ? "/music/player" : "/music/player?as=member"}
-          target={canControl && !state.previewing ? "seekpeak-speaker" : "seekpeak-viewer"}
+          href={canControl ? "/music/player" : "/music/player?as=member"}
+          target={canControl ? "seekpeak-speaker" : "seekpeak-viewer"}
           rel="noopener"
-          className="jb-status-link"
+          className="jb-watch"
           onClick={openSpeaker}
         >
-          {canControl && !state.previewing
-            ? player.online ? "Show the player →" : "Open the player →"
-            : "Watch along →"}
+          <span className="jb-watch-ic" aria-hidden="true">▶</span>
+          {canControl ? (player.online ? "Show the player" : "Open the player") : "Watch along"}
         </a>
-        {canControl && !state.previewing ? (
-          <a href="/music?as=member" className="jb-status-link jb-status-alt">
-            View as a member
-          </a>
-        ) : null}
       </div>
 
       {/* ---------------- add ---------------- */}

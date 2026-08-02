@@ -124,8 +124,22 @@ function qualityLabel(q: string | null): string {
   return map[q] ?? "---";
 }
 
-/** The classic ten-band labels. Decorative — see the EQ note in the JSX. */
 const EQ_BANDS = ["60", "170", "310", "600", "1K", "3K", "6K", "12K", "14K", "16K"];
+const EQ_FLAT = EQ_BANDS.map(() => 50);
+const VIZ_BARS = 40;
+const EQ_STORE = "seekpeak.eq.v1";
+
+/**
+ * Presets, in the spirit of the originals. They set the curve; the curve
+ * shapes the analyser. See the honesty note on the EQ in the JSX.
+ */
+const EQ_PRESETS: Record<string, number[]> = {
+  FLAT:  EQ_FLAT,
+  ROCK:  [72, 64, 46, 40, 46, 55, 68, 74, 76, 76],
+  BASS:  [86, 78, 68, 57, 50, 45, 43, 43, 43, 43],
+  VOCAL: [38, 42, 51, 64, 72, 72, 62, 52, 45, 43],
+  LATE:  [30, 34, 42, 52, 58, 56, 48, 40, 34, 30],
+};
 
 export function PlayerClient({ initial, mode }: { initial: State; mode: "speaker" | "viewer" }) {
   const isSpeaker = mode === "speaker";
@@ -138,6 +152,11 @@ export function PlayerClient({ initial, mode }: { initial: State; mode: "speaker
   const [volume, setVol] = useState(80);
   const [playing, setPlaying] = useState(false);
   const [quality, setQuality] = useState<string | null>(null);
+  // The EQ. 0-100 per band, 50 = flat. Loaded after mount rather than in a
+  // lazy initialiser, because this component server-renders and reading
+  // localStorage during the first render would be a hydration mismatch.
+  const [eq, setEq] = useState<number[]>(EQ_FLAT);
+  const [preamp, setPreamp] = useState(50);
 
   const playerRef = useRef<YTPlayer | null>(null);
   const mountRef = useRef<HTMLDivElement>(null);
@@ -352,6 +371,55 @@ export function PlayerClient({ initial, mode }: { initial: State; mode: "speaker
 
   useEffect(() => () => { playerRef.current?.destroy?.(); }, []);
 
+  // ---- the EQ curve persists per browser ----
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(EQ_STORE);
+      if (!raw) return;
+      const saved = JSON.parse(raw) as { bands?: number[]; preamp?: number };
+      if (Array.isArray(saved.bands) && saved.bands.length === EQ_BANDS.length) {
+        setEq(saved.bands.map((n) => Math.max(0, Math.min(100, Number(n) || 50))));
+      }
+      if (typeof saved.preamp === "number") setPreamp(Math.max(0, Math.min(100, saved.preamp)));
+    } catch { /* a corrupt or blocked store just means a flat EQ */ }
+  }, []);
+
+  const saveEq = useCallback((bands: number[], pre: number) => {
+    try {
+      window.localStorage.setItem(EQ_STORE, JSON.stringify({ bands, preamp: pre }));
+    } catch { /* private mode, quota — not worth telling anyone about */ }
+  }, []);
+
+  function setBand(i: number, v: number) {
+    setEq((prev) => {
+      const next = prev.slice();
+      next[i] = v;
+      saveEq(next, preamp);
+      return next;
+    });
+  }
+  function applyPreset(name: string) {
+    const bands = EQ_PRESETS[name] ?? EQ_FLAT;
+    setEq(bands);
+    saveEq(bands, preamp);
+  }
+
+  /**
+   * How tall bar `i` of the analyser is allowed to get, from the EQ curve.
+   *
+   * This is what makes the sliders honest. They cannot touch the audio — it is
+   * in a cross-origin iframe, on another machine — so instead of pretending to
+   * filter anything, they visibly shape the thing right next to them. Drag 60Hz
+   * up and the left of the spectrum grows. It responds, it holds its position,
+   * and it is not claiming to be a filter.
+   */
+  function gainFor(i: number): number {
+    const per = VIZ_BARS / EQ_BANDS.length;
+    const band = eq[Math.min(EQ_BANDS.length - 1, Math.floor(i / per))] ?? 50;
+    const pre = 0.55 + (preamp / 100) * 0.9;
+    return Math.max(0.1, Math.min(1.6, ((band / 100) * 1.45 + 0.22) * pre));
+  }
+
   function changeVolume(v: number) {
     setVol(v);
     try { playerRef.current?.setVolume(v); } catch { /* mid-swap */ }
@@ -373,6 +441,10 @@ export function PlayerClient({ initial, mode }: { initial: State; mode: "speaker
     ? `${now.title}${now.channelTitle ? `  ·  ${now.channelTitle}` : ""}  ·  queued by ${now.addedByName ?? "someone"}`
     : "no track loaded  ·  add something from the music page";
   const pct = total > 0 ? Math.max(0, Math.min(100, (elapsed / total) * 100)) : 0;
+  // Scroll at a constant reading speed rather than a constant duration. A
+  // fixed 26s made a short title crawl and a long one sprint; tying the
+  // duration to the length means every title reads at the same pace.
+  const marqDur = Math.max(12, Math.round(marquee.length * 0.34));
 
   if (!started) {
     return (
@@ -413,7 +485,10 @@ export function PlayerClient({ initial, mode }: { initial: State; mode: "speaker
 
             <div className="wa-disp-r">
               <div className="wa-marq">
-                <span className={`wa-marq-in ${playing ? "is-rolling" : ""}`}>
+                <span
+                  className={`wa-marq-in ${playing ? "is-rolling" : ""}`}
+                  style={{ ["--dur" as string]: `${marqDur}s` }}
+                >
                   {marquee}&nbsp;&nbsp;✦&nbsp;&nbsp;{marquee}&nbsp;&nbsp;✦&nbsp;&nbsp;
                 </span>
               </div>
@@ -486,7 +561,7 @@ export function PlayerClient({ initial, mode }: { initial: State; mode: "speaker
           people watching a queue should have something to look at. The sliders
           drift while the track plays and settle when it stops. */}
       {!isSpeaker ? (
-        <div className="wa-win wa-eqwin" aria-hidden="true">
+        <div className="wa-win wa-eqwin">
           <div className="wa-tb">
             <i className="wa-grip" />
             <span className="wa-tb-name">EQUALIZER</span>
@@ -494,22 +569,47 @@ export function PlayerClient({ initial, mode }: { initial: State; mode: "speaker
             <span className="wa-tb-mode">AUTO</span>
           </div>
           <div className="wa-body">
-            <div className={`wa-eq ${playing ? "is-on" : ""}`}>
+            <div className="wa-eq">
               <div className="wa-eq-pre">
-                <div className="wa-eq-slot"><i className="wa-eq-thumb" /></div>
+                <div className="wa-eq-slot">
+                  <input
+                    type="range" min={0} max={100} value={preamp}
+                    onChange={(e) => { const v = Number(e.target.value); setPreamp(v); saveEq(eq, v); }}
+                    className="wa-eq-range" aria-label="Preamp"
+                  />
+                </div>
                 <span className="wa-eq-lab">PRE</span>
               </div>
               <div className="wa-eq-bands">
                 {EQ_BANDS.map((b, i) => (
-                  <div key={b} className="wa-eq-band" style={{ ["--b" as string]: String(i) }}>
-                    <div className="wa-eq-slot"><i className="wa-eq-thumb" /></div>
+                  <div key={b} className="wa-eq-band">
+                    <div className="wa-eq-slot">
+                      <input
+                        type="range" min={0} max={100} value={eq[i] ?? 50}
+                        onChange={(e) => setBand(i, Number(e.target.value))}
+                        className="wa-eq-range" aria-label={`${b} hertz`}
+                      />
+                    </div>
                     <span className="wa-eq-lab">{b}</span>
                   </div>
                 ))}
               </div>
             </div>
-            <div className={`wa-viz wa-viz-big ${playing ? "is-on" : ""}`}>
-              {Array.from({ length: 40 }, (_, i) => <i key={i} style={{ ["--b" as string]: String(i) }} />)}
+
+            <div className="wa-eq-presets">
+              {Object.keys(EQ_PRESETS).map((name) => (
+                <button key={name} type="button" className="wa-eq-preset" onClick={() => applyPreset(name)}>
+                  {name}
+                </button>
+              ))}
+            </div>
+
+            {/* Bars move while a track plays and settle into the EQ curve when
+                it stops, so the shape you set stays visible either way. */}
+            <div className={`wa-viz wa-viz-big ${playing ? "is-on" : ""}`} aria-hidden="true">
+              {Array.from({ length: VIZ_BARS }, (_, i) => (
+                <i key={i} style={{ ["--b" as string]: String(i), ["--g" as string]: gainFor(i).toFixed(3) }} />
+              ))}
             </div>
           </div>
         </div>
