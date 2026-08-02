@@ -63,6 +63,8 @@ interface State {
   maxPerPerson: number;
   searchEnabled: boolean;
   canControl: boolean;
+  /** True only when someone WITH control is deliberately looking without it. */
+  previewing?: boolean;
 }
 interface Hit {
   videoId: string;
@@ -121,13 +123,14 @@ export function Jukebox({ initial }: { initial: State }) {
 
   const load = useCallback(async () => {
     try {
-      const r = await fetch("/api/music/state", { cache: "no-store" });
+      const r = await fetch(`/api/music/state${initial.previewing ? "?as=member" : ""}`, { cache: "no-store" });
       if (!r.ok) return;
-      applyState((await r.json()) as State);
+      const d = (await r.json()) as State;
+      applyState({ ...d, previewing: initial.previewing });
     } catch {
       // A dropped poll is a stale second, not an error worth showing.
     }
-  }, [applyState]);
+  }, [applyState, initial.previewing]);
 
   useEffect(() => {
     const t = setInterval(load, POLL_MS);
@@ -158,8 +161,8 @@ export function Jukebox({ initial }: { initial: State }) {
   function openSpeaker(e: React.MouseEvent<HTMLAnchorElement>) {
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
     e.preventDefault();
-    // Members get the viewer; the speaker window is named separately so
-    // opening one never steals or replaces the other.
+    // Members (and anyone previewing) get the viewer; the speaker window is
+    // named separately so opening one never steals or replaces the other.
     const viewer = !canControl;
     const w = window.open(
       viewer ? "/music/player?as=member" : "/music/player",
@@ -350,6 +353,28 @@ export function Jukebox({ initial }: { initial: State }) {
           <span className="jb-watch-ic" aria-hidden="true">▶</span>
           {canControl ? (player.online ? "Show the player" : "Open the player") : "Watch along"}
         </a>
+
+        {/* The label on that button differs by role — admins get "Open the
+            player", members get "Watch along" — so there has to be a way to
+            look. One small control at the end of the row rather than a second
+            link competing with the primary action. */}
+        {canControl ? (
+          <a href="/music?as=member" className="jb-eye" title="See what a member sees" aria-label="See what a member sees">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" width="15" height="15">
+              <path d="M1.5 12S5 5.5 12 5.5 22.5 12 22.5 12 19 18.5 12 18.5 1.5 12 1.5 12z" />
+              <circle cx="12" cy="12" r="3" />
+            </svg>
+          </a>
+        ) : null}
+        {state.previewing ? (
+          <a href="/music" className="jb-eye is-on" title="Exit member view">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" width="15" height="15">
+              <path d="M1.5 12S5 5.5 12 5.5c1.6 0 3 .3 4.2.8M22.5 12S19 18.5 12 18.5c-1.6 0-3-.3-4.2-.8" />
+              <path d="M3 3l18 18" />
+            </svg>
+            <span className="jb-eye-t">member view</span>
+          </a>
+        ) : null}
       </div>
 
       {/* ---------------- add ---------------- */}

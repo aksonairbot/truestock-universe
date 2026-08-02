@@ -31,9 +31,27 @@ export const metadata = {
   description: "The office jukebox",
 };
 
-export default async function MusicPage() {
+/**
+ * `?as=member` renders the page as someone with no playback control.
+ *
+ * This exists because its absence cost real time: the Watch along button
+ * reads differently for admins and members, and with no way to look, the only
+ * options were guessing or asking someone. The same question applies to the
+ * standing card and will keep coming up.
+ *
+ * SAFE BY CONSTRUCTION — ANDed with the real permission, so it can only ever
+ * REMOVE capability. A member adding ?as=member gets exactly what they had,
+ * and the server actions enforce the real permission regardless of what any
+ * page chose to render.
+ */
+export default async function MusicPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ as?: string }>;
+}) {
   const me = await getCurrentUser();
-  const canControl = canControlPlayback(me);
+  const asMember = (await searchParams).as === "member";
+  const canControl = canControlPlayback(me) && !asMember;
 
   const [now, queue, player, myQueued, mine, days] = await Promise.all([
     getNowPlaying(me.id),
@@ -66,6 +84,9 @@ export default async function MusicPage() {
             maxPerPerson: MAX_QUEUED_PER_PERSON,
             searchEnabled: isYouTubeConfigured(),
             canControl,
+            // True only for someone who really has control and chose to look
+            // without it — which is what keeps the exit affordance honest.
+            previewing: asMember && canControlPlayback(me),
           }}
         />
 
