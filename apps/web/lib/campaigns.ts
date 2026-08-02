@@ -30,35 +30,57 @@ export function isCampaignStatus(v: string): v is CampaignStatus {
 }
 
 /**
- * Parse a human budget into paise.
+ * Parse a human budget into paise. Returns null when it can't be read, so the
+ * caller can show a sentence instead of throwing.
  *
- * People type money the way they say it, so accept it: "50000", "50,000",
- * "₹50,000", "1.5L", "2 Cr", "12.5 l". Anything unparseable throws rather
- * than silently becoming zero — a budget that quietly reads as ₹0 is worse
- * than an error message.
+ * WHY NULL AND NOT A THROW: in production Next.js REDACTS server-action error
+ * messages, so a thrown "that isn't an amount I can read" reaches the user as
+ * a full-page "Something went wrong". Validation has to travel back as a
+ * VALUE. See feedback_server_action_errors_are_redacted.
  *
- * Returns bigint paise. Empty input → 0n.
+ * People type money the way they say it, so accept the way they say it:
+ * "50000", "50,000", "₹50,000", "Rs. 2L", "1.5L", "2 lakhs", "3 crores",
+ * "12k", "1,00,000". The PLURALS matter — "2 lakhs" is how a person writes it
+ * and the first version of this rejected it, which is how a campaign failed
+ * to save with no explanation.
  */
-export function rupeesToPaise(input: string): bigint {
+export function parseRupees(input: string): bigint | null {
   const raw = (input ?? "").trim();
   if (!raw) return 0n;
 
-  const cleaned = raw.replace(/[₹,\s]/g, "");
-  const m = /^(\d+(?:\.\d+)?)(cr|crore|l|lakh|lac|k)?$/i.exec(cleaned);
-  if (!m) throw new Error(`"${raw}" is not an amount I can read. Try 50000, 50,000, 1.5L or 2Cr.`);
+  const cleaned = raw.replace(/[₹,\s]/g, "").replace(/^(?:rs\.?|inr)/i, "");
+  const m = /^(\d+(?:\.\d+)?)(crores?|crs?|lakhs?|lacs?|l|k)?$/i.exec(cleaned);
+  if (!m) return null;
 
   const n = Number(m[1]);
-  if (!Number.isFinite(n) || n < 0) throw new Error("Budget must be a positive amount.");
+  if (!Number.isFinite(n) || n < 0) return null;
 
   const unit = (m[2] ?? "").toLowerCase();
-  const multiplier =
-    unit === "cr" || unit === "crore" ? 1_00_00_000 : unit === "l" || unit === "lakh" || unit === "lac" ? 1_00_000 : unit === "k" ? 1_000 : 1;
+  const multiplier = /^cr/.test(unit)
+    ? 1_00_00_000
+    : /^(l|lakh|lac)/.test(unit)
+      ? 1_00_000
+      : unit === "k"
+        ? 1_000
+        : 1;
 
   const rupees = n * multiplier;
-  if (rupees > 1_000_00_00_000) throw new Error("That budget looks like a typo — cap is ₹1000 Cr.");
+  if (rupees > 1_000_00_00_000) return null;
 
   // Round at the paise boundary, not before: 0.005 rupees must not vanish.
   return BigInt(Math.round(rupees * 100));
+}
+
+/**
+ * Throwing wrapper, kept for callers that genuinely can't return a value.
+ * Prefer parseRupees() anywhere a person is watching.
+ */
+export function rupeesToPaise(input: string): bigint {
+  const v = parseRupees(input);
+  if (v === null) {
+    throw new Error(`"${input}" is not an amount I can read. Try 50000, 50,000, 1.5L or 2 Cr.`);
+  }
+  return v;
 }
 
 /** Plain rupee string for prefilling an input (no symbol, no compaction). */

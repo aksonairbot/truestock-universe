@@ -6634,3 +6634,13 @@ select.cmp-input {
 .attn-title { font-size: 12.5px; color: var(--text); min-width: 0; }
 .attn-detail { font-size: 11.5px; color: var(--text-3); }
 .attn-who { margin-left: auto; font-size: 11px; color: var(--text-4); white-space: nowrap; }
+
+/* Inline form error. Sits WITH the form, not over the page — the whole point
+   is that the person can see the field they need to fix while they read it. */
+.cmp-error {
+  font-size: 12px; line-height: 1.45; color: #ff453a;
+  padding: 8px 11px; border-radius: 9px;
+  border: 1px solid rgba(255, 69, 58, 0.34);
+  background: rgba(255, 69, 58, 0.07);
+  animation: motion-in var(--dur-2) var(--ease-out) both;
+}

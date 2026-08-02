@@ -3,6 +3,17 @@
 // Campaign mutations. Creating and shaping a campaign is a planning act, so
 // it is limited to admins and managers; ANY member can attach their own task
 // to a campaign, because that's just filing work under the push it belongs to.
+//
+// VALIDATION ERRORS ARE RETURNED, NOT THROWN.
+// In production Next.js REDACTS server-action error messages — a thrown
+// "Give the campaign a name" reaches the user as a full-page "Something went
+// wrong. An unexpected error occurred." That is what happened on 2026-07-30:
+// a budget typed as "2 lakhs" was rejected by the parser and the person saw a
+// crash screen with no idea what to change. A message the user must act on has
+// to travel back as a VALUE.
+//
+// Genuine faults (a forged id, someone else's campaign) still throw — those
+// are not conversations, and redaction is the correct behaviour for them.
 
 "use server";
 
@@ -10,81 +21,116 @@ import { revalidatePath } from "next/cache";
 import { getDb, campaigns, tasks, projects, eq, and, sql, isNull } from "@tu/db";
 import { getCurrentUser } from "@/lib/auth";
 import { isPrivileged, requireTaskAccess } from "@/lib/access";
-import { isCampaignStatus, rupeesToPaise } from "@/lib/campaigns";
+import { isCampaignStatus, parseRupees } from "@/lib/campaigns";
 import { isChannel, istDateTimeToUtc } from "@/lib/content";
 import { log } from "@/lib/log";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
-function readDates(formData: FormData): { startDate: string | null; endDate: string | null } {
+/** What every user-facing action returns. `ok:false` carries a sentence. */
+export type ActionResult = { ok: true } | { ok: false; error: string };
+
+function readDates(
+  formData: FormData,
+): { startDate: string | null; endDate: string | null; error?: string } {
   const startDate = ((formData.get("startDate") as string) ?? "").trim() || null;
   const endDate = ((formData.get("endDate") as string) ?? "").trim() || null;
-  if (startDate && !DATE_RE.test(startDate)) throw new Error("Start date is not a real date.");
-  if (endDate && !DATE_RE.test(endDate)) throw new Error("End date is not a real date.");
+  if (startDate && !DATE_RE.test(startDate)) return { startDate: null, endDate: null, error: "Start date is not a real date." };
+  if (endDate && !DATE_RE.test(endDate)) return { startDate: null, endDate: null, error: "End date is not a real date." };
   // Mirrors the CHECK constraint, but with a sentence a person can act on.
   if (startDate && endDate && endDate < startDate) {
-    throw new Error("The campaign ends before it starts — check the dates.");
+    return { startDate: null, endDate: null, error: "The campaign ends before it starts — check the dates." };
   }
   return { startDate, endDate };
 }
 
-export async function createCampaign(formData: FormData): Promise<void> {
+export async function createCampaign(formData: FormData): Promise<ActionResult> {
   const me = await getCurrentUser();
-  if (!isPrivileged(me)) throw new Error("Only admins and managers can create campaigns.");
+  if (!isPrivileged(me)) return { ok: false, error: "Only admins and managers can create campaigns." };
 
   const name = ((formData.get("name") as string) ?? "").trim().slice(0, 200);
-  if (!name) throw new Error("Give the campaign a name.");
+  if (!name) return { ok: false, error: "Give the campaign a name." };
 
   const objective = ((formData.get("objective") as string) ?? "").trim().slice(0, 2000) || null;
   const statusRaw = ((formData.get("status") as string) ?? "planning").trim();
   const status = isCampaignStatus(statusRaw) ? statusRaw : "planning";
-  const { startDate, endDate } = readDates(formData);
-  const budgetPaise = rupeesToPaise((formData.get("budget") as string) ?? "");
+
+  const dates = readDates(formData);
+  if (dates.error) return { ok: false, error: dates.error };
+
+  const budgetRaw = ((formData.get("budget") as string) ?? "").trim();
+  const budgetPaise = parseRupees(budgetRaw);
+  if (budgetPaise === null) {
+    return { ok: false, error: `"${budgetRaw}" isn't an amount I can read. Try 50000, 50,000, 1.5L or 2 Cr.` };
+  }
 
   const ownerRaw = ((formData.get("ownerId") as string) ?? "").trim();
   const ownerId = UUID_RE.test(ownerRaw) ? ownerRaw : me.id;
 
-  const db = getDb();
-  const [created] = await db
-    .insert(campaigns)
-    .values({ name, objective, status, startDate, endDate, budgetPaise, ownerId, createdById: me.id })
-    .returning({ id: campaigns.id });
+  try {
+    const db = getDb();
+    const [created] = await db
+      .insert(campaigns)
+      .values({ name, objective, status, startDate: dates.startDate, endDate: dates.endDate, budgetPaise, ownerId, createdById: me.id })
+      .returning({ id: campaigns.id });
 
-  if (!created) throw new Error("Campaign was not created.");
-  log.info("campaign.created", { campaignId: created.id, actorId: me.id, status });
+    if (!created) return { ok: false, error: "The campaign was not saved. Try again." };
+    log.info("campaign.created", { campaignId: created.id, actorId: me.id, status });
+  } catch (e) {
+    // A database constraint firing here is a bug in our validation above, so
+    // it goes to the log with detail AND to the user as something readable.
+    log.error("campaign.create_failed", { actorId: me.id, error: (e as Error).message });
+    return { ok: false, error: "The database rejected that campaign. The details are in the server log." };
+  }
 
   revalidatePath("/campaigns");
+  return { ok: true };
 }
 
-export async function updateCampaign(formData: FormData): Promise<void> {
+export async function updateCampaign(formData: FormData): Promise<ActionResult> {
   const me = await getCurrentUser();
-  if (!isPrivileged(me)) throw new Error("Only admins and managers can edit campaigns.");
+  if (!isPrivileged(me)) return { ok: false, error: "Only admins and managers can edit campaigns." };
 
   const id = ((formData.get("campaignId") as string) ?? "").trim();
+  // A malformed id is not a user mistake — it means the form was tampered
+  // with, so this one throws.
   if (!UUID_RE.test(id)) throw new Error("campaignId is required");
 
   const name = ((formData.get("name") as string) ?? "").trim().slice(0, 200);
-  if (!name) throw new Error("Give the campaign a name.");
+  if (!name) return { ok: false, error: "Give the campaign a name." };
 
   const objective = ((formData.get("objective") as string) ?? "").trim().slice(0, 2000) || null;
   const statusRaw = ((formData.get("status") as string) ?? "planning").trim();
   const status = isCampaignStatus(statusRaw) ? statusRaw : "planning";
-  const { startDate, endDate } = readDates(formData);
-  const budgetPaise = rupeesToPaise((formData.get("budget") as string) ?? "");
+
+  const dates = readDates(formData);
+  if (dates.error) return { ok: false, error: dates.error };
+
+  const budgetRaw = ((formData.get("budget") as string) ?? "").trim();
+  const budgetPaise = parseRupees(budgetRaw);
+  if (budgetPaise === null) {
+    return { ok: false, error: `"${budgetRaw}" isn't an amount I can read. Try 50000, 50,000, 1.5L or 2 Cr.` };
+  }
 
   const ownerRaw = ((formData.get("ownerId") as string) ?? "").trim();
   const ownerId = UUID_RE.test(ownerRaw) ? ownerRaw : null;
 
-  const db = getDb();
-  await db
-    .update(campaigns)
-    .set({ name, objective, status, startDate, endDate, budgetPaise, ownerId, updatedAt: new Date() })
-    .where(eq(campaigns.id, id));
+  try {
+    const db = getDb();
+    await db
+      .update(campaigns)
+      .set({ name, objective, status, startDate: dates.startDate, endDate: dates.endDate, budgetPaise, ownerId, updatedAt: new Date() })
+      .where(eq(campaigns.id, id));
+  } catch (e) {
+    log.error("campaign.update_failed", { campaignId: id, error: (e as Error).message });
+    return { ok: false, error: "The database rejected that change. The details are in the server log." };
+  }
 
   log.info("campaign.updated", { campaignId: id, actorId: me.id, status });
   revalidatePath("/campaigns");
   revalidatePath(`/campaigns/${id}`);
+  return { ok: true };
 }
 
 /**
@@ -139,7 +185,11 @@ export async function setTaskCampaign(formData: FormData): Promise<void> {
     campaignId = campaignRaw;
   }
 
-  const budgetPaise = rupeesToPaise((formData.get("budget") as string) ?? "");
+  const budgetRaw = ((formData.get("budget") as string) ?? "").trim();
+  const budgetPaise = parseRupees(budgetRaw);
+  if (budgetPaise === null) {
+    throw new Error(`"${budgetRaw}" isn't an amount I can read. Try 50000, 1.5L or 2 Cr.`);
+  }
 
   const db = getDb();
   await db
@@ -190,45 +240,49 @@ function shortLabel(iso: string): string {
   });
 }
 
-export async function planCadence(formData: FormData): Promise<void> {
+export async function planCadence(formData: FormData): Promise<ActionResult> {
   const me = await getCurrentUser();
   // Planning a cadence creates work for other people — same bar as creating
   // the campaign itself.
-  if (!isPrivileged(me)) throw new Error("Only admins and managers can plan a cadence.");
+  if (!isPrivileged(me)) return { ok: false, error: "Only admins and managers can plan a cadence." };
 
   const campaignId = ((formData.get("campaignId") as string) ?? "").trim();
   if (!UUID_RE.test(campaignId)) throw new Error("campaignId is required");
 
   const channel = ((formData.get("channel") as string) ?? "").trim();
-  if (!isChannel(channel)) throw new Error("Pick a channel for the cadence.");
+  if (!isChannel(channel)) return { ok: false, error: "Pick a channel for the cadence." };
 
   const startDate = ((formData.get("startDate") as string) ?? "").trim();
   const endDate = ((formData.get("endDate") as string) ?? "").trim();
   if (!DATE_RE.test(startDate) || !DATE_RE.test(endDate)) {
-    throw new Error("Give the cadence a start and end date.");
+    return { ok: false, error: "Give the cadence a start and end date." };
   }
-  if (endDate < startDate) throw new Error("The cadence ends before it starts — check the dates.");
+  if (endDate < startDate) return { ok: false, error: "The cadence ends before it starts — check the dates." };
 
   const days = formData
     .getAll("days")
     .map((d) => Number(d))
     .filter((n) => Number.isInteger(n) && n >= 0 && n <= 6);
-  if (days.length === 0) throw new Error("Pick at least one day of the week.");
+  if (days.length === 0) return { ok: false, error: "Pick at least one day of the week." };
   const daySet = new Set(days);
 
   const time = ((formData.get("time") as string) ?? "10:00").trim();
-  if (!/^\d{2}:\d{2}$/.test(time)) throw new Error("Publish time is not valid.");
+  if (!/^\d{2}:\d{2}$/.test(time)) return { ok: false, error: "Publish time is not valid." };
 
   const prefix = ((formData.get("titlePrefix") as string) ?? "").trim().slice(0, 120);
-  if (!prefix) throw new Error("Give the items a title, e.g. \"Reel\" or \"Market recap\".");
+  if (!prefix) return { ok: false, error: "Give the items a title, e.g. \"Reel\" or \"Market recap\"." };
 
   const projectSlug = ((formData.get("projectSlug") as string) ?? "").trim();
-  if (!projectSlug) throw new Error("Pick a project — every task belongs to one.");
+  if (!projectSlug) return { ok: false, error: "Pick a project — every task belongs to one." };
 
   const assigneeRaw = ((formData.get("assigneeId") as string) ?? "").trim();
   const assigneeId = UUID_RE.test(assigneeRaw) ? assigneeRaw : me.id;
 
-  const budgetPaise = rupeesToPaise((formData.get("budget") as string) ?? "");
+  const budgetRaw = ((formData.get("budget") as string) ?? "").trim();
+  const budgetPaise = parseRupees(budgetRaw);
+  if (budgetPaise === null) {
+    return { ok: false, error: `"${budgetRaw}" isn't an amount I can read. Try 25000, 1.5L or 2 Cr.` };
+  }
 
   const db = getDb();
 
@@ -237,14 +291,14 @@ export async function planCadence(formData: FormData): Promise<void> {
     .from(campaigns)
     .where(eq(campaigns.id, campaignId))
     .limit(1);
-  if (!campaign) throw new Error("That campaign no longer exists.");
+  if (!campaign) return { ok: false, error: "That campaign no longer exists." };
 
   const [project] = await db
     .select({ id: projects.id })
     .from(projects)
     .where(and(eq(projects.slug, projectSlug), isNull(projects.archivedAt)))
     .limit(1);
-  if (!project) throw new Error("That project was not found.");
+  if (!project) return { ok: false, error: "That project was not found." };
 
   // Already-planned slots for this campaign+channel. Re-running a cadence is
   // a normal thing to do (extending a run by two weeks), so colliding slots
@@ -292,18 +346,21 @@ export async function planCadence(formData: FormData): Promise<void> {
     });
 
     if (rows.length > MAX_CADENCE_ITEMS) {
-      throw new Error(
-        `That range would create more than ${MAX_CADENCE_ITEMS} items. Shorten the window or pick fewer days.`,
-      );
+      return {
+        ok: false,
+        error: `That range would create more than ${MAX_CADENCE_ITEMS} items. Shorten the window or pick fewer days.`,
+      };
     }
   }
 
   if (rows.length === 0) {
-    throw new Error(
-      skipped > 0
-        ? "Every slot in that range is already planned."
-        : "No dates in that range fall on the days you picked.",
-    );
+    return {
+      ok: false,
+      error:
+        skipped > 0
+          ? "Every slot in that range is already planned."
+          : "No dates in that range fall on the days you picked.",
+    };
   }
 
   await db.insert(tasks).values(rows);
@@ -320,4 +377,5 @@ export async function planCadence(formData: FormData): Promise<void> {
   revalidatePath("/campaigns");
   revalidatePath("/content");
   revalidatePath("/tasks");
+  return { ok: true };
 }

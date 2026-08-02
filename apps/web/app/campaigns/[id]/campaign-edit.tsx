@@ -6,7 +6,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { updateCampaign, archiveCampaign } from "../campaign-actions";
 import { CAMPAIGN_STATUSES } from "@/lib/campaigns";
 
@@ -35,6 +35,25 @@ export function CampaignEdit({
   archived: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+
+  // Same reason as CampaignForm: thrown server-action messages are redacted in
+  // production, so validation has to come back as a value.
+  function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    setError(null);
+    start(async () => {
+      try {
+        const res = await updateCampaign(fd);
+        if (res.ok) setOpen(false);
+        else setError(res.error);
+      } catch {
+        setError("Couldn't save that change. Check the server log.");
+      }
+    });
+  }
 
   if (!open) {
     return (
@@ -49,7 +68,7 @@ export function CampaignEdit({
 
   return (
     <div className="card cmp-form mt-6">
-      <form action={updateCampaign}>
+      <form onSubmit={onSubmit}>
         <input type="hidden" name="campaignId" value={campaignId} />
         <div className="cmp-form-grid">
           <label className="cmp-field cmp-field-wide">
@@ -110,8 +129,12 @@ export function CampaignEdit({
           </label>
         </div>
 
+        {error ? <div className="cmp-error" role="alert">{error}</div> : null}
+
         <div className="cmp-form-foot">
-          <button type="submit" className="btn btn-primary btn-sm">Save</button>
+          <button type="submit" className="btn btn-primary btn-sm" disabled={pending}>
+            {pending ? "Saving…" : "Save"}
+          </button>
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => setOpen(false)}>Close</button>
         </div>
       </form>

@@ -9,7 +9,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useRef, useState, useTransition } from "react";
 import { planCadence } from "../campaign-actions";
 import { CONTENT_CHANNELS } from "@/lib/content";
 
@@ -39,6 +39,30 @@ export function CadenceForm({
 }) {
   const [open, setOpen] = useState(false);
   const [picked, setPicked] = useState<number[]>([2, 4]);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  const formRef = useRef<HTMLFormElement | null>(null);
+
+  // Cadence has the most ways to be told "not like that" — wrong days, empty
+  // range, over the cap — so it needs the returned-error path most of all.
+  function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    setError(null);
+    start(async () => {
+      try {
+        const res = await planCadence(fd);
+        if (res.ok) {
+          formRef.current?.reset();
+          setOpen(false);
+        } else {
+          setError(res.error);
+        }
+      } catch {
+        setError("Couldn't create those slots. Check the server log.");
+      }
+    });
+  }
 
   function toggle(d: number) {
     setPicked((p) => (p.includes(d) ? p.filter((x) => x !== d) : [...p, d]));
@@ -53,7 +77,7 @@ export function CadenceForm({
   }
 
   return (
-    <form action={planCadence} className="card cmp-form mt-4">
+    <form ref={formRef} onSubmit={onSubmit} className="card cmp-form mt-4 motion-in">
       <input type="hidden" name="campaignId" value={campaignId} />
 
       <div className="cmp-form-head">
@@ -142,9 +166,13 @@ export function CadenceForm({
         </div>
       </div>
 
+      {error ? <div className="cmp-error" role="alert">{error}</div> : null}
+
       <div className="cmp-form-foot">
-        <button type="submit" className="btn btn-primary btn-sm">Create the slots</button>
-        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setOpen(false)}>Cancel</button>
+        <button type="submit" className="btn btn-primary btn-sm" disabled={pending}>
+          {pending ? "Creating…" : "Create the slots"}
+        </button>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setOpen(false)} disabled={pending}>Cancel</button>
         <span className="cmp-form-hint">
           Re-running skips slots that already exist, so extending a run is safe.
         </span>
