@@ -5,7 +5,6 @@
 // it should not be re-rendering a queue UI, polling badges, or holding a
 // sidebar open while it does that.
 
-import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { getQueue, getNowPlaying, getPlayerStatus, canControlPlayback } from "@/lib/music";
 import { PlayerClient } from "./player-client";
@@ -17,12 +16,26 @@ export const metadata = {
   description: "The machine that plays the office queue",
 };
 
-export default async function MusicPlayerPage() {
+/**
+ * One route, two modes.
+ *
+ * It used to redirect anyone without control straight back to /music, which
+ * meant most of the team could never see the thing at all — and seeing it is
+ * the fun part. Now they get the same window in VIEWER mode: same video, same
+ * lights, muted and synced to the speaker, no transport.
+ *
+ * `?as=member` lets someone who does have control look at the viewer version.
+ * ANDed with the real permission, so it can only ever remove capability.
+ */
+export default async function MusicPlayerPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ as?: string }>;
+}) {
   const me = await getCurrentUser();
-  // The speaker is playback control, so it belongs to admins and managers.
-  // This is the route guard; the actions carry their own checks, because a
-  // route guard stops navigation and does nothing about a direct POST.
-  if (!canControlPlayback(me)) redirect("/music");
+  const sp = await searchParams;
+  const mode: "speaker" | "viewer" =
+    canControlPlayback(me) && sp.as !== "member" ? "speaker" : "viewer";
 
   const [now, queue, player] = await Promise.all([
     getNowPlaying(me.id),
@@ -32,6 +45,7 @@ export default async function MusicPlayerPage() {
 
   return (
     <PlayerClient
+      mode={mode}
       initial={{
         now: now
           ? {
@@ -47,6 +61,7 @@ export default async function MusicPlayerPage() {
           title: t.title,
           channelTitle: t.channelTitle,
           addedByName: t.addedByName,
+          durationSeconds: t.durationSeconds,
         })),
         player,
       }}

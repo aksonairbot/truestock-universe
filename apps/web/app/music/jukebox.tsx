@@ -164,10 +164,13 @@ export function Jukebox({ initial }: { initial: State }) {
   function openSpeaker(e: React.MouseEvent<HTMLAnchorElement>) {
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
     e.preventDefault();
+    // Members (and admins previewing) get the viewer; the speaker window is
+    // named separately so opening one never steals or replaces the other.
+    const viewer = !canControl || Boolean(state.previewing);
     const w = window.open(
-      "/music/player",
-      "seekpeak-speaker",
-      "width=560,height=760,menubar=no,toolbar=no,location=no,status=no",
+      viewer ? "/music/player?as=member" : "/music/player",
+      viewer ? "seekpeak-viewer" : "seekpeak-speaker",
+      "width=560,height=820,menubar=no,toolbar=no,location=no,status=no",
     );
     if (!w) {
       toast("Your browser blocked the window — allow popups for seekpeak.in, or open the link in a new tab.", {
@@ -288,7 +291,8 @@ export function Jukebox({ initial }: { initial: State }) {
       {state.previewing ? (
         <div className="jb-preview" role="status">
           <span className="jb-preview-eye" aria-hidden="true">👁</span>
-          Viewing as a member — playback controls hidden. Everything else here is exactly what they see.
+          Viewing as a member — no playback controls. &ldquo;Watch along&rdquo; opens the viewer window they get:
+          same video, same lights, muted and following the speaker.
           <a href="/music" className="jb-preview-exit">Exit preview</a>
         </div>
       ) : null}
@@ -348,18 +352,18 @@ export function Jukebox({ initial }: { initial: State }) {
         ) : (
           <>No speaker connected</>
         )}
-        {canControl ? (
-          <a
-            href="/music/player"
-            target="seekpeak-speaker"
-            rel="noopener"
-            className="jb-status-link"
-            onClick={openSpeaker}
-          >
-            {player.online ? "Show the player →" : "Open the player →"}
-          </a>
-        ) : null}
-        {canControl ? (
+        <a
+          href={canControl && !state.previewing ? "/music/player" : "/music/player?as=member"}
+          target={canControl && !state.previewing ? "seekpeak-speaker" : "seekpeak-viewer"}
+          rel="noopener"
+          className="jb-status-link"
+          onClick={openSpeaker}
+        >
+          {canControl && !state.previewing
+            ? player.online ? "Show the player →" : "Open the player →"
+            : "Watch along →"}
+        </a>
+        {canControl && !state.previewing ? (
           <a href="/music?as=member" className="jb-status-link jb-status-alt">
             View as a member
           </a>
