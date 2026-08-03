@@ -188,7 +188,7 @@
     <span class="kicker">Monthly Growth Contest</span>
     <h1>Grow active clients.<br><span class="hl">The more you bring in,<br>the more you earn.</span></h1>
     <p>Every month the team unlocks a bonus by hitting an <span class="big">active-client milestone</span> — and the better your grade, the bigger your share. <span class="big">Top performers earn up to 5×</span> their monthly salary.</p>
-    <p style="margin-top:12px;font-size:15px;"><span class="big">🔁 It's a monthly rate.</span> New active clients acquired <span class="big">within the month</span> — it resets every month, a fresh climb up the ladder.</p>
+    <p style="margin-top:12px;font-size:15px;"><span class="big">🔁 This reward is for achieving a new monthly active run rate.</span> It is measured on active clients acquired <span class="big">within the month</span> — and it resets every month, a fresh climb up the ladder.</p>
   </div>
 
   <!-- conditions -->
@@ -216,7 +216,7 @@
   <!-- reward ladder -->
   <div class="sect">
     <div class="sect-h"><h2>🏆 The reward ladder</h2></div>
-    <p class="sect-sub">Based on <b>new active clients we bring in during the month</b>. Whichever rung we reach sets the reward — and your grade (<b class="lA">A</b> or <b class="lB">B</b>) decides your share of it.</p>
+    <p class="sect-sub">Each rung is a <b>new monthly active run rate</b> — active clients we bring in during the month. Whichever rung we reach sets the reward — and your grade (<b class="lA">A</b> or <b class="lB">B</b>) decides your share of it.</p>
     <div class="ladder" id="ladder"></div>
 
     <div class="band">
@@ -226,19 +226,20 @@
 
     <div class="oneshot">
       <span class="ic">⚡</span>
-      <span><b>One-time payout each time we unlock a run-rate.</b>
-      <small>Paid <b>once</b> for the month we hit a milestone — not a recurring or permanent raise. Every month resets to the bottom of the ladder: unlock a run-rate again to earn again.</small></span>
+      <span><b>One-time payout each time we achieve a new monthly active run rate.</b>
+      <small>Paid <b>once</b> for the month we hit a milestone — not a recurring or permanent raise. Every month resets to the bottom of the ladder: achieve a new monthly active run rate again to earn again.</small></span>
     </div>
   </div>
 
   <!-- grades -->
   <div class="sect">
     <div class="sect-h"><h2>🎖️ The two grades</h2></div>
-    <p class="sect-sub">Everyone is graded on their own contribution. The more you bring in, the higher your grade — and the bigger your share of the reward.</p>
+    <p class="sect-sub">Every <b>team member</b> is graded on their own contribution. The more you bring in, the higher your grade — and the bigger your share of the reward.</p>
     <div class="grades2">
       <div class="gcard A"><span class="lbl"><span class="badge">A</span> Top performer</span><p>The strongest contributors on the team. Earn the <b>biggest share</b> at every milestone — up to <b>5×</b> monthly salary at 10,000 active clients.</p></div>
       <div class="gcard B"><span class="lbl"><span class="badge">B</span> Solid contributor</span><p>Dependable performers doing the job well. Earn the <b>standard share</b> at every milestone — up to <b>3×</b> monthly salary at 10,000 active clients.</p></div>
     </div>
+    <div class="gatebar">This contest is for <b>team members only</b>. Managers are not eligible to participate.</div>
   </div>
 
   <div class="closer">
@@ -251,11 +252,11 @@
     <h2>📋 Terms &amp; Conditions</h2>
     <p class="tsub">Please read carefully. Participation in the contest implies acceptance of these terms.</p>
     <ol>
-      <li><b>Monthly &amp; one-time.</b> The incentive is calculated on the highest active-client milestone reached <b>within a calendar month</b> and paid <b>once</b> for that month. It resets at the start of each month and is not cumulative across months.</li>
+      <li><b>Monthly &amp; one-time.</b> The incentive is for achieving a <b>new monthly active run rate</b>, calculated on the highest active-client run rate reached <b>within a calendar month</b> and paid <b>once</b> for that month. It resets at the start of each month and is not cumulative across months.</li>
       <li><b>Both conditions are mandatory.</b> No incentive is payable for a month unless <b>both</b> qualification gates are met — cost per acquisition under ₹3,000, and at least 50% of the previous month's onboarded active clients placing a trade in the current month — regardless of the number of active clients acquired.</li>
       <li><b>Definition of an active client.</b> Only accounts that are funded and have placed at least one genuine trade within 30 days of opening, with valid KYC and no mis-selling or compliance flag, are counted. Self, family, or related-party accounts do not count.</li>
       <li><b>Discretionary &amp; variable.</b> This is a discretionary, variable, one-time payment. It does <b>not</b> form part of fixed salary or CTC, creates no entitlement to any future payout, and does not set a precedent.</li>
-      <li><b>Eligibility.</b> Payable only to employees who are in active service on the payout date and not serving notice, absconding, or under disciplinary action. Employees who have resigned or been separated before payout are not eligible.</li>
+      <li><b>Eligibility.</b> This contest is open to <b>team members only — managers are excluded</b> and are not eligible for any payout under it. Otherwise payable only to employees who are in active service on the payout date and not serving notice, absconding, or under disciplinary action. Employees who have resigned or been separated before payout are not eligible.</li>
       <li><b>Grading.</b> Assignment of Grade A or Grade B is based on management's assessment of individual contribution and is at management's sole discretion.</li>
       <li><b>Verification &amp; clawback.</b> All figures are as per the company's official CRM and records. Any incentive linked to accounts later found fraudulent, mis-sold, duplicated, or reversed may be recovered or adjusted against future payouts.</li>
       <li><b>Taxes.</b> All payouts are subject to applicable taxes and statutory deductions.</li>
@@ -288,7 +289,7 @@
       <div class="tag"></div>
       ${last?'<div class="jack">JACKPOT</div>':''}
       <div class="leg">Leg ${L.k}</div>
-      <div class="goal">${L.vol.toLocaleString('en-IN')}<small>NEW ACTIVE · IN THE MONTH</small></div>
+      <div class="goal">${L.vol.toLocaleString('en-IN')}<small>NEW ACTIVE · MONTHLY RUN RATE</small></div>
       <div class="grades">
         <div class="gr gA"><span>🅐 Grade A</span><b>${fx(L.a)}</b></div>
         <div class="gr gB"><span>🅑 Grade B</span><b>${fx(L.b)}</b></div>
