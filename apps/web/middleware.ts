@@ -18,7 +18,11 @@ import { getToken } from "next-auth/jwt";
 // with no session, and Upload-post fetches media from its own servers. Both
 // routes re-check that proof themselves — this list only stops the middleware
 // from bouncing them to /welcome.
-const PUBLIC_PATHS = ["/welcome", "/api/auth", "/api/cron", "/api/media", "/favicon.ico", "/favicon.svg", "/favicon-32.png", "/manifest.json", "/apple-icon.png", "/banners", "/hero", "/celebrate", "/_next", "/icon", "/manifest"];
+// /docs/* is deliberately open — these are documents meant to be sent to
+// people who have no SeekPeak login (the team on their phones, and whoever
+// else the link reaches). Everything under it is PUBLIC TO ANYONE WITH THE
+// URL. Nothing that shouldn't survive being forwarded belongs here.
+const PUBLIC_PATHS = ["/welcome", "/api/auth", "/api/cron", "/api/media", "/docs", "/favicon.ico", "/favicon.svg", "/favicon-32.png", "/manifest.json", "/apple-icon.png", "/banners", "/hero", "/celebrate", "/_next", "/icon", "/manifest"];
 
 // Edge runtime — `process.env.AUTH_SECRET` is inlined at build time. If
 // it wasn't set when the build ran, the middleware will throw on first
