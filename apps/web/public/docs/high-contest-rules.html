@@ -136,6 +136,30 @@
   .terms ol{margin:0;padding-left:22px;}
   .terms li{font-size:13.5px;color:var(--ink2);margin-bottom:10px;line-height:1.6;font-weight:500;}
   .terms li b{color:var(--ink);font-weight:800;}
+
+  /* ---- the gate, promoted to the top ----
+     It sits above the ladder now because the ladder is the reward and this is
+     the price of entry; reading them the other way round is how someone ends
+     up disappointed at the end of a month. Amber-red rather than the brand
+     purple so it reads as a condition, not another feature. */
+  .gate-sect{position:relative;margin-top:40px;border-radius:26px;padding:34px 26px 26px;
+    border:2px solid rgba(224,64,63,.42);
+    background:linear-gradient(155deg,rgba(224,64,63,.10),rgba(233,164,0,.09) 48%,rgba(255,255,255,0) 88%),var(--card);
+    box-shadow:var(--shadow),0 0 0 7px rgba(224,64,63,.05);}
+  html[data-theme="dark"] .gate-sect{background:linear-gradient(155deg,rgba(239,68,68,.14),rgba(245,185,59,.09) 48%,rgba(0,0,0,0) 88%),var(--card);}
+  .gate-flag{position:absolute;top:-13px;left:50%;transform:translateX(-50%);white-space:nowrap;
+    font-family:var(--disp);font-weight:900;font-size:13px;letter-spacing:2.6px;text-transform:uppercase;
+    color:#fff;background:linear-gradient(90deg,var(--red),var(--gold));padding:6px 20px;border-radius:999px;
+    box-shadow:0 10px 22px -10px rgba(224,64,63,.85);}
+  .gate-sect .sect-h h2{font-size:40px;}
+  .gate-sect .sect-sub{font-size:15.5px;color:var(--ink2);max-width:600px;}
+  .gate-conds .cond{border-width:2px;border-color:rgba(224,64,63,.24);}
+  .gate-conds .cond .num{background:linear-gradient(140deg,var(--red),var(--gold));font-size:22px;}
+  .gate-conds .cond h3{font-size:17.5px;}
+  .gate-sect .gatebar{border:2px dashed rgba(224,64,63,.5);background:rgba(224,64,63,.06);
+    font-size:14.5px;font-weight:600;color:var(--ink);padding:14px 18px;}
+  @media(max-width:560px){.gate-sect{padding:30px 16px 20px;}.gate-sect .sect-h h2{font-size:30px;}
+    .gate-flag{font-size:11px;letter-spacing:1.8px;padding:5px 14px;}}
   .fine{margin-top:24px;color:var(--muted);font-size:12px;text-align:center;line-height:1.7;font-weight:500;}
 </style>
 </head>
@@ -159,6 +183,28 @@
     <p style="margin-top:12px;font-size:15px;"><span class="big">🔁 It's a monthly rate.</span> New active clients acquired <span class="big">within the month</span> — it resets every month, a fresh climb up the ladder.</p>
   </div>
 
+  <!-- conditions -->
+  <div class="sect gate-sect">
+    <div class="gate-flag">Read this first</div>
+    <div class="sect-h"><h2>Two conditions to unlock</h2></div>
+    <p class="sect-sub">Before any reward below applies, both of these have to hold. Hitting the client number on its own pays nothing.</p>
+    <div class="conds gate-conds">
+      <div class="cond">
+        <div class="num">1</div>
+        <div><h3>Keep acquisition cheap</h3>
+          <p>Cost to acquire each active client stays <b>under ₹3,000</b>.</p>
+          <span class="why">Growth has to be profitable — no buying accounts at any price.</span></div>
+      </div>
+      <div class="cond">
+        <div class="num">2</div>
+        <div><h3>Keep clients trading</h3>
+          <p>At least <b>50%</b> of the clients we onboarded <b>last month</b> place a trade <b>this month</b>.</p>
+          <span class="why">Real, active clients — not sign-ups that go quiet.</span></div>
+      </div>
+    </div>
+    <div class="gatebar">Miss either condition and the milestone bonus does <b>not</b> pay out that month — even if we hit the client number.</div>
+  </div>
+
   <!-- reward ladder -->
   <div class="sect">
     <div class="sect-h"><h2>🏆 The reward ladder</h2></div>
@@ -175,27 +221,6 @@
       <span><b>One-time payout each time we unlock a run-rate.</b>
       <small>Paid <b>once</b> for the month we hit a milestone — not a recurring or permanent raise. Every month resets to the bottom of the ladder: unlock a run-rate again to earn again.</small></span>
     </div>
-  </div>
-
-  <!-- conditions -->
-  <div class="sect">
-    <div class="sect-h"><h2>✅ Two conditions to unlock</h2></div>
-    <p class="sect-sub">The milestone alone isn't enough — we grow the right way. Both must hold for the bonus to pay out.</p>
-    <div class="conds">
-      <div class="cond">
-        <div class="num">1</div>
-        <div><h3>Keep acquisition cheap</h3>
-          <p>Cost to acquire each active client stays <b>under ₹3,000</b>.</p>
-          <span class="why">Growth has to be profitable — no buying accounts at any price.</span></div>
-      </div>
-      <div class="cond">
-        <div class="num">2</div>
-        <div><h3>Keep clients trading</h3>
-          <p>At least <b>50%</b> of the clients we onboarded <b>last month</b> place a trade <b>this month</b>.</p>
-          <span class="why">Real, active clients — not sign-ups that go quiet.</span></div>
-      </div>
-    </div>
-    <div class="gatebar">Miss either condition and the milestone bonus does <b>not</b> pay out that month — even if we hit the client number.</div>
   </div>
 
   <!-- grades -->
@@ -232,7 +257,7 @@
   </div>
 
   <div class="fine">
-    Per-milestone share of monthly salary — 1,000 → A 0.75× / B 0.5× · 3,000 → A 1.5× / B 1× · 5,000 → A 3× / B 2× · 10,000 → A 5× / B 3×. Salary examples are illustrative and do not reflect any individual's actual salary.
+    Per-milestone share of monthly salary — 1,000 → A 0.5× / B 0.25× · 3,000 → A 1.5× / B 1× · 5,000 → A 3× / B 2× · 10,000 → A 5× / B 3×. Salary examples are illustrative and do not reflect any individual's actual salary.
   </div>
 </div>
 
@@ -243,7 +268,7 @@
 
   // ---- configurable scheme (explicit salary multiples per milestone & grade) ----
   const LEGS = [
-    {k:1, vol:1000,  a:0.75, b:0.5},
+    {k:1, vol:1000,  a:0.5,  b:0.25},
     {k:2, vol:3000,  a:1.5,  b:1.0},
     {k:3, vol:5000,  a:3.0,  b:2.0},
     {k:4, vol:10000, a:5.0,  b:3.0},
