@@ -156,6 +156,14 @@
   .gate-conds .cond{border-width:2px;border-color:rgba(224,64,63,.24);}
   .gate-conds .cond .num{background:linear-gradient(140deg,var(--red),var(--gold));font-size:22px;}
   .gate-conds .cond h3{font-size:17.5px;}
+  .gate-fig{display:flex;flex-direction:column;gap:3px;margin:10px 0 10px;}
+  .gate-fig b{font-family:var(--disp);font-weight:900;font-size:54px;line-height:.9;letter-spacing:-1px;color:var(--red);}
+  @supports ((background-clip:text) or (-webkit-background-clip:text)){
+    .gate-fig b{background:linear-gradient(96deg,var(--red),var(--gold));-webkit-background-clip:text;background-clip:text;color:transparent;}
+  }
+  .gate-fig span{font-size:13.5px;font-weight:700;color:var(--ink2);line-height:1.4;}
+  .gate-fig span em{font-style:normal;color:var(--ink);border-bottom:2px solid rgba(233,164,0,.55);}
+  @media(max-width:560px){.gate-fig b{font-size:44px;}}
   .gate-sect .gatebar{border:2px dashed rgba(224,64,63,.5);background:rgba(224,64,63,.06);
     font-size:14.5px;font-weight:600;color:var(--ink);padding:14px 18px;}
   @media(max-width:560px){.gate-sect{padding:30px 16px 20px;}.gate-sect .sect-h h2{font-size:30px;}
@@ -192,13 +200,13 @@
       <div class="cond">
         <div class="num">1</div>
         <div><h3>Keep acquisition cheap</h3>
-          <p>Cost to acquire each active client stays <b>under ₹3,000</b>.</p>
+          <div class="gate-fig"><b>&lt;&#8202;₹3,000</b><span>cost to acquire each active client</span></div>
           <span class="why">Growth has to be profitable — no buying accounts at any price.</span></div>
       </div>
       <div class="cond">
         <div class="num">2</div>
         <div><h3>Keep clients trading</h3>
-          <p>At least <b>50%</b> of the clients we onboarded <b>last month</b> place a trade <b>this month</b>.</p>
+          <div class="gate-fig"><b>50%</b><span>of <em>last month&rsquo;s</em> clients place a trade <em>this month</em></span></div>
           <span class="why">Real, active clients — not sign-ups that go quiet.</span></div>
       </div>
     </div>
