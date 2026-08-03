@@ -142,6 +142,11 @@ const SCHEMA_CHECKS: Array<{
     feature: "Improvement tasks a manager asks for on the rating page",
     taskColumns: ["improvement_for"],
   },
+  {
+    migration: "0035_music_dj",
+    feature: "Granting the office speaker to individuals",
+    otherColumns: [{ table: "users", column: "music_dj" }],
+  },
 ];
 
 /**

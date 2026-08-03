@@ -48,7 +48,47 @@ import { log } from "./log";
  * goes through here.
  */
 export function canControlPlayback(user: User): boolean {
-  return isPrivileged(user);
+  // Additive on purpose. Being trusted with the speaker and running the
+  // company are unrelated things, and there is no reason the second should be
+  // required for the first — but removing it from admins would let one
+  // accidentally lock themselves out of the speaker in their own office.
+  return isPrivileged(user) || Boolean(user.musicDj);
+}
+
+export interface DjCandidate {
+  id: string;
+  name: string;
+  role: string;
+  /** Granted explicitly via the toggle. */
+  isDj: boolean;
+  /** Has it by role, so the toggle is meaningless for them. */
+  byRole: boolean;
+}
+
+/**
+ * The team, for the "who can drive the speaker" panel.
+ *
+ * Admins and managers are listed but shown as already having it rather than
+ * hidden — an admin looking at this needs to see the WHOLE picture of who can
+ * press play, not just the exceptions they granted.
+ */
+export async function listDjCandidates(): Promise<DjCandidate[]> {
+  const db = getDb();
+  const rows = await db
+    .select({
+      id: users.id,
+      name: users.name,
+      role: users.role,
+      musicDj: users.musicDj,
+    })
+    .from(users)
+    .where(eq(users.isActive, true))
+    .orderBy(users.name);
+
+  return rows.map((r) => {
+    const byRole = r.role === "admin" || r.role === "manager";
+    return { id: r.id, name: r.name, role: r.role, isDj: Boolean(r.musicDj), byRole };
+  });
 }
 
 /** Enough to line up a run; few enough that the queue keeps moving. */

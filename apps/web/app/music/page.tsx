@@ -19,9 +19,13 @@ import {
   playlistsByDay,
   dayLabel,
   canControlPlayback,
+  listDjCandidates,
   MAX_QUEUED_PER_PERSON,
 } from "@/lib/music";
 import { isYouTubeConfigured } from "@/lib/youtube";
+import { isAdmin } from "@/lib/access";
+import { ActionForm } from "@/components/action-form";
+import { setMusicDj } from "./actions";
 import { Jukebox } from "./jukebox";
 
 export const dynamic = "force-dynamic";
@@ -52,6 +56,10 @@ export default async function MusicPage({
   const me = await getCurrentUser();
   const asMember = (await searchParams).as === "member";
   const canControl = canControlPlayback(me) && !asMember;
+  // Granting is admin-only — narrower than control itself — and it hides in
+  // member preview like everything else, so the preview stays honest.
+  const canGrant = isAdmin(me) && !asMember;
+  const djs = canGrant ? await listDjCandidates() : [];
 
   const [now, queue, player, myQueued, mine, days] = await Promise.all([
     getNowPlaying(me.id),
@@ -91,6 +99,43 @@ export default async function MusicPage({
         />
 
         <aside className="jb-history">
+          {/* Who can drive the speaker. Admins see the WHOLE picture — people
+              who have it by role as well as those granted it — because the
+              question being answered is "who can press play", not "who did I
+              tick". */}
+          {canGrant ? (
+            <section className="djg">
+              <div className="djg-h">Who can control the music</div>
+              <ul className="djg-list">
+                {djs.map((d) => (
+                  <li key={d.id} className={`djg-r ${d.byRole ? "is-role" : ""}`}>
+                    <span className="djg-n">{d.id === me.id ? "You" : d.name}</span>
+                    {d.byRole ? (
+                      <span className="djg-badge">by role</span>
+                    ) : (
+                      <ActionForm action={setMusicDj} className="djg-f">
+                        <input type="hidden" name="memberId" value={d.id} />
+                        <input type="hidden" name="grant" value={d.isDj ? "false" : "true"} />
+                        <button
+                          type="submit"
+                          className={`djg-t ${d.isDj ? "is-on" : ""}`}
+                          aria-pressed={d.isDj}
+                          title={d.isDj ? `Take it back from ${d.name}` : `Let ${d.name} drive`}
+                        >
+                          <span className="djg-knob" aria-hidden="true" />
+                        </button>
+                      </ActionForm>
+                    )}
+                  </li>
+                ))}
+              </ul>
+              <p className="djg-note">
+                Anyone switched on here can open the speaker, pause, skip and set the volume. Everyone
+                else can still add songs and boost.
+              </p>
+            </section>
+          ) : null}
+
           <div className="jb-history-h">What we listened to</div>
           {days.length === 0 ? (
             <p className="jb-empty">

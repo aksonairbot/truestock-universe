@@ -1,0 +1,19 @@
+-- 0035: Hand the music over
+--
+-- Playback control was tied to being an admin or a manager, which conflated
+-- two unrelated things: who runs the company, and who is any good at picking
+-- what the office listens to. Those are not the same people and there is no
+-- reason they should be.
+--
+-- So control becomes something an admin GRANTS. Whoever actually wants to lead
+-- the music gets it, regardless of role — and can hand it back.
+--
+-- ADDITIVE, NOT A REPLACEMENT. Admins and managers keep control; this only
+-- widens the set. Making it exclusive would mean an admin could accidentally
+-- lock themselves out of the speaker in their own office, which is a silly way
+-- to spend an afternoon.
+--
+-- A plain boolean rather than a roles table, deliberately. This grants exactly
+-- one capability — press play — and it is reversible with one click. A
+-- permissions system would be more architecture than the problem has.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS music_dj boolean NOT NULL DEFAULT false;

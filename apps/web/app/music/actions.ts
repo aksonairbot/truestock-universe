@@ -13,9 +13,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getDb, musicTracks, musicVotes, musicPlayerState, eq, and, sql } from "@tu/db";
+import { getDb, musicTracks, musicVotes, musicPlayerState, users, eq, and, sql } from "@tu/db";
 import { getCurrentUser } from "@/lib/auth";
-import { isPrivileged } from "@/lib/access";
+import { isPrivileged, isAdmin } from "@/lib/access";
 import { parseYouTubeId, fetchTrackMeta, searchYouTube, type SearchHit } from "@/lib/youtube";
 import {
   advance,
@@ -293,5 +293,45 @@ export async function togglePause(): Promise<ActionResult> {
     .set({ isPaused: sql`not is_paused`, updatedAt: new Date() })
     .where(eq(musicPlayerState.id, "office"));
   refresh();
+  return ok;
+}
+
+
+/**
+ * Hand the speaker to someone, or take it back.
+ *
+ * ADMIN ONLY — narrower than playback control itself, and deliberately so. A
+ * manager can drive the music; granting the ability to drive it is a different
+ * act, and letting anyone with control pass it on turns one decision into an
+ * unbounded chain nobody remembers making.
+ *
+ * Being granted this does NOT let someone grant it onward. There is exactly
+ * one level, which is all this needs.
+ */
+export async function setMusicDj(formData: FormData): Promise<ActionResult> {
+  const me = await getCurrentUser();
+  if (!isAdmin(me)) return fail("Only an admin can change who controls the music.");
+
+  const memberId = ((formData.get("memberId") as string) ?? "").trim();
+  const grant = (formData.get("grant") as string) === "true";
+  if (!memberId) return fail("This form lost track of who it's for. Reload the page.");
+
+  const db = getDb();
+  const [subject] = await db
+    .select({ id: users.id, name: users.name, role: users.role })
+    .from(users)
+    .where(eq(users.id, memberId))
+    .limit(1);
+  if (!subject) return fail("That person no longer exists. Reload the page.");
+
+  if (subject.role === "admin" || subject.role === "manager") {
+    return fail(`${subject.name} already has it from their role — there's nothing to grant.`);
+  }
+
+  await db.update(users).set({ musicDj: grant, updatedAt: new Date() }).where(eq(users.id, memberId));
+  log.info("music.dj_changed", { memberId, grant, by: me.id });
+
+  refresh();
+  revalidatePath("/members");
   return ok;
 }

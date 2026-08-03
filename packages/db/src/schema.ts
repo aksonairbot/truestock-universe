@@ -303,6 +303,8 @@ export const users = pgTable(
     contributionTierNote: text("contribution_tier_note"),
     contributionTierSetBy: uuid("contribution_tier_set_by"),
     contributionTierSetAt: timestamp("contribution_tier_set_at", { withTimezone: true }),
+    /** Granted the office speaker (0035). Additive to admin/manager. */
+    musicDj: boolean("music_dj").notNull().default(false),
     isActive: boolean("is_active").notNull().default(true),
     lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
